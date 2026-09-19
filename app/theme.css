@@ -502,3 +502,200 @@ input[type="checkbox"] {
   text-align: right;
   color: var(--gold);
 }
+
+/* ---------- Friends: player dropdowns ---------- */
+
+.player-card {
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--panel-top), var(--panel-bottom));
+  outline: 1px solid var(--frame);
+  outline-offset: -1px;
+  box-shadow: inset 0 1px 0 rgba(255, 224, 150, 0.07);
+}
+
+.player-card > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.player-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.player-card > summary:hover h2 {
+  color: #ffe08a;
+}
+
+.player-card[open] > summary {
+  border-bottom: 1px solid var(--frame-dim);
+}
+
+.player-card a.bg-neutral-800 {
+  background: linear-gradient(180deg, #1a150e, #100d08);
+}
+
+.player-card a.bg-neutral-800:hover {
+  background: linear-gradient(180deg, #272014, #17120b);
+}
+
+/* ---------- News ---------- */
+
+.news-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--panel-top), var(--panel-bottom));
+  outline: 1px solid var(--frame);
+  outline-offset: -1px;
+  text-decoration: none;
+  transition: transform 0.12s, outline-color 0.12s;
+}
+
+.news-card:hover {
+  outline-color: var(--gold-soft);
+  transform: translateY(-2px);
+}
+
+.news-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-bottom: 1px solid var(--frame);
+}
+
+.news-title {
+  font-family: var(--font-heading), Georgia, serif;
+  line-height: 1.3;
+  color: var(--gold);
+}
+
+.news-card:hover .news-title {
+  color: #ffe08a;
+}
+
+/* Always keep room for the scrollbar, so pages don't shift sideways when one appears */
+html {
+  scrollbar-gutter: stable;
+}
+
+/* ---------- Friends list (left side) ---------- */
+
+.friend-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-shrink: 0;
+  min-width: 13rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  text-align: left;
+  color: #e6d6ac;
+  background: linear-gradient(180deg, #2b2419, #1a150e);
+  outline: 1px solid #4a3a1f;
+  outline-offset: -1px;
+  box-shadow: inset 0 1px 0 rgba(255, 232, 170, 0.1);
+}
+
+.friend-tab:hover {
+  filter: brightness(1.15);
+  outline-color: var(--gold-soft);
+}
+
+.friend-tab-active {
+  color: #22150a;
+  background: linear-gradient(180deg, #e0b555 0%, #b98a32 48%, #8f6520 100%);
+  outline-color: #f6dc95;
+  outline-offset: -2px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 244, 200, 0.55);
+}
+
+.friend-tab-active .sub {
+  color: #4a3312;
+}
+
+@media (min-width: 1024px) {
+  .friend-tab {
+    width: 100%;
+  }
+}
+
+/* ---------- Launch countdown ---------- */
+
+.launch-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin-top: 0.75rem;
+  padding: 0.8rem 1.1rem;
+  border-radius: 8px;
+  background:
+    radial-gradient(600px 120px at 50% 0%, rgba(242, 198, 90, 0.14), transparent 70%),
+    linear-gradient(180deg, #221c14, #120f0a);
+  outline: 1px solid var(--gold-soft);
+  outline-offset: -1px;
+  box-shadow: inset 0 1px 0 rgba(255, 224, 150, 0.12), 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
+.launch-title {
+  font-family: var(--font-heading), Georgia, serif;
+  font-size: 1rem;
+  line-height: 1.3;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.launch-title small {
+  display: block;
+  margin-top: 0.15rem;
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--muted);
+}
+
+.launch-clock {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.launch-unit {
+  min-width: 4.8rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  text-align: center;
+  background: #0b0906;
+  outline: 1px solid #4a3a1f;
+  outline-offset: -1px;
+}
+
+.launch-num {
+  font-family: var(--font-heading), Georgia, serif;
+  font-variant-numeric: tabular-nums;
+  font-size: 2.5rem;
+  line-height: 1.05;
+  color: var(--gold);
+  text-shadow: 0 0 14px rgba(242, 198, 90, 0.35);
+}
+
+.launch-cap {
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .launch-num {
+    font-size: 1.7rem;
+  }
+
+  .launch-unit {
+    min-width: 3.5rem;
+  }
+}

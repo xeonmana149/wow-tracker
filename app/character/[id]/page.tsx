@@ -3,12 +3,15 @@ import { notFound } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
 import { RACE_FACTION } from "../../../lib/options";
 import { pointsForLevel } from "../../../lib/talents";
+import { LEGACY_CAP } from "../../../lib/legacy";
+import { characterBars, whatsNext } from "../../../lib/progress";
 import OwnerActions from "./OwnerActions";
 import ProfessionsCard from "./ProfessionsCard";
 import GearCard from "./GearCard";
 import RacialsCard from "./RacialsCard";
 import StatsCard from "./StatsCard";
-import { LEGACY_CAP } from "../../../lib/legacy";
+import ProgressBars from "../../ProgressBars";
+import NextList from "../../NextList";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +33,7 @@ export default async function CharacterPage({
 
   const { data: character } = await supabase
     .from("characters")
-    .select("*, profiles(display_name)")
+    .select("*, profiles(display_name, legacy_points)")
     .eq("id", id)
     .single();
 
@@ -58,12 +61,12 @@ export default async function CharacterPage({
     .select("slot, tree, rank")
     .eq("character_id", id);
 
-
   const { data: legacyRows } = await supabase
     .from("character_legacy")
     .select("rank")
     .eq("character_id", id);
   const legacySpent = (legacyRows ?? []).reduce((n, r) => n + r.rank, 0);
+
   const faction = RACE_FACTION[character.race];
 
   // Points spent in each tree, for each spec
@@ -75,6 +78,22 @@ export default async function CharacterPage({
   const talentBudget = pointsForLevel(character.level);
   const hasSecondary = !!character.off_spec;
   const activeIsSecondary = hasSecondary && character.active_spec === 2;
+
+  // Progress bars and the to-do list, worked out from what's been entered
+  const progressInput = {
+    level: character.level,
+    off_spec: character.off_spec,
+    active_spec: character.active_spec,
+    character_professions: professions ?? [],
+    character_talents: talentRows ?? [],
+    character_legacy: legacyRows ?? [],
+    prebis_items: gear ?? [],
+  };
+  const bars = characterBars(progressInput);
+  const todos = whatsNext(progressInput, character.profiles?.legacy_points ?? 0);
+  if ((stats ?? []).length === 0) {
+    todos.push({ kind: "setup", text: "Enter the character's stats" });
+  }
 
   return (
     <main className="mx-auto max-w-[1500px] p-4 md:p-6">
@@ -137,6 +156,22 @@ export default async function CharacterPage({
         </div>
       </header>
 
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <section className="rounded bg-neutral-800 p-4">
+          <h2 className="font-bold">Progress</h2>
+          <div className="mt-3">
+            <ProgressBars bars={bars} compact />
+          </div>
+        </section>
+
+        <section className="rounded bg-neutral-800 p-4">
+          <h2 className="font-bold">What&apos;s next</h2>
+          <div className="mt-3">
+            <NextList todos={todos} limit={7} empty="All caught up." />
+          </div>
+        </section>
+      </div>
+
       <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         <div className="dash-col flex flex-col gap-4">
           <section className="rounded bg-neutral-800 p-4">
@@ -181,6 +216,7 @@ export default async function CharacterPage({
               {legacySpent} of {LEGACY_CAP} points spent
             </p>
           </section>
+
           <RacialsCard race={character.race} />
 
           <ProfessionsCard

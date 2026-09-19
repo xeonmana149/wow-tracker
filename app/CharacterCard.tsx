@@ -6,7 +6,9 @@ import {
   RACE_ICONS,
   classIcon,
 } from "../lib/icons";
+import { characterBars } from "../lib/progress";
 import GameIcon from "./GameIcon";
+import ProgressBars from "./ProgressBars";
 
 export type CardCharacter = {
   id: string;
@@ -21,9 +23,19 @@ export type CardCharacter = {
   main_role: string;
   off_spec: string | null;
   off_role: string | null;
+  active_spec?: number | null;
   gold?: number;
+  profiles?: { display_name?: string; legacy_points?: number } | null;
   character_professions: { profession: string; skill: number }[];
   character_talents: { slot: number; tree: string; rank: number }[];
+  character_legacy?: { rank: number }[];
+  prebis_items?: {
+    slot: string;
+    item_name: string | null;
+    source: string | null;
+    acquired: boolean;
+    not_needed: boolean;
+  }[];
 };
 
 // Points in each tree for one spec, like 0/32/10
@@ -40,10 +52,12 @@ export default function CharacterCard({
   c,
   treeNames,
   specIcons,
+  compact = false,
 }: {
   c: CardCharacter;
   treeNames: string[] | undefined;
   specIcons: Record<string, string>;
+  compact?: boolean;
 }) {
   const faction = RACE_FACTION[c.race];
   const professions = (c.character_professions ?? [])
@@ -51,13 +65,16 @@ export default function CharacterCard({
     .sort((a, b) => b.skill - a.skill)
     .slice(0, 2);
 
+  const pad = compact ? "p-3" : "p-4";
+  const gap = compact ? "mt-2" : "mt-3";
+
   return (
     <Link
       href={`/character/${c.id}`}
-      className="block rounded bg-neutral-800 p-4 hover:bg-neutral-700"
+      className={`block rounded bg-neutral-800 ${pad} hover:bg-neutral-700`}
     >
       <div className="flex items-start gap-3">
-        <GameIcon name={classIcon(c.class)} label={c.class} size={52} round />
+        <GameIcon name={classIcon(c.class)} label={c.class} size={compact ? 44 : 52} round />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-lg font-bold text-white">{c.name}</span>
@@ -72,7 +89,7 @@ export default function CharacterCard({
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className={`${gap} flex flex-wrap gap-2`}>
         {faction && (
           <span className={`chip ${faction === "Alliance" ? "chip-alliance" : "chip-horde"}`}>
             {faction}
@@ -82,7 +99,7 @@ export default function CharacterCard({
         {c.guild && <span className="chip">{`<${c.guild}>`}</span>}
       </div>
 
-      <div className="mt-3 flex flex-col gap-2 text-sm">
+      <div className={`${gap} flex flex-col gap-2 text-sm`}>
         <div className="flex items-center gap-2">
           <GameIcon
             name={c.main_spec ? specIcons[`${c.class}|${c.main_spec}`] : null}
@@ -128,6 +145,10 @@ export default function CharacterCard({
             <span className="text-gray-500">No professions yet</span>
           )}
         </div>
+      </div>
+
+      <div className={`${gap} border-t border-neutral-700 pt-3`}>
+        <ProgressBars bars={characterBars(c)} compact />
       </div>
     </Link>
   );

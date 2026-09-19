@@ -166,7 +166,7 @@ export default async function Leaderboards({
   ];
 
   return (
-    <main className="mx-auto max-w-4xl p-4 md:p-8">
+      <main className="mx-auto max-w-[1500px] p-4 md:p-6">
       <AuthStatus />
       <h1 className="text-3xl font-bold">Leaderboards</h1>
 
@@ -197,7 +197,7 @@ export default async function Leaderboards({
         <p className="mt-6 text-gray-400">No characters yet.</p>
       )}
 
-      <ol className="mt-6 flex flex-col gap-3">
+        <ol className="mt-6 grid gap-3 xl:grid-cols-2">
         {sorted.map((c, i) => {
           const faction = RACE_FACTION[c.race];
           return (

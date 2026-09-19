@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
 import { LEGACY_CAP } from "../lib/legacy";
-import { PROFESSION_ICONS } from "../lib/icons";
-import AuthStatus from "./AuthStatus";
+import { PROFESSION_ICONS, classIcon } from "../lib/icons";
+import { SUPPLIED_BY } from "../lib/professions";
+import { missingProfessions, whatsNext, type Todo } from "../lib/progress";
 import CharacterCard, { type CardCharacter } from "./CharacterCard";
 import GameIcon from "./GameIcon";
+import NextList from "./NextList";
 
 const PRIMARY = [
   "Alchemy",
@@ -20,14 +22,6 @@ const PRIMARY = [
   "Skinning",
   "Tailoring",
 ];
-
-// Which gathering profession supplies each crafting profession
-const SUPPLIED_BY: Record<string, string> = {
-  Alchemy: "Herbalism",
-  Blacksmithing: "Mining",
-  Engineering: "Mining",
-  Leatherworking: "Skinning",
-};
 
 export default function Dashboard({
   specIcons,
@@ -58,7 +52,7 @@ export default function Dashboard({
       const { data, error } = await supabase
         .from("characters")
         .select(
-          "*, character_professions(profession, skill), character_talents(slot, tree, rank)"
+          "*, character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank), prebis_items(slot, item_name, source, acquired, not_needed)"
         )
         .eq("user_id", userData.user.id)
         .order("level", { ascending: false });
@@ -99,13 +93,12 @@ export default function Dashboard({
   }
 
   if (status === "loading") {
-    return <main className="p-8">Loading...</main>;
+    return <main className="mx-auto max-w-[1500px] p-4 md:p-6">Loading...</main>;
   }
 
   if (status === "loggedOut") {
     return (
-      <main className="mx-auto max-w-5xl p-4 md:p-8">
-        <AuthStatus />
+      <main className="mx-auto max-w-[1500px] p-4 md:p-6">
         <h1 className="text-4xl font-bold">WoW Forever Tracker</h1>
         <p className="mt-4">Track your characters, gear and talents with your friends.</p>
         <Link
@@ -135,9 +128,18 @@ export default function Dashboard({
 
   const coveredCount = PRIMARY.filter((p) => best[p]).length;
 
+  // What's next: account-wide, then character by character
+  const missing = missingProfessions(characters);
+  const accountTodos: Todo[] = [];
+  if (missing.length > 0) {
+    const names = missing.slice(0, 4).join(", ");
+    const more = missing.length > 4 ? ` and ${missing.length - 4} more` : "";
+    accountTodos.push({ kind: "profession", text: `No ${names}${more} on your account` });
+  }
+  const perCharacter = characters.map((c) => ({ c, todos: whatsNext(c, legacy) }));
+
   return (
-    <main className="mx-auto max-w-[1500px] p-4 md:p-8">
-      <AuthStatus />
+    <main className="mx-auto max-w-[1500px] p-4 md:p-6">
       <h1 className="text-4xl font-bold">My Characters</h1>
 
       <div className="mt-6 flex flex-wrap gap-4">
@@ -217,77 +219,120 @@ export default function Dashboard({
 
       {error && <p className="mt-4 text-red-400">{error}</p>}
 
-      {characters.length === 0 && !error && (
-        <p className="mt-6 text-gray-400">You have no characters yet.</p>
-      )}
+      <div className="mt-6 grid gap-4 xl:grid-cols-3">
+        <div className="xl:col-span-2">
+          {characters.length === 0 && !error && (
+            <p className="text-gray-400">You have no characters yet.</p>
+          )}
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {characters.map((c) => (
-          <CharacterCard
-            key={c.id}
-            c={c}
-            treeNames={treeNames[c.class]}
-            specIcons={specIcons}
-          />
-        ))}
-      </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {characters.map((c) => (
+              <CharacterCard
+                key={c.id}
+                c={c}
+                treeNames={treeNames[c.class]}
+                specIcons={specIcons}
+              />
+            ))}
+          </div>
 
-      <Link
-        href="/create"
-        className="mt-6 inline-block rounded bg-blue-600 px-4 py-2 text-white"
-      >
-        Create Character
-      </Link>
+          <Link
+            href="/create"
+            className="mt-6 inline-block rounded bg-blue-600 px-4 py-2 text-white"
+          >
+            Create Character
+          </Link>
+        </div>
 
-      <h2 className="mt-10 text-2xl font-bold">Profession Coverage</h2>
-      <p className="mt-1 text-sm text-gray-400">
-        ✓ covered · ✗ missing · ⚠ covered, but nobody on your account gathers the materials
-      </p>
+        <div className="flex flex-col gap-4">
+          <section className="rounded bg-neutral-800 p-4">
+            <h2 className="text-xl font-bold">What&apos;s next</h2>
+            <p className="mt-1 text-xs text-gray-500">
+              Worked out from your Pre-BiS lists, talents, Legacy and professions.
+            </p>
 
-      <ul className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {PRIMARY.map((profession) => {
-          const found = best[profession];
-          const supplier = SUPPLIED_BY[profession];
-          const unsupplied = found && supplier && !best[supplier];
+            {accountTodos.length > 0 && (
+              <div className="mt-3">
+                <h3 className="text-sm">Account</h3>
+                <div className="mt-1.5">
+                  <NextList todos={accountTodos} />
+                </div>
+              </div>
+            )}
 
-          return (
-            <li
-              key={profession}
-              className="flex items-center justify-between gap-3 rounded bg-neutral-800 p-3"
-            >
-              <span className="flex items-center gap-2">
-                <GameIcon
-                  name={PROFESSION_ICONS[profession]}
-                  label={profession}
-                  size={28}
-                />
-                <span>
-                  <span
-                    className={
-                      !found
-                        ? "text-red-400"
-                        : unsupplied
-                        ? "text-yellow-400"
-                        : "text-green-400"
-                    }
+            {characters.length === 0 ? (
+              <p className="mt-3 text-sm text-gray-500">Create a character to get started.</p>
+            ) : (
+              <div className="mt-4 flex flex-col gap-4">
+                {perCharacter.map(({ c, todos }) => (
+                  <div key={c.id}>
+                    <Link href={`/character/${c.id}`} className="flex items-center gap-2">
+                      <GameIcon name={classIcon(c.class)} label={c.class} size={26} round />
+                      <span className="font-bold text-white">{c.name}</span>
+                      <span className="text-xs text-gray-500">Level {c.level}</span>
+                    </Link>
+                    <div className="mt-1.5 pl-9">
+                      <NextList todos={todos} limit={4} empty="All caught up." />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section>
+            <h2 className="text-xl font-bold">Profession Coverage</h2>
+            <p className="mt-1 text-sm text-gray-400">
+              ✓ covered · ✗ missing · ⚠ covered, but nobody gathers the materials
+            </p>
+
+            <ul className="mt-3 flex flex-col gap-2">
+              {PRIMARY.map((profession) => {
+                const found = best[profession];
+                const supplier = SUPPLIED_BY[profession];
+                const unsupplied = found && supplier && !best[supplier];
+
+                return (
+                  <li
+                    key={profession}
+                    className="flex items-center justify-between gap-3 rounded bg-neutral-800 p-3"
                   >
-                    {!found ? "✗" : unsupplied ? "⚠" : "✓"}
-                  </span>{" "}
-                  {profession}
-                  {unsupplied && (
-                    <span className="block text-xs text-yellow-500">
-                      No {supplier} on your account to supply it
+                    <span className="flex items-center gap-2">
+                      <GameIcon
+                        name={PROFESSION_ICONS[profession]}
+                        label={profession}
+                        size={28}
+                      />
+                      <span>
+                        <span
+                          className={
+                            !found
+                              ? "text-red-400"
+                              : unsupplied
+                              ? "text-yellow-400"
+                              : "text-green-400"
+                          }
+                        >
+                          {!found ? "✗" : unsupplied ? "⚠" : "✓"}
+                        </span>{" "}
+                        {profession}
+                        {unsupplied && (
+                          <span className="block text-xs text-yellow-500">
+                            No {supplier} on your account to supply it
+                          </span>
+                        )}
+                      </span>
                     </span>
-                  )}
-                </span>
-              </span>
-              <span className="text-sm text-gray-400">
-                {found ? `${found.skill} · ${found.character}` : "Missing"}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+                    <span className="text-sm text-gray-400">
+                      {found ? `${found.skill} · ${found.character}` : "Missing"}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        </div>
+      </div>
     </main>
   );
 }
