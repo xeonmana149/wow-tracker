@@ -10,6 +10,8 @@ import { missingProfessions, whatsNext, type Todo } from "../lib/progress";
 import CharacterCard, { type CardCharacter } from "./CharacterCard";
 import GameIcon from "./GameIcon";
 import NextList from "./NextList";
+import { MoneyDisplay } from "./MoneyIcons";
+
 
 const PRIMARY = [
   "Alchemy",
@@ -52,7 +54,7 @@ export default function Dashboard({
       const { data, error } = await supabase
         .from("characters")
         .select(
-          "*, character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank), prebis_items(slot, item_name, source, acquired, not_needed)"
+          "*, character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank)"
         )
         .eq("user_id", userData.user.id)
         .order("level", { ascending: false });
@@ -114,7 +116,7 @@ export default function Dashboard({
   const highestLevel = characters.length
     ? Math.max(...characters.map((c) => c.level))
     : 0;
-  const totalGold = characters.reduce((sum, c) => sum + (c.gold ?? 0), 0);
+  const totalCopper = characters.reduce((sum, c) => sum + (c.money_copper ?? 0), 0);
 
   // Best skill for each profession across every character on the account
   const best: Record<string, { skill: number; character: string }> = {};
@@ -158,7 +160,7 @@ export default function Dashboard({
           <div className="text-sm text-gray-400">Professions</div>
         </div>
         <div className="min-w-[8.5rem] flex-1 rounded bg-neutral-800 p-4">
-          <div className="text-2xl font-bold">{totalGold.toLocaleString()}g</div>
+          <div className="text-2xl font-bold"><MoneyDisplay copper={totalCopper} /></div>
           <div className="text-sm text-gray-400">Total gold</div>
         </div>
         <div className="min-w-[8.5rem] flex-1 rounded bg-neutral-800 p-4">

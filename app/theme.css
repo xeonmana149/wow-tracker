@@ -699,3 +699,37 @@ html {
     min-width: 3.5rem;
   }
 }
+
+/* ---------- Background picture ---------- */
+
+:root {
+  --bg-blur: 2px; /* how blurred: 0px is sharp, 12px is very soft */
+  --bg-dim: 0.55; /* how dark the shade on top is, 0 to 1 */
+}
+
+.site-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.site-bg-img {
+  object-fit: cover;
+  filter: blur(var(--bg-blur)) saturate(0.95);
+  /* A little bigger, so the blur doesn't leave soft dark edges */
+  transform: scale(1.06);
+}
+
+/* A dark shade over the picture, so text stays easy to read */
+.site-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(8, 10, 8, var(--bg-dim)) 0%,
+    rgba(6, 7, 6, 0.82) 100%
+  );
+}

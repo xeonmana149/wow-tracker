@@ -1,3 +1,18 @@
+import iconNames from "./data/icon-names.json";
+
+// Turns a raw Blizzard icon file ID (from GetInventoryItemTexture in the
+// addon) into a real image URL, using a bundled fileID -> icon name lookup
+// (the same kind of data community WoW tools use). Returns null if the ID
+// isn't in the table - the UI falls back to the text tile in that case,
+// never breaks.
+export function iconUrlForFileId(fileId: number | string | null | undefined): string | null {
+  if (fileId === null || fileId === undefined) return null;
+  const name = (iconNames as Record<string, string>)[String(fileId)];
+  if (!name) return null;
+  return `https://wow.zamimg.com/images/wow/icons/large/${name}.jpg`;
+}
+
+
 // Picture helpers. Safe to use in any component.
 
 export function iconUrl(name: string) {

@@ -3,6 +3,7 @@
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
+import { copperToParts, partsToCopper } from "../../../../lib/money";
 import {
   RACES,
   CLASSES,
@@ -28,7 +29,7 @@ type Character = {
   off_role: string | null;
   pvp_rank: number;
   honor_points: number;
-  gold: number;
+  money_copper: number;
   legacy_points_spent: number;
 };
 
@@ -59,7 +60,10 @@ export default function EditForm({ character }: { character: Character }) {
   const [characterType, setCharacterType] = useState(character.character_type);
   const [pvpRank, setPvpRank] = useState(character.pvp_rank);
   const [honorPoints, setHonorPoints] = useState(character.honor_points);
-  const [gold, setGold] = useState(character.gold);
+  const startMoney = copperToParts(character.money_copper);
+  const [gold, setGold] = useState(startMoney.gold);
+  const [silver, setSilver] = useState(startMoney.silver);
+  const [copper, setCopper] = useState(startMoney.copper);
   const [legacyPointsSpent, setLegacyPointsSpent] = useState(character.legacy_points_spent);
   const [message, setMessage] = useState("");
 
@@ -109,7 +113,7 @@ export default function EditForm({ character }: { character: Character }) {
         off_role: offSpec ? offRole : null,
         pvp_rank: pvpRank,
         honor_points: honorPoints,
-        gold,
+        money_copper: partsToCopper(gold, silver, copper),
         legacy_points_spent: legacyPointsSpent,
       })
       .eq("id", character.id);
@@ -320,14 +324,35 @@ export default function EditForm({ character }: { character: Character }) {
       </label>
 
       <label className="flex flex-col gap-1">
-        Gold
-        <input
-          type="number"
-          min={0}
-          value={gold}
-          onChange={(e) => setGold(Number(e.target.value))}
-          className="rounded bg-white p-2 text-black"
-        />
+        Money
+        <div className="flex gap-2">
+          <input
+            type="number"
+            min={0}
+            value={gold}
+            onChange={(e) => setGold(Number(e.target.value))}
+            placeholder="Gold"
+            className="w-24 rounded bg-white p-2 text-black"
+          />
+          <input
+            type="number"
+            min={0}
+            max={99}
+            value={silver}
+            onChange={(e) => setSilver(Number(e.target.value))}
+            placeholder="Silver"
+            className="w-20 rounded bg-white p-2 text-black"
+          />
+          <input
+            type="number"
+            min={0}
+            max={99}
+            value={copper}
+            onChange={(e) => setCopper(Number(e.target.value))}
+            placeholder="Copper"
+            className="w-20 rounded bg-white p-2 text-black"
+          />
+        </div>
       </label>
 
       <label className="flex flex-col gap-1">

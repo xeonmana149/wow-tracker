@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { Cinzel, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
 import "./theme.css";
@@ -26,6 +27,18 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${heading.variable} ${body.variable} antialiased`}>
+        {/* The background picture. public/background.jpg, blurred and darkened in theme.css */}
+        <div className="site-bg" aria-hidden="true">
+          <Image
+            src="/background.jpg"
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className="site-bg-img"
+          />
+        </div>
+
         <div className="mx-auto max-w-[1500px] px-4 pt-4 md:px-6 md:pt-6">
           <SiteNav />
           <LaunchCountdown />

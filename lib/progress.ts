@@ -1,11 +1,9 @@
-import { pointsForLevel } from "./talents";
+import { pointsForLevel, MAX_POINTS } from "./talents";
 import { LEGACY_CAP } from "./legacy";
 import { PRIMARY_PROFESSIONS } from "./icons";
-import { LEFT_SLOTS, RIGHT_SLOTS, BOTTOM_SLOTS, TOTAL_SLOTS } from "./gear";
 import { MAX_SKILL } from "./professions";
 
 export const MAX_LEVEL = 60;
-const SLOT_ORDER = [...LEFT_SLOTS, ...RIGHT_SLOTS, ...BOTTOM_SLOTS];
 
 // Everything the progress bars and to-do list need to know about a character
 export type ProgressInput = {
@@ -15,19 +13,12 @@ export type ProgressInput = {
   character_professions?: { profession: string; skill: number }[];
   character_talents?: { slot?: number; rank: number }[];
   character_legacy?: { rank: number }[];
-  prebis_items?: {
-    slot?: string;
-    item_name?: string | null;
-    source?: string | null;
-    acquired: boolean;
-    not_needed: boolean;
-  }[];
 };
 
 export type Bar = { key: string; label: string; value: number; max: number; text: string };
 
 export type Todo = {
-  kind: "talent" | "legacy" | "gear" | "profession" | "level" | "setup";
+  kind: "talent" | "legacy" | "profession" | "level" | "setup";
   text: string;
 };
 
@@ -58,11 +49,6 @@ function primarySkill(c: ProgressInput) {
 }
 
 export function characterBars(c: ProgressInput): Bar[] {
-  const items = c.prebis_items ?? [];
-  const notNeeded = items.filter((i) => i.not_needed).length;
-  const acquired = items.filter((i) => i.acquired && !i.not_needed).length;
-  const needed = Math.max(1, TOTAL_SLOTS - notNeeded);
-
   const budget = pointsForLevel(c.level);
   const talents = talentsSpent(c);
   const legacy = legacySpent(c);
@@ -70,13 +56,12 @@ export function characterBars(c: ProgressInput): Bar[] {
 
   return [
     { key: "level", label: "Level", value: c.level, max: MAX_LEVEL, text: `${c.level} / ${MAX_LEVEL}` },
-    { key: "prebis", label: "Pre-BiS", value: acquired, max: needed, text: `${acquired} / ${needed}` },
     {
       key: "talents",
       label: "Talents",
       value: talents,
-      max: budget > 0 ? budget : 1,
-      text: budget > 0 ? `${talents} / ${budget}` : "from level 10",
+      max: MAX_POINTS,
+      text: `${talents} / ${MAX_POINTS}`,
     },
     { key: "legacy", label: "Legacy", value: legacy, max: LEGACY_CAP, text: `${legacy} / ${LEGACY_CAP}` },
     {
@@ -109,19 +94,6 @@ export function whatsNext(c: ProgressInput, earned: number): Todo[] {
       text: `${legacyLeft} unspent Legacy ${plural(legacyLeft, "point", "points")}`,
     });
   }
-
-  const items = c.prebis_items ?? [];
-  const toGet = items
-    .filter((i) => !i.not_needed && !i.acquired && i.item_name)
-    .sort((a, b) => SLOT_ORDER.indexOf(a.slot ?? "") - SLOT_ORDER.indexOf(b.slot ?? ""));
-  for (const i of toGet.slice(0, 3)) {
-    todos.push({ kind: "gear", text: `Get ${i.item_name}${i.source ? ` (${i.source})` : ""}` });
-  }
-  if (toGet.length > 3) {
-    const more = toGet.length - 3;
-    todos.push({ kind: "gear", text: `${more} more Pre-BiS ${plural(more, "item", "items")} to get` });
-  }
-  if (items.length === 0) todos.push({ kind: "setup", text: "Plan a Pre-BiS list" });
 
   const profs = c.character_professions ?? [];
   if (c.level >= 5 && !profs.some((p) => PRIMARY_PROFESSIONS.includes(p.profession))) {

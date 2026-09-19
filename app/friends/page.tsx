@@ -11,7 +11,7 @@ export default async function Friends() {
   const { data, error } = await supabase
     .from("characters")
     .select(
-      "*, profiles(display_name, legacy_points), character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank), prebis_items(slot, item_name, source, acquired, not_needed)"
+      "*, profiles(display_name, legacy_points), character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank)"
     )
     .order("level", { ascending: false });
 

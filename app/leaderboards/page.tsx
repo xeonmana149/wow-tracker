@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
-import { TOTAL_SLOTS } from "../../lib/gear";
 import { RACE_FACTION } from "../../lib/options";
 import { RACE_ICONS, classIcon } from "../../lib/icons";
 import { loadSpecIcons } from "../../lib/server-data";
 import AuthStatus from "../AuthStatus";
 import GameIcon from "../GameIcon";
+import { MoneyDisplay } from "../MoneyIcons";
 
 export const dynamic = "force-dynamic";
 
@@ -16,19 +16,12 @@ type NumKey =
   | "level"
   | "pvp_rank"
   | "honor_points"
-  | "gold"
-  | "prebis_percent"
-  | "prebis_acquired"
-  | "prebis_needed"
+  | "money_copper"
   | "professions_maxed"
   | "legacy_points_spent";
 
 // These are worked out from other tables, not stored on the character
-type Computed =
-  | "prebis_percent"
-  | "prebis_acquired"
-  | "prebis_needed"
-  | "professions_maxed";
+type Computed = "professions_maxed";
 
 type Info = {
   id: string;
@@ -46,13 +39,12 @@ type Character = Info & Record<NumKey, number>;
 // What the database sends back
 type Row = Info & {
   character_professions: { skill: number }[];
-  prebis_items: { acquired: boolean; not_needed: boolean }[];
 } & Record<Exclude<NumKey, Computed>, number>;
 
 type Board = {
   label: string;
   keys: NumKey[];
-  show: (c: Character) => string;
+  show: (c: Character) => React.ReactNode;
 };
 
 const boards: Record<string, Board> = {
@@ -68,13 +60,8 @@ const boards: Record<string, Board> = {
   },
   gold: {
     label: "Gold",
-    keys: ["gold"],
-    show: (c) => `${c.gold.toLocaleString()}g`,
-  },
-  prebis: {
-    label: "Pre-BiS",
-    keys: ["prebis_percent", "prebis_acquired"],
-    show: (c) => `${c.prebis_percent}% · ${c.prebis_acquired}/${c.prebis_needed}`,
+    keys: ["money_copper"],
+    show: (c) => <MoneyDisplay copper={c.money_copper} />,
   },
   professions: {
     label: "Professions",
@@ -109,25 +96,17 @@ export default async function Leaderboards({
 
   const { data, error } = await supabase
     .from("characters")
-    .select(
-      "*, profiles(display_name), character_professions(skill), prebis_items(acquired, not_needed)"
-    )
+    .select("*, profiles(display_name), character_professions(skill)")
     .limit(500);
 
   const specIcons = await loadSpecIcons();
   const rows = (data ?? []) as Row[];
 
   const characters: Character[] = rows.map((r) => {
-    const notNeeded = r.prebis_items.filter((i) => i.not_needed).length;
-    const acquired = r.prebis_items.filter((i) => i.acquired && !i.not_needed).length;
-    const needed = TOTAL_SLOTS - notNeeded;
     return {
       ...r,
       professions_maxed: r.character_professions.filter((p) => p.skill >= MAX_SKILL)
         .length,
-      prebis_acquired: acquired,
-      prebis_needed: needed,
-      prebis_percent: needed > 0 ? Math.round((acquired / needed) * 100) : 0,
     };
   });
 

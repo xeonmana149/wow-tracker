@@ -12,6 +12,8 @@ import RacialsCard from "./RacialsCard";
 import StatsCard from "./StatsCard";
 import ProgressBars from "../../ProgressBars";
 import NextList from "../../NextList";
+import ImportPanel from "./ImportPanel";
+import SyncSetup from "./SyncSetup";
 
 export const dynamic = "force-dynamic";
 
@@ -47,8 +49,8 @@ export default async function CharacterPage({
     .eq("character_id", id);
 
   const { data: gear } = await supabase
-    .from("prebis_items")
-    .select("slot, item_name, source, acquired, not_needed")
+    .from("equipped_gear")
+    .select("slot, item_name, item_link, item_quality, item_icon, tooltip")
     .eq("character_id", id);
 
   const { data: stats } = await supabase
@@ -87,7 +89,6 @@ export default async function CharacterPage({
     character_professions: professions ?? [],
     character_talents: talentRows ?? [],
     character_legacy: legacyRows ?? [],
-    prebis_items: gear ?? [],
   };
   const bars = characterBars(progressInput);
   const todos = whatsNext(progressInput, character.profiles?.legacy_points ?? 0);
@@ -224,6 +225,17 @@ export default async function CharacterPage({
             ownerId={character.user_id}
             professions={professions ?? []}
           />
+
+
+          <ImportPanel
+          characterId={character.id}
+          ownerId={character.user_id}
+          professions={professions ?? []}
+          activeSpec={character.active_spec ?? 1}
+          />
+
+           <SyncSetup characterId={character.id} ownerId={character.user_id} />
+
         </div>
 
         <div className="dash-col flex flex-col gap-4">
@@ -238,8 +250,6 @@ export default async function CharacterPage({
         <div className="dash-col flex flex-col gap-4 lg:col-span-2 xl:col-span-1">
           <GearCard
             key={character.id}
-            characterId={character.id}
-            ownerId={character.user_id}
             items={gear ?? []}
             characterName={character.name}
             race={character.race}

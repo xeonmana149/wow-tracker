@@ -3,7 +3,6 @@ import type { Todo } from "../lib/progress";
 const DOT: Record<Todo["kind"], string> = {
   talent: "bg-purple-400",
   legacy: "bg-amber-400",
-  gear: "bg-sky-400",
   profession: "bg-emerald-400",
   level: "bg-gray-400",
   setup: "bg-yellow-300",

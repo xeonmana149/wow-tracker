@@ -24,18 +24,12 @@ export type CardCharacter = {
   off_spec: string | null;
   off_role: string | null;
   active_spec?: number | null;
-  gold?: number;
+  money_copper?: number;
   profiles?: { display_name?: string; legacy_points?: number } | null;
   character_professions: { profession: string; skill: number }[];
   character_talents: { slot: number; tree: string; rank: number }[];
   character_legacy?: { rank: number }[];
-  prebis_items?: {
-    slot: string;
-    item_name: string | null;
-    source: string | null;
-    acquired: boolean;
-    not_needed: boolean;
-  }[];
+
 };
 
 // Points in each tree for one spec, like 0/32/10
