@@ -165,7 +165,8 @@ export async function applyImport(
     }
   }
 
-  // 4. Equipped gear - straight overwrite of whatever's in each slot.
+  // 4. Equipped gear - upsert whatever's filled, and clear out any tracked
+  //    slot that's no longer present in the export (i.e. you unequipped it).
   const gearRows: {
     character_id: string;
     slot: string;
@@ -176,9 +177,13 @@ export async function applyImport(
     tooltip: string[];
     updated_at: string;
   }[] = [];
+  const emptySlots: string[] = [];
   for (const [addonSlot, siteSlot] of Object.entries(GEAR_SLOT_MAP)) {
     const item = parsed.gear?.[addonSlot];
-    if (!item) continue;
+    if (!item) {
+      emptySlots.push(siteSlot);
+      continue;
+    }
     gearRows.push({
       character_id: characterId,
       slot: siteSlot,
@@ -197,6 +202,17 @@ export async function applyImport(
       .upsert(gearRows, { onConflict: "character_id,slot" });
     if (error) throw new Error(error.message);
   }
+
+  if (emptySlots.length > 0) {
+    const { error } = await supabase
+      .from("equipped_gear")
+      .delete()
+      .eq("character_id", characterId)
+      .in("slot", emptySlots);
+    if (error) throw new Error(error.message);
+  }
+
+  // 5. Talents - only nodes the addon already resolved a name and tree for
 
   // 5. Talents - only nodes the addon already resolved a name and tree for
   //    get written into the planner. Unresolved ones stay reference-only.
