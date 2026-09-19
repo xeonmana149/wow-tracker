@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Cinzel, Source_Sans_3 } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import "./theme.css";
 import SiteNav from "./SiteNav";
@@ -31,6 +32,7 @@ export default function RootLayout({
           <LaunchCountdown />
         </div>
         {children}
+        <SpeedInsights />
       </body>
     </html>
   );
