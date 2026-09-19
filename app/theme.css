@@ -1,0 +1,504 @@
+/* WoW Forever Tracker theme: modern classic.
+   Dark stone and bronze panels, gold trim, parchment for the character header.
+   It restyles the grey, blue and white classes the pages already use,
+   so every page picks up the look without being rewritten. */
+
+:root {
+  --gold: #f2c65a;
+  --gold-soft: #d9b25a;
+  --frame: #6b5229;
+  --frame-dim: #3a2d18;
+  --ink: #ece0c6;
+  --muted: #a89a7c;
+  --faint: #7f7358;
+  --panel-top: #221c14;
+  --panel-bottom: #14110c;
+  --parchment-1: #e6cf9a;
+  --parchment-2: #c9a566;
+  --parchment-ink: #2b1c0b;
+}
+
+html {
+  color-scheme: dark;
+}
+
+/* ---------- Page ---------- */
+
+body {
+  min-height: 100vh;
+  color: var(--ink);
+  font-family: var(--font-body), "Segoe UI", system-ui, sans-serif;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(64, 96, 70, 0.28), transparent 70%),
+    radial-gradient(900px 500px at 100% 100%, rgba(120, 80, 30, 0.14), transparent 70%),
+    linear-gradient(180deg, #0f1411 0%, #0a0c0a 60%, #060706 100%);
+  background-attachment: fixed;
+}
+
+/* A little stone grain over the background */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.08;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+::selection {
+  background: rgba(242, 198, 90, 0.35);
+  color: #fff;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #5b4726 #100d09;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+a,
+button {
+  transition: filter 0.12s, outline-color 0.12s, background 0.12s;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* ---------- Text ---------- */
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-heading), Georgia, serif;
+  color: var(--gold);
+  letter-spacing: 0.02em;
+}
+
+h1 {
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6), 0 0 18px rgba(242, 198, 90, 0.18);
+}
+
+h1::after {
+  content: "";
+  display: block;
+  height: 2px;
+  margin-top: 0.5rem;
+  width: min(28rem, 100%);
+  background: linear-gradient(90deg, var(--gold-soft), rgba(217, 178, 90, 0));
+}
+
+.text-white {
+  color: #f7efd9;
+}
+.text-gray-200 {
+  color: #e2d5b4;
+}
+.text-gray-300 {
+  color: #cbbd9c;
+}
+.text-gray-400 {
+  color: var(--muted);
+}
+.text-gray-500 {
+  color: var(--faint);
+}
+.text-gray-600 {
+  color: #6a604a;
+}
+
+.text-blue-400 {
+  color: var(--gold);
+}
+.text-blue-400:hover {
+  color: #ffe08a;
+  text-decoration: underline;
+}
+
+/* ---------- Panels ---------- */
+
+:is(div, section, aside, a, li, header, pre).bg-neutral-800 {
+  background: linear-gradient(180deg, var(--panel-top), var(--panel-bottom));
+  outline: 1px solid var(--frame);
+  outline-offset: -1px;
+  box-shadow: inset 0 1px 0 rgba(255, 224, 150, 0.07);
+}
+
+a.bg-neutral-800:hover {
+  background: linear-gradient(180deg, #2e2517, #1b1610);
+  outline-color: var(--gold-soft);
+}
+
+:is(div, section, aside, li, header, span).bg-neutral-900 {
+  background: linear-gradient(180deg, #17130d, #0f0c08);
+  outline: 1px solid #2c2213;
+  outline-offset: -1px;
+}
+
+span.bg-neutral-950 {
+  background: #070605;
+  color: var(--gold);
+  font-family: var(--font-heading), Georgia, serif;
+}
+
+.odd\:bg-neutral-900\/70:nth-child(odd) {
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.border-neutral-400 {
+  border-color: var(--frame);
+}
+.border-neutral-700,
+.border-neutral-800 {
+  border-color: var(--frame-dim);
+}
+
+/* ---------- Buttons ---------- */
+
+/* Primary and "selected": bronze */
+button.bg-blue-600,
+a.bg-blue-600 {
+  background: linear-gradient(180deg, #e0b555 0%, #b98a32 48%, #8f6520 100%);
+  color: #22150a;
+  font-weight: 600;
+  outline: 1px solid #f6dc95;
+  outline-offset: -2px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 244, 200, 0.55);
+  text-shadow: 0 1px 0 rgba(255, 236, 170, 0.45);
+}
+
+button.bg-blue-600:hover:not(:disabled),
+a.bg-blue-600:hover {
+  filter: brightness(1.12);
+  text-decoration: none;
+}
+
+/* Secondary: dark bevel */
+button.bg-neutral-700,
+button.bg-neutral-800 {
+  background: linear-gradient(180deg, #3a3124, #221c13);
+  color: #e6d6ac;
+  outline: 1px solid #5a4526;
+  outline-offset: -1px;
+  box-shadow: inset 0 1px 0 rgba(255, 232, 170, 0.12);
+}
+
+button.bg-neutral-700:hover:not(:disabled),
+button.bg-neutral-800:hover:not(:disabled) {
+  filter: brightness(1.2);
+  outline-color: var(--gold-soft);
+}
+
+/* Danger: crimson */
+button.bg-red-700,
+button.bg-red-800 {
+  background: linear-gradient(180deg, #a3302a, #6d1712);
+  color: #ffe9d6;
+  outline: 1px solid #c9574a;
+  outline-offset: -1px;
+  box-shadow: inset 0 1px 0 rgba(255, 200, 180, 0.2);
+}
+
+button.bg-red-700:hover:not(:disabled),
+button.bg-red-800:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+
+/* Small labels */
+span.bg-neutral-600,
+span.bg-neutral-700 {
+  background: #3a2f1d;
+  color: #e9d9ae;
+  outline: 1px solid #6b5229;
+  outline-offset: -1px;
+}
+
+span.bg-emerald-800 {
+  background: #1f4a34;
+  color: #c8f2d6;
+  outline: 1px solid #3f9a68;
+  outline-offset: -1px;
+}
+
+/* ---------- Progress bars (like the skill panel) ---------- */
+
+div.bg-neutral-700 {
+  background: #0b0906;
+  outline: 1px solid #4a3a1f;
+  outline-offset: -1px;
+}
+
+div.bg-blue-500 {
+  background: linear-gradient(180deg, #4d8df0 0%, #1f57b8 55%, #173f8c 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+div.bg-yellow-500 {
+  background: linear-gradient(180deg, #ffe08a, #d3a02e 55%, #a5761a);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+/* ---------- Form fields ---------- */
+
+input.bg-white,
+select.bg-white,
+textarea.bg-white {
+  background: linear-gradient(180deg, #0a0806, #15110b);
+  color: #f3e6c4;
+  outline: 1px solid #5b4626;
+  outline-offset: -1px;
+  border-radius: 4px;
+}
+
+input.bg-white:focus,
+select.bg-white:focus,
+textarea.bg-white:focus {
+  outline: 2px solid var(--gold);
+  outline-offset: -1px;
+}
+
+input.bg-white::placeholder {
+  color: #7d715a;
+}
+
+select.bg-white option {
+  background: #14110c;
+  color: #f3e6c4;
+}
+
+input[type="checkbox"] {
+  accent-color: var(--gold-soft);
+}
+
+/* ---------- Character page ---------- */
+
+.parchment {
+  position: relative;
+  color: var(--parchment-ink);
+  border-radius: 8px;
+  background:
+    radial-gradient(ellipse at 15% 0%, rgba(255, 246, 214, 0.55), transparent 60%),
+    linear-gradient(180deg, var(--parchment-1), var(--parchment-2));
+  outline: 2px solid #5a3f17;
+  outline-offset: -2px;
+  box-shadow:
+    inset 0 0 0 5px rgba(90, 63, 23, 0.18),
+    inset 0 0 60px rgba(90, 60, 20, 0.35),
+    0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+.parchment h1 {
+  color: var(--parchment-ink);
+  text-shadow: 0 1px 0 rgba(255, 244, 210, 0.6);
+}
+
+.parchment h1::after {
+  background: linear-gradient(90deg, #7a5a22, rgba(122, 90, 34, 0));
+}
+
+.crest {
+  position: relative;
+  flex-shrink: 0;
+  width: 88px;
+  height: 88px;
+  overflow: hidden;
+  border-radius: 9999px;
+  border: 3px solid #a8782c;
+  background: #1a130a;
+  box-shadow: 0 0 0 2px #2b1c0b, 0 0 16px rgba(160, 110, 40, 0.5);
+}
+
+.crest img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.crest-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-heading), Georgia, serif;
+  font-size: 2rem;
+  color: var(--gold);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.7rem;
+  border-radius: 9999px;
+  font-size: 0.82rem;
+  background: rgba(43, 28, 11, 0.88);
+  color: #f0dca8;
+  outline: 1px solid #8a6a2f;
+  outline-offset: -1px;
+}
+
+.chip-alliance {
+  background: #143a73;
+  color: #cfe1ff;
+  outline-color: #4d86d6;
+}
+
+.chip-horde {
+  background: #6e1a14;
+  color: #ffd9d2;
+  outline-color: #c9574a;
+}
+
+.chip-active {
+  background: #1f4a34;
+  color: #c8f2d6;
+  outline-color: #3f9a68;
+}
+
+/* The cards keep their own margins and width limits everywhere else,
+   so inside the dashboard columns those are switched off. */
+.dash-col > * {
+  margin-top: 0;
+  max-width: none;
+}
+
+.hero-actions .mt-8 {
+  margin-top: 0;
+}
+
+/* ---------- Top navigation ---------- */
+
+.nav-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+  padding: 0.6rem 0.9rem;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #221c14, #14110c);
+  outline: 1px solid var(--frame);
+  outline-offset: -1px;
+  box-shadow: inset 0 1px 0 rgba(255, 224, 150, 0.07), 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
+.nav-brand {
+  margin-right: 0.6rem;
+  font-family: var(--font-heading), Georgia, serif;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  color: var(--gold);
+  text-decoration: none;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+
+.nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #e6d6ac;
+  text-decoration: none;
+  background: linear-gradient(180deg, #3a3124, #221c13);
+  outline: 1px solid #5a4526;
+  outline-offset: -1px;
+  box-shadow: inset 0 1px 0 rgba(255, 232, 170, 0.12);
+}
+
+.nav-btn:hover:not(:disabled) {
+  filter: brightness(1.2);
+  outline-color: var(--gold-soft);
+  color: #fff;
+}
+
+.nav-btn-active {
+  color: #22150a;
+  background: linear-gradient(180deg, #e0b555 0%, #b98a32 48%, #8f6520 100%);
+  outline-color: #f6dc95;
+  outline-offset: -2px;
+  text-shadow: 0 1px 0 rgba(255, 236, 170, 0.45);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 244, 200, 0.55);
+}
+
+.nav-btn-active:hover:not(:disabled) {
+  color: #22150a;
+}
+
+/* ---------- Leaderboard rows ---------- */
+
+.lb-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.8rem 1rem;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #221c14, #14110c);
+  outline: 1px solid var(--frame);
+  outline-offset: -1px;
+  box-shadow: inset 0 1px 0 rgba(255, 224, 150, 0.07);
+}
+
+.lb-row:hover {
+  background: linear-gradient(180deg, #2e2517, #1b1610);
+  outline-color: var(--gold-soft);
+}
+
+.rank-badge {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 9999px;
+  font-family: var(--font-heading), Georgia, serif;
+  font-weight: 700;
+  color: #d8c9a5;
+  background: #0e0b07;
+  outline: 1px solid #4a3a1f;
+  outline-offset: -1px;
+}
+
+.rank-1 {
+  color: #2b1c0b;
+  background: linear-gradient(180deg, #ffe08a, #c99327);
+  outline-color: #fff0b0;
+  box-shadow: 0 0 14px rgba(242, 198, 90, 0.45);
+}
+
+.rank-2 {
+  color: #1d2329;
+  background: linear-gradient(180deg, #eef2f6, #9aa5b1);
+  outline-color: #ffffff;
+}
+
+.rank-3 {
+  color: #2b1608;
+  background: linear-gradient(180deg, #e5a26a, #a0602f);
+  outline-color: #f3c79a;
+}
+
+.score {
+  max-width: 12rem;
+  font-family: var(--font-heading), Georgia, serif;
+  font-size: 1.15rem;
+  line-height: 1.25;
+  text-align: right;
+  color: var(--gold);
+}
