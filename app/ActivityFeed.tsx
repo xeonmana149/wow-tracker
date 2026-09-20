@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { classIcon } from "../lib/icons";
 import GameIcon from "./GameIcon";
@@ -50,9 +50,25 @@ function timeAgo(iso: string) {
   return `${days}d ago`;
 }
 
-export default function ActivityFeed() {
+export default function ActivityFeed({
+  onNewEvent,
+}: {
+  // Called for every event that arrives live after the initial load (not
+  // for the initial batch itself) - lets a wrapper like ActivitySidebar
+  // show a "something happened" badge without duplicating the fetch/
+  // subscription logic here.
+  onNewEvent?: () => void;
+} = {}) {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Kept in a ref (rather than an effect dependency) so the subscription
+  // below doesn't need to tear down and reconnect just because the parent
+  // re-rendered with a new function identity for onNewEvent.
+  const onNewEventRef = useRef(onNewEvent);
+  useEffect(() => {
+    onNewEventRef.current = onNewEvent;
+  }, [onNewEvent]);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +105,7 @@ export default function ActivityFeed() {
             .single();
           if (data && !cancelled) {
             setEvents((prev) => [data as unknown as Event, ...prev].slice(0, FEED_LIMIT));
+            onNewEventRef.current?.();
           }
         }
       )
