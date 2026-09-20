@@ -55,21 +55,17 @@ function primarySkill(c: ProgressInput) {
     .reduce((n, s) => n + s, 0);
 }
 
+// Talent points aren't shown as a progress bar anywhere - a bar maxing out
+// at a different number for every level (51 at level 60, but much less
+// earlier on) doesn't tell you or anyone else anything useful to look at.
+// The only thing worth surfacing is when points are sitting unspent, which
+// whatsNext() below already does as a to-do item.
 export function characterBars(c: ProgressInput): Bar[] {
-  const budget = talentBudgetForLevel(c.level);
-  const talents = talentsSpent(c);
   const legacy = legacySpent(c);
   const skill = primarySkill(c);
 
   return [
     { key: "level", label: "Level", value: c.level, max: MAX_LEVEL, text: `${c.level} / ${MAX_LEVEL}` },
-    {
-      key: "talents",
-      label: "Talents",
-      value: talents,
-      max: budget > 0 ? budget : 1,
-      text: budget > 0 ? `${talents} / ${budget}` : "from level 10",
-    },
     { key: "legacy", label: "Legacy", value: legacy, max: LEGACY_CAP, text: `${legacy} / ${LEGACY_CAP}` },
     {
       key: "professions",
