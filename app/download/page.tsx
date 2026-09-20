@@ -42,6 +42,20 @@ export default function DownloadPage() {
           Runs quietly in your system tray and syncs your characters to the website
           automatically - no copy-pasting, no terminal.
         </p>
+        <div className="mt-3 rounded border border-amber-700/50 bg-amber-500/10 p-3 text-sm text-amber-200">
+          <strong>Before you install:</strong> this needs{" "}
+          <a
+            href="https://nodejs.org/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-amber-100"
+          >
+            Node.js
+          </a>{" "}
+          installed first (one-time, free). Grab the &quot;LTS&quot; version, run its
+          installer with the default options, then come back here.
+        </div>
+
         <a
           href="/downloads/wow-tracker-tray.zip"
           download
