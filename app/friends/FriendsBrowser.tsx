@@ -189,6 +189,7 @@ export default function FriendsBrowser({
                     treeNames={treeNames[c.class]}
                     specIcons={specIcons}
                     iconOverrides={iconOverrides}
+                    showNeedsAttention={false}
                   />
                 </div>
               ))}

@@ -144,6 +144,7 @@ export default function CharacterCard({
   compact = false,
   iconOverrides = {},
   defaultExpanded = false,
+  showNeedsAttention = true,
 }: {
   c: CardCharacter;
   treeNames: string[] | undefined;
@@ -156,6 +157,10 @@ export default function CharacterCard({
   // Starts a card already open. Used on the character's own page, where
   // there's only ever one card and hiding its details would be pointless.
   defaultExpanded?: boolean;
+  // The "Needs attention" banner is a nudge for the character's own owner
+  // to finish setting it up - not useful (and a bit odd-looking) on
+  // someone else's character, so the Friends page turns it off.
+  showNeedsAttention?: boolean;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
 
@@ -184,9 +189,11 @@ export default function CharacterCard({
 
   return (
     <div
-      className={`rounded bg-neutral-800 ${pad} ${c.needs_setup ? "ring-2 ring-amber-400" : ""}`}
+      className={`rounded bg-neutral-800 ${pad} ${
+        c.needs_setup && showNeedsAttention ? "ring-2 ring-amber-400" : ""
+      }`}
     >
-      {c.needs_setup && (
+      {c.needs_setup && showNeedsAttention && (
         <div className="mb-2 flex items-center gap-1.5 rounded bg-amber-500/15 px-2 py-1 text-xs font-bold text-amber-300">
           <span className="text-sm">⚠</span> Needs attention
         </div>
