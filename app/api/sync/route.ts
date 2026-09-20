@@ -93,10 +93,13 @@ export async function POST(req: NextRequest) {
             faction: parsed.basic?.faction ?? null,
             realm,
             // The database requires every character to have a non-empty
-            // main_spec - the addon doesn't know your intended spec at
-            // creation time, so this is a placeholder you can edit on the
-            // site afterward.
+            // main_spec, and a ruleset from a fixed set of values
+            // (PVP/PVE/RPPVE/HARDCORE) - the addon doesn't know either at
+            // creation time (see earlier discussion on ruleset not being
+            // addon-detectable yet), so these are placeholders. Edit them
+            // on the site afterward if they're wrong for this character.
             main_spec: "Unspecified",
+            ruleset: "PVE",
             level: typeof parsed.basic?.level === "number" ? parsed.basic.level : 1,
             guild: parsed.basic?.guild ?? null,
           })
