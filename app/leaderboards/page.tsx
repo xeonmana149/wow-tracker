@@ -3,8 +3,11 @@ import { supabase } from "../../lib/supabase";
 import { RACE_FACTION } from "../../lib/options";
 import { RACE_ICONS, classIcon } from "../../lib/icons";
 import { loadSpecIcons } from "../../lib/server-data";
+import { loadBadgeIconOverrides, type BadgeIconOverrides } from "../../lib/badgeIconOverrides";
+import type { AccountAchievementKind } from "../../lib/accountAchievements";
 import AuthStatus from "../AuthStatus";
 import GameIcon from "../GameIcon";
+import AccountBadges from "../AccountBadges";
 import { MoneyDisplay } from "../MoneyIcons";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +34,7 @@ type Info = {
   character_type: string;
   ruleset: string | null;
   main_spec: string | null;
+  user_id: string | null;
   profiles: { display_name: string } | null;
 };
 
@@ -102,6 +106,22 @@ export default async function Leaderboards({
 
   const specIcons = await loadSpecIcons();
   const rows = (data ?? []) as Row[];
+
+  // Account-wide badges live on the user, not any one character, so they're
+  // fetched once here and matched up by user_id per row below - the same
+  // approach as the Friends page. A character can show up multiple times
+  // (once per character a player has), so the same player's badges will
+  // repeat next to each of their entries - that's expected, not a bug.
+  const { data: accountAchievementRows } = await supabase
+    .from("account_achievements")
+    .select("user_id, kind");
+  const accountAchievementsByUser: Record<string, AccountAchievementKind[]> = {};
+  for (const row of (accountAchievementRows ?? []) as { user_id: string; kind: AccountAchievementKind }[]) {
+    const list = accountAchievementsByUser[row.user_id] ?? [];
+    list.push(row.kind);
+    accountAchievementsByUser[row.user_id] = list;
+  }
+  const iconOverrides: BadgeIconOverrides = await loadBadgeIconOverrides(supabase);
 
   const allCharacters: Character[] = rows.map((r) => {
     return {
@@ -201,6 +221,7 @@ export default async function Leaderboards({
         <ol className="mt-6 grid gap-3 xl:grid-cols-2">
         {sorted.map((c, i) => {
           const faction = RACE_FACTION[c.race];
+          const ownerBadges = accountAchievementsByUser[c.user_id ?? ""] ?? [];
           return (
             <li key={c.id}>
               <Link href={`/character/${c.id}`} className="lb-row">
@@ -233,6 +254,15 @@ export default async function Leaderboards({
                     )}
                     <span>{c.profiles?.display_name ?? "Unknown"}</span>
                   </div>
+
+                  {/* On its own line, same reasoning as the Friends page fix -
+                      a growing row of account badges should never crowd out
+                      the name or the other meta info above it. */}
+                  {ownerBadges.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      <AccountBadges kinds={ownerBadges} iconOverrides={iconOverrides} />
+                    </div>
+                  )}
 
                   <div className="mt-2 flex flex-wrap gap-2">
                     {faction && (

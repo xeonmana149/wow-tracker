@@ -123,8 +123,9 @@ export default function FriendsBrowser({
                 onClick={() => setSelected(p.id)}
                 aria-pressed={active}
                 className={`friend-tab ${active ? "friend-tab-active" : ""}`}
+                style={{ alignItems: "flex-start" }}
               >
-                <span className="flex shrink-0 -space-x-3">
+                <span className="flex shrink-0 -space-x-3 pt-0.5">
                   {p.characters.slice(0, 3).map((c) => (
                     <GameIcon
                       key={c.id}
@@ -135,12 +136,19 @@ export default function FriendsBrowser({
                     />
                   ))}
                 </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5 truncate">
-                    <span className="truncate font-bold">{p.name}</span>
-                    <AccountBadges kinds={p.accountAchievements ?? []} iconOverrides={iconOverrides} />
-                  </span>
-                  <span className="sub block truncate text-xs text-gray-400">
+                {/* Stacked instead of sharing one line with the name, so a
+                    growing row of account badges can never crowd out the
+                    name itself - the name always gets its own full-width
+                    line, and badges just wrap onto as many lines as they
+                    need below it. */}
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="block truncate font-bold">{p.name}</span>
+                  {(p.accountAchievements?.length ?? 0) > 0 && (
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      <AccountBadges kinds={p.accountAchievements ?? []} iconOverrides={iconOverrides} />
+                    </span>
+                  )}
+                  <span className="sub mt-1 block truncate text-xs text-gray-400">
                     {p.characters.length}{" "}
                     {p.characters.length === 1 ? "character" : "characters"} · highest level{" "}
                     {highest}
