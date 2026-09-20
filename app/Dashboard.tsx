@@ -332,17 +332,53 @@ export default function Dashboard({
             <p className="mt-3 text-gray-400">You have no characters yet.</p>
           )}
 
-          <div className="mt-3 grid gap-4 sm:grid-cols-2">
-            {characters.map((c) => (
-              <CharacterCard
-                key={c.id}
-                c={c}
-                treeNames={treeNames[c.class]}
-                specIcons={specIcons}
-                iconOverrides={iconOverrides}
-              />
-            ))}
-          </div>
+          {(() => {
+            // Grouped by type rather than linked to a specific Main - there's
+            // no "this Alt belongs to that Main" relationship in the schema,
+            // just an independent type per character. Mains first, Alts
+            // right under them (visually nested, so they read as "belonging"
+            // to the Mains above even without an actual link), then
+            // anything else. Order within each group is whatever the
+            // characters were already sorted in (level, descending).
+            const mains = characters.filter((c) => c.character_type === "Main");
+            const alts = characters.filter((c) => c.character_type === "Alt");
+            const others = characters.filter(
+              (c) => c.character_type !== "Main" && c.character_type !== "Alt"
+            );
+
+            const group = (
+              list: CardCharacter[],
+              label: string,
+              headingClass: string,
+              nested: boolean
+            ) =>
+              list.length > 0 && (
+                <div className={nested ? "border-l-2 border-neutral-700 pl-4" : undefined}>
+                  <h3 className={`mb-2 text-xs font-semibold uppercase tracking-wide ${headingClass}`}>
+                    {label}
+                  </h3>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {list.map((c) => (
+                      <CharacterCard
+                        key={c.id}
+                        c={c}
+                        treeNames={treeNames[c.class]}
+                        specIcons={specIcons}
+                        iconOverrides={iconOverrides}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+
+            return (
+              <div className="mt-3 flex flex-col gap-4">
+                {group(mains, mains.length > 1 ? "Mains" : "Main", "text-amber-400", false)}
+                {group(alts, "Alts", "text-sky-400", true)}
+                {group(others, "Other characters", "text-gray-400", false)}
+              </div>
+            );
+          })()}
 
           <Link
             href="/create"
