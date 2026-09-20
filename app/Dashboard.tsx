@@ -7,11 +7,14 @@ import { LEGACY_CAP } from "../lib/legacy";
 import { PROFESSION_ICONS, classIcon } from "../lib/icons";
 import { SUPPLIED_BY } from "../lib/professions";
 import { missingProfessions, whatsNext, type Todo } from "../lib/progress";
-import CharacterCard, { type CardCharacter, type MilestoneKind } from "./CharacterCard";
+import CharacterCard, { type CardCharacter, type AchievementKind, type GoldTier } from "./CharacterCard";
 import GameIcon from "./GameIcon";
 import NextList from "./NextList";
 import { MoneyDisplay } from "./MoneyIcons";
 import AccountSyncSetup from "./AccountSyncSetup";
+import AccountBadges from "./AccountBadges";
+import { awardAchievement, ACHIEVEMENT_MESSAGE } from "../lib/achievements";
+import type { AccountAchievementKind } from "../lib/accountAchievements";
 
 
 const PRIMARY = [
@@ -41,6 +44,7 @@ export default function Dashboard({
   const [editingLegacy, setEditingLegacy] = useState(false);
   const [legacyDraft, setLegacyDraft] = useState("0");
   const [legacyMessage, setLegacyMessage] = useState("");
+  const [accountAchievements, setAccountAchievements] = useState<AccountAchievementKind[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -63,24 +67,28 @@ export default function Dashboard({
       if (error) {
         setError(error.message);
       } else {
-        // Milestones are account-wide "firsts" (only 3 rows max, one per
-        // kind), so it's cheap to just grab all of them and match them up
-        // to whichever of your characters holds each one.
-        const { data: milestoneRows } = await supabase
-          .from("milestones")
-          .select("kind, character_id");
-        const milestonesByCharacter = new Map<string, MilestoneKind[]>();
-        for (const m of (milestoneRows ?? []) as { kind: MilestoneKind; character_id: string }[]) {
-          const list = milestonesByCharacter.get(m.character_id) ?? [];
-          list.push(m.kind);
-          milestonesByCharacter.set(m.character_id, list);
+        // Achievements are per-character now (not a server-wide "first"),
+        // but there still aren't many rows total for a small friend group,
+        // so it's simplest to just grab them all and match them up.
+        const { data: achievementRows } = await supabase
+          .from("achievements")
+          .select("kind, tier, character_id");
+        type Row = { kind: AchievementKind | "gold" | "epic_gear"; tier: GoldTier | null; character_id: string };
+        const achievementsByCharacter = new Map<
+          string,
+          { kind: AchievementKind | "gold" | "epic_gear"; tier?: GoldTier | null }[]
+        >();
+        for (const a of (achievementRows ?? []) as Row[]) {
+          const list = achievementsByCharacter.get(a.character_id) ?? [];
+          list.push({ kind: a.kind, tier: a.tier });
+          achievementsByCharacter.set(a.character_id, list);
         }
 
-        const withMilestones = (data ?? []).map((c) => ({
+        const withAchievements = (data ?? []).map((c) => ({
           ...c,
-          milestones: milestonesByCharacter.get(c.id) ?? [],
+          achievements: achievementsByCharacter.get(c.id) ?? [],
         }));
-        setCharacters(withMilestones as CardCharacter[]);
+        setCharacters(withAchievements as CardCharacter[]);
       }
 
       const { data: profile } = await supabase
@@ -89,6 +97,14 @@ export default function Dashboard({
         .eq("id", userData.user.id)
         .single();
       setLegacy(Math.min(LEGACY_CAP, profile?.legacy_points ?? 0));
+
+      const { data: accountAchievementRows } = await supabase
+        .from("account_achievements")
+        .select("kind")
+        .eq("user_id", userData.user.id);
+      setAccountAchievements(
+        (accountAchievementRows ?? []).map((r) => r.kind as AccountAchievementKind)
+      );
 
       setStatus("ready");
     }
@@ -118,6 +134,25 @@ export default function Dashboard({
           kind: "legacy_point",
           message: `Reached ${points} Legacy point${points === 1 ? "" : "s"}`,
         });
+
+        // The "maxed Legacy" achievement is a character badge, but Legacy
+        // points are account-wide - awarded to whichever character is
+        // marked as your Main, since that's the natural "face" of the
+        // account. Skipped quietly if you don't have one set.
+        if (points >= LEGACY_CAP) {
+          const mainCharacter = characters.find((c) => c.character_type === "Main");
+          if (mainCharacter) {
+            const earned = await awardAchievement(supabase, mainCharacter.id, "maxed_legacy");
+            if (earned) {
+              await supabase.from("activity_events").insert({
+                character_id: mainCharacter.id,
+                user_id: userId,
+                kind: "achievement_earned",
+                message: ACHIEVEMENT_MESSAGE.maxed_legacy(mainCharacter.name),
+              });
+            }
+          }
+        }
       } catch {
         // ignored on purpose
       }
@@ -265,6 +300,21 @@ export default function Dashboard({
         </div>
         </div>
       </section>
+
+      {accountAchievements.length > 0 && (
+        <section className="mt-4 rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+            Account achievements
+          </h2>
+          <p className="mt-1 text-xs text-gray-500">
+            Earned by your account as a whole, not any one character. Hover a badge to see what
+            it's for.
+          </p>
+          <div className="mt-3">
+            <AccountBadges kinds={accountAchievements} size="md" />
+          </div>
+        </section>
+      )}
 
       {error && <p className="mt-4 text-red-400">{error}</p>}
 

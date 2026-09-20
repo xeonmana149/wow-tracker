@@ -36,6 +36,7 @@ export type CardCharacter = {
   active_spec?: number | null;
   money_copper?: number;
   needs_setup?: boolean;
+  created_at?: string | null;
   milestones?: MilestoneKind[];
   profiles?: { display_name?: string; legacy_points?: number } | null;
   character_professions: { profession: string; skill: number }[];
@@ -81,6 +82,14 @@ export default function CharacterCard({
     .sort((a, b) => b.skill - a.skill)
     .slice(0, 2);
 
+  const createdLabel = c.created_at
+    ? new Date(c.created_at).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : null;
+
   const stillWanted = (c.character_wishlist ?? [])
     .filter((w) => !w.obtained)
     .sort((a, b) => WISHLIST_PRIORITY_ORDER[a.priority] - WISHLIST_PRIORITY_ORDER[b.priority]);
@@ -121,6 +130,14 @@ export default function CharacterCard({
                 </span>
               );
             })}
+            {createdLabel && (
+              <span
+                title={`Created ${createdLabel}`}
+                className="grid h-5 w-5 place-items-center rounded-full bg-neutral-600/40 text-xs"
+              >
+                📅
+              </span>
+            )}
           </div>
           <div className="mt-1 flex items-center gap-2 text-sm text-gray-400">
             <GameIcon name={RACE_ICONS[c.race]} label={c.race} size={20} round />

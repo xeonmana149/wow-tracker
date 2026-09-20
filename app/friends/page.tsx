@@ -11,18 +11,35 @@ export default async function Friends() {
   const { data, error } = await supabase
     .from("characters")
     .select(
-      "*, profiles(display_name, legacy_points), character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank)"
+      "*, profiles(display_name, legacy_points), character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained), achievements(kind, tier)"
     )
     .order("level", { ascending: false });
 
-  const characters = (data ?? []) as FriendCharacter[];
+  const characters = (data ?? []) as unknown as FriendCharacter[];
   const { specIcons, treeNames } = await loadCardData();
+
+  // Account-wide achievements live on the user, not any one character, so
+  // they're fetched separately and matched up by user_id below.
+  const { data: accountAchievementRows } = await supabase
+    .from("account_achievements")
+    .select("user_id, kind");
+  const accountAchievementsByUser: Record<string, string[]> = {};
+  for (const row of (accountAchievementRows ?? []) as { user_id: string; kind: string }[]) {
+    const list = accountAchievementsByUser[row.user_id] ?? [];
+    list.push(row.kind);
+    accountAchievementsByUser[row.user_id] = list;
+  }
 
   const byPlayer: Record<string, FriendPlayer> = {};
   for (const c of characters) {
     const key = c.user_id ?? "none";
     if (!byPlayer[key]) {
-      byPlayer[key] = { id: key, name: c.profiles?.display_name ?? "Unknown", characters: [] };
+      byPlayer[key] = {
+        id: key,
+        name: c.profiles?.display_name ?? "Unknown",
+        characters: [],
+        accountAchievements: (accountAchievementsByUser[key] ?? []) as FriendPlayer["accountAchievements"],
+      };
     }
     byPlayer[key].characters.push(c);
   }

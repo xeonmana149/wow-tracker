@@ -1,5 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { iconUrlForFileId } from "./icons";
+import { iconUrlForFileId, PRIMARY_PROFESSIONS } from "./icons";
+import {
+  ACHIEVEMENT_MESSAGE,
+  awardAchievement,
+  awardEpicTier,
+  awardGoldTier,
+  epicTierMessage,
+  goldTierMessage,
+  isWithinFoundingWindow,
+} from "./achievements";
+import { checkAccountAchievements } from "./accountAchievements";
 
 export type ParsedTraitNode = {
   entryID?: number;
@@ -115,19 +125,39 @@ export type ImportResult = {
 };
 
 type ActivityEvent = {
-  character_id: string;
+  character_id: string | null;
   user_id: string;
-  kind: "level_up" | "profession_maxed" | "character_created" | "epic_gear" | "gold_milestone" | "pvp_rank_up";
+  kind:
+    | "level_up"
+    | "profession_maxed"
+    | "character_created"
+    | "epic_gear"
+    | "gold_milestone"
+    | "pvp_rank_up"
+    | "achievement_earned";
   message: string;
 };
 
 // Epic and Legendary item-link quality colors (RRGGBB, as extractItemColor
-// in the addon returns them) - treated as one "notable gear" event rather
-// than two separate kinds.
-const NOTABLE_GEAR_COLORS = new Set(["a335ee", "ff8000"]);
+// in the addon returns them).
+const EPIC_COLOR = "a335ee";
+const LEGENDARY_COLOR = "ff8000";
+// Both together - treated as one "notable gear" narration event in the
+// activity feed, even though the achievements they feed into differ (Epic
+// counts toward a tiered badge, Legendary is its own one-off badge).
+const NOTABLE_GEAR_COLORS = new Set([EPIC_COLOR, LEGENDARY_COLOR]);
 
 // Gold amounts (in real gold, not copper) worth calling out per character.
 const GOLD_MILESTONES = [100, 500, 1000, 5000];
+
+// The level cap on this server - crossing it is what the "max level"
+// achievement means.
+const MAX_CHARACTER_LEVEL = 60;
+
+// The professions this server treats as secondary (see the earlier
+// correction: no Archaeology on this server, just these three) - used for
+// the "Renaissance" achievement (every profession maxed on one character).
+const SECONDARY_PROFESSIONS = ["First Aid", "Cooking", "Fishing"];
 
 // Applies a parsed addon export to a character's rows. Shared between the
 // browser Import panel (the normal anon-key client, checked by RLS as the
@@ -147,7 +177,7 @@ export async function applyImport(
   // maxed profession, by comparing against what's about to be written.
   const { data: before, error: beforeError } = await supabase
     .from("characters")
-    .select("id, name, level, user_id, money_copper")
+    .select("id, name, level, user_id, money_copper, created_at")
     .eq("id", characterId)
     .single();
 
@@ -156,6 +186,22 @@ export async function applyImport(
   }
 
   const events: ActivityEvent[] = [];
+
+  // Founding Member - checked on every sync rather than just at creation,
+  // so it still gets awarded retroactively to characters created before
+  // this achievement existed. awardAchievement's own conflict handling
+  // means this is harmless to call repeatedly.
+  if (before.created_at && isWithinFoundingWindow(before.created_at)) {
+    const earned = await awardAchievement(supabase, characterId, "founding_member");
+    if (earned) {
+      events.push({
+        character_id: characterId,
+        user_id: before.user_id,
+        kind: "achievement_earned",
+        message: ACHIEVEMENT_MESSAGE.founding_member(before.name),
+      });
+    }
+  }
 
   // 1. Character-level fields.
   const charUpdate: Record<string, number | string> = {};
@@ -175,6 +221,18 @@ export async function applyImport(
       kind: "level_up",
       message: `${before.name} reached level ${parsed.basic.level}`,
     });
+
+    if (parsed.basic.level >= MAX_CHARACTER_LEVEL) {
+      const earned = await awardAchievement(supabase, characterId, "max_level");
+      if (earned) {
+        events.push({
+          character_id: characterId,
+          user_id: before.user_id,
+          kind: "achievement_earned",
+          message: ACHIEVEMENT_MESSAGE.max_level(before.name),
+        });
+      }
+    }
   }
 
   // Gold milestones - fire once when a sync's new balance crosses a
@@ -196,6 +254,16 @@ export async function applyImport(
         });
       }
     }
+
+    const tier = await awardGoldTier(supabase, characterId, afterCopper);
+    if (tier) {
+      events.push({
+        character_id: characterId,
+        user_id: before.user_id,
+        kind: "achievement_earned",
+        message: goldTierMessage(before.name, tier),
+      });
+    }
   }
 
   // 2. Stats.
@@ -213,7 +281,11 @@ export async function applyImport(
 
   // 3. Professions - update ones you already track, add ones you don't yet.
   //    Also notes when a profession crosses the max-skill line for the
-  //    first time, for the activity feed.
+  //    first time, for the activity feed. `updatedProfessions` mirrors
+  //    what's now in the database, so the Renaissance check below (which
+  //    needs to see the character's FULL profession list, not just what
+  //    this one sync touched) has an accurate picture to work from.
+  const updatedProfessions = professions.map((p) => ({ ...p }));
   for (const p of parsed.professions ?? []) {
     const skill = Math.min(MAX_SKILL, Math.max(1, p.skill || 1));
     const existing = professions.find(
@@ -223,6 +295,9 @@ export async function applyImport(
       if (existing.skill !== skill) {
         await supabase.from("character_professions").update({ skill }).eq("id", existing.id);
       }
+      const tracked = updatedProfessions.find((x) => x.id === existing.id);
+      if (tracked) tracked.skill = skill;
+
       if (skill >= MAX_SKILL && existing.skill < MAX_SKILL) {
         events.push({
           character_id: characterId,
@@ -230,6 +305,15 @@ export async function applyImport(
           kind: "profession_maxed",
           message: `${before.name} maxed ${p.name}`,
         });
+        const earned = await awardAchievement(supabase, characterId, "maxed_profession");
+        if (earned) {
+          events.push({
+            character_id: characterId,
+            user_id: before.user_id,
+            kind: "achievement_earned",
+            message: ACHIEVEMENT_MESSAGE.maxed_profession(before.name),
+          });
+        }
       }
     } else {
       await supabase.from("character_professions").insert({
@@ -237,6 +321,8 @@ export async function applyImport(
         profession: p.name,
         skill,
       });
+      updatedProfessions.push({ id: "", profession: p.name, skill });
+
       if (skill >= MAX_SKILL) {
         events.push({
           character_id: characterId,
@@ -244,7 +330,36 @@ export async function applyImport(
           kind: "profession_maxed",
           message: `${before.name} maxed ${p.name}`,
         });
+        const earned = await awardAchievement(supabase, characterId, "maxed_profession");
+        if (earned) {
+          events.push({
+            character_id: characterId,
+            user_id: before.user_id,
+            kind: "achievement_earned",
+            message: ACHIEVEMENT_MESSAGE.maxed_profession(before.name),
+          });
+        }
       }
+    }
+  }
+
+  // Renaissance - every profession this character can have (2 primary +
+  // all 3 secondary) maxed out at once.
+  const maxedPrimaryCount = updatedProfessions.filter(
+    (p) => PRIMARY_PROFESSIONS.includes(p.profession) && p.skill >= MAX_SKILL
+  ).length;
+  const maxedSecondaryCount = updatedProfessions.filter(
+    (p) => SECONDARY_PROFESSIONS.includes(p.profession) && p.skill >= MAX_SKILL
+  ).length;
+  if (maxedPrimaryCount >= 2 && maxedSecondaryCount >= SECONDARY_PROFESSIONS.length) {
+    const earned = await awardAchievement(supabase, characterId, "renaissance");
+    if (earned) {
+      events.push({
+        character_id: characterId,
+        user_id: before.user_id,
+        kind: "achievement_earned",
+        message: ACHIEVEMENT_MESSAGE.renaissance(before.name),
+      });
     }
   }
 
@@ -275,6 +390,8 @@ export async function applyImport(
     updated_at: string;
   }[] = [];
   const emptySlots: string[] = [];
+  let newEpicCount = 0;
+  let equippedNewLegendary = false;
   for (const [addonSlot, siteSlot] of Object.entries(GEAR_SLOT_MAP)) {
     const item = parsed.gear?.[addonSlot];
     if (!item) {
@@ -301,6 +418,35 @@ export async function applyImport(
         user_id: before.user_id,
         kind: "epic_gear",
         message: `${before.name} equipped ${item.name}`,
+      });
+      if (quality === EPIC_COLOR) newEpicCount += 1;
+      if (quality === LEGENDARY_COLOR) equippedNewLegendary = true;
+    }
+  }
+
+  // Epic-gear tier - a running count of distinct Epic items equipped over
+  // time, only reported when it crosses into a higher tier than before.
+  if (newEpicCount > 0) {
+    const tier = await awardEpicTier(supabase, characterId, newEpicCount);
+    if (tier) {
+      events.push({
+        character_id: characterId,
+        user_id: before.user_id,
+        kind: "achievement_earned",
+        message: epicTierMessage(before.name, tier),
+      });
+    }
+  }
+
+  // Legendary is its own one-off badge, separate from the Epic tier.
+  if (equippedNewLegendary) {
+    const earned = await awardAchievement(supabase, characterId, "legendary_item");
+    if (earned) {
+      events.push({
+        character_id: characterId,
+        user_id: before.user_id,
+        kind: "achievement_earned",
+        message: ACHIEVEMENT_MESSAGE.legendary_item(before.name),
       });
     }
   }
@@ -347,6 +493,27 @@ export async function applyImport(
         );
       }
     }
+  }
+
+  // Account-wide achievements - re-checked on every sync since any of the
+  // updates above (level, gold, professions) could be what tips the
+  // account over a threshold. Reads the account's current state fresh
+  // rather than trying to track it incrementally, so it's safe even if a
+  // sync only ever touches one character at a time. These have no single
+  // character to attach to, so they post to the feed with a null
+  // character_id (same as the Legacy-point event on the Dashboard).
+  try {
+    const accountMessages = await checkAccountAchievements(supabase, before.user_id);
+    for (const message of accountMessages) {
+      events.push({
+        character_id: null,
+        user_id: before.user_id,
+        kind: "achievement_earned",
+        message,
+      });
+    }
+  } catch {
+    // ignored on purpose - never blocks the sync itself
   }
 
   // Best-effort - a failure to log an activity event should never break

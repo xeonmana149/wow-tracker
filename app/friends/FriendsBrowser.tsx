@@ -4,9 +4,16 @@ import { useState } from "react";
 import { classIcon } from "../../lib/icons";
 import CharacterCard, { type CardCharacter } from "../CharacterCard";
 import GameIcon from "../GameIcon";
+import AccountBadges from "../AccountBadges";
+import type { AccountAchievementKind } from "../../lib/accountAchievements";
 import CraftingDirectory from "./CraftingDirectory";
 
-export type FriendPlayer = { id: string; name: string; characters: CardCharacter[] };
+export type FriendPlayer = {
+  id: string;
+  name: string;
+  characters: CardCharacter[];
+  accountAchievements?: AccountAchievementKind[];
+};
 
 export default function FriendsBrowser({
   players,
@@ -126,7 +133,10 @@ export default function FriendsBrowser({
                   ))}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-bold">{p.name}</span>
+                  <span className="flex items-center gap-1.5 truncate">
+                    <span className="truncate font-bold">{p.name}</span>
+                    <AccountBadges kinds={p.accountAchievements ?? []} />
+                  </span>
                   <span className="sub block truncate text-xs text-gray-400">
                     {p.characters.length}{" "}
                     {p.characters.length === 1 ? "character" : "characters"} · highest level{" "}
@@ -146,6 +156,7 @@ export default function FriendsBrowser({
           <>
             <div className="mb-3 flex flex-wrap items-baseline gap-x-3">
               <h2 className="text-xl font-bold">{current ? current.name : "Everyone"}</h2>
+              {current && <AccountBadges kinds={current.accountAchievements ?? []} size="md" />}
               <p className="text-sm text-gray-400">
                 {shown.length} {shown.length === 1 ? "character" : "characters"}
                 {!current && " · highest level first"}
