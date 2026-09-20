@@ -155,13 +155,21 @@ export async function awardEpicTier(
   return newRank > existingRank ? newTier : null;
 }
 
-// When the server goes live - characters created up through one week
-// after this count as Founding Members. Reuses the exact same constant
-// the countdown banner counts down to, so this never drifts out of sync
-// with it.
+// When the server goes live - characters created from that moment through
+// one week after count as Founding Members. Reuses the exact same
+// constant the countdown banner counts down to, so this never drifts out
+// of sync with it.
+//
+// Both ends of the window matter: without the lower bound, any character
+// created at any point BEFORE the cutoff (including right now, during
+// beta, since LAUNCH_TIME is still in the future) would satisfy
+// "createdAt <= cutoff" and wrongly earn this - which is exactly what was
+// happening. A character only counts once it's created on or after the
+// actual launch moment.
 const LAUNCH_DATE = new Date(LAUNCH_TIME);
 const FOUNDING_MEMBER_CUTOFF = new Date(LAUNCH_DATE.getTime() + 7 * 24 * 60 * 60 * 1000);
 
 export function isWithinFoundingWindow(createdAt: string): boolean {
-  return new Date(createdAt) <= FOUNDING_MEMBER_CUTOFF;
+  const created = new Date(createdAt);
+  return created >= LAUNCH_DATE && created <= FOUNDING_MEMBER_CUTOFF;
 }

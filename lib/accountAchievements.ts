@@ -46,7 +46,7 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
     icon: "inv_misc_coin_06",
     label: "Tycoon - 10,000 combined gold across your characters",
   },
-  big_family: { icon: "inv_misc_bag_10", label: "Big Family - 5 or more characters" },
+  big_family: { icon: "inv_misc_bag_10", label: "Big Family - 10 or more characters" },
   pvp_dynasty: {
     icon: "inv_jewelry_ring_03",
     label: "PvP Dynasty - 2 or more characters at the top PvP rank",
@@ -60,7 +60,7 @@ const ACCOUNT_ACHIEVEMENT_MESSAGE: Record<AccountAchievementKind, (name: string)
   diplomat: (name) => `${name} has maxed a character of every race on both factions!`,
   master_of_all_trades: (name) => `${name}'s account has maxed every profession!`,
   tycoon: (name) => `${name} has amassed 10,000 gold across their characters!`,
-  big_family: (name) => `${name} is running a full roster - 5+ characters!`,
+  big_family: (name) => `${name} is running a full roster - 10+ characters!`,
   pvp_dynasty: (name) => `${name} has 2+ characters at the top PvP rank!`,
 };
 
@@ -68,7 +68,7 @@ const MAX_CHARACTER_LEVEL = 60;
 const MAX_SKILL = 300;
 const SECONDARY_PROFESSIONS = ["First Aid", "Cooking", "Fishing"];
 const ALL_PROFESSIONS = [...PRIMARY_PROFESSIONS, ...SECONDARY_PROFESSIONS];
-const BIG_FAMILY_THRESHOLD = 5;
+const BIG_FAMILY_THRESHOLD = 10;
 const TYCOON_GOLD = 10000;
 const PVP_DYNASTY_THRESHOLD = 2;
 
