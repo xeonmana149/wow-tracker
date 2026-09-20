@@ -207,41 +207,14 @@ export default function CharacterCard({
         <Link href={`/character/${c.id}`} className="flex min-w-0 flex-1 items-start gap-3">
           <GameIcon name={classIcon(c.class)} label={c.class} size={compact ? 44 : 52} round />
           <div className="min-w-0 flex-1">
+            {/* Just the name and its type tag here - badges used to share
+                this line too, and a long name would wrap them down onto
+                their own row anyway (inconsistently, depending on name
+                length). They now always start on their own line below,
+                same as account badges elsewhere on the site. */}
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-lg font-bold text-white hover:underline">{c.name}</span>
               <span className="rounded bg-neutral-600 px-2 py-0.5 text-xs">{c.character_type}</span>
-              {(c.achievements ?? []).map((a) => {
-                if (a.kind === "gold" && a.tier) {
-                  const badge = GOLD_TIER_BADGE[a.tier];
-                  const icon = resolvedIcon(iconOverrides, `gold:${a.tier}`, badge.icon);
-                  return (
-                    <span key="gold" className="inline-block rounded-full ring-2 ring-amber-500/70">
-                      <GameIcon src={wowIconUrl(icon)} label={badge.label} size={28} round />
-                    </span>
-                  );
-                }
-                if (a.kind === "epic_gear" && a.tier) {
-                  const meta = EPIC_TIER_META[a.tier];
-                  const icon = resolvedIcon(iconOverrides, "epic_gear", meta.icon);
-                  return (
-                    <span key="epic_gear" className={`inline-block rounded-full ${meta.ring}`}>
-                      <GameIcon src={wowIconUrl(icon)} label={meta.label} size={28} round />
-                    </span>
-                  );
-                }
-                const badge = ACHIEVEMENT_BADGES[a.kind as AchievementKind];
-                if (!badge) return null;
-                const icon = resolvedIcon(iconOverrides, a.kind, badge.icon);
-                return <GameIcon key={a.kind} src={wowIconUrl(icon)} label={badge.label} size={28} round />;
-              })}
-              {createdLabel && (
-                <GameIcon
-                  src={wowIconUrl(resolvedIcon(iconOverrides, CREATED_DATE_ICON_KEY, CREATED_DATE_ICON))}
-                  label={`Created ${createdLabel}`}
-                  size={28}
-                  round
-                />
-              )}
             </div>
             <div className="mt-1 flex items-center gap-2 text-sm text-gray-400">
               <GameIcon name={RACE_ICONS[c.race]} label={c.race} size={20} round />
@@ -249,6 +222,42 @@ export default function CharacterCard({
                 Level {c.level} {c.race} {c.class}
               </span>
             </div>
+            {((c.achievements ?? []).length > 0 || createdLabel) && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                {(c.achievements ?? []).map((a) => {
+                  if (a.kind === "gold" && a.tier) {
+                    const badge = GOLD_TIER_BADGE[a.tier];
+                    const icon = resolvedIcon(iconOverrides, `gold:${a.tier}`, badge.icon);
+                    return (
+                      <span key="gold" className="inline-block rounded-full ring-2 ring-amber-500/70">
+                        <GameIcon src={wowIconUrl(icon)} label={badge.label} size={28} round />
+                      </span>
+                    );
+                  }
+                  if (a.kind === "epic_gear" && a.tier) {
+                    const meta = EPIC_TIER_META[a.tier];
+                    const icon = resolvedIcon(iconOverrides, "epic_gear", meta.icon);
+                    return (
+                      <span key="epic_gear" className={`inline-block rounded-full ${meta.ring}`}>
+                        <GameIcon src={wowIconUrl(icon)} label={meta.label} size={28} round />
+                      </span>
+                    );
+                  }
+                  const badge = ACHIEVEMENT_BADGES[a.kind as AchievementKind];
+                  if (!badge) return null;
+                  const icon = resolvedIcon(iconOverrides, a.kind, badge.icon);
+                  return <GameIcon key={a.kind} src={wowIconUrl(icon)} label={badge.label} size={28} round />;
+                })}
+                {createdLabel && (
+                  <GameIcon
+                    src={wowIconUrl(resolvedIcon(iconOverrides, CREATED_DATE_ICON_KEY, CREATED_DATE_ICON))}
+                    label={`Created ${createdLabel}`}
+                    size={28}
+                    round
+                  />
+                )}
+              </div>
+            )}
           </div>
         </Link>
 
