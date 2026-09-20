@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../../../lib/supabase";
-import { SPECS } from "../../../lib/options";
+import { supabase } from "../lib/supabase";
+import { SPECS } from "../lib/options";
 
 const RULESET_OPTIONS = ["PVP", "PVE", "RPPVE", "HARDCORE"];
 const CHARACTER_TYPE_OPTIONS = ["Unspecified", "Main", "Alt", "Gatherer", "PvPer"];
