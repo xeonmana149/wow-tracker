@@ -99,6 +99,14 @@ export default async function CharacterPage({
 
   return (
     <main className="mx-auto max-w-[1500px] p-4 md:p-6">
+      <NeedsSetupBanner
+        characterId={character.id}
+        ownerId={character.user_id}
+        needsSetup={character.needs_setup}
+        currentMainSpec={character.main_spec}
+        currentRuleset={character.ruleset}
+      />
+
       <Link href="/" className="text-blue-400">← Back</Link>
 
       <header className="parchment mt-4 p-5 md:p-6">

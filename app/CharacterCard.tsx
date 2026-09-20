@@ -25,6 +25,7 @@ export type CardCharacter = {
   off_role: string | null;
   active_spec?: number | null;
   money_copper?: number;
+  needs_setup?: boolean;
   profiles?: { display_name?: string; legacy_points?: number } | null;
   character_professions: { profession: string; skill: number }[];
   character_talents: { slot: number; tree: string; rank: number }[];
@@ -65,8 +66,15 @@ export default function CharacterCard({
   return (
     <Link
       href={`/character/${c.id}`}
-      className={`block rounded bg-neutral-800 ${pad} hover:bg-neutral-700`}
+      className={`block rounded bg-neutral-800 ${pad} hover:bg-neutral-700 ${
+        c.needs_setup ? "ring-2 ring-amber-400" : ""
+      }`}
     >
+      {c.needs_setup && (
+        <div className="mb-2 flex items-center gap-1.5 rounded bg-amber-500/15 px-2 py-1 text-xs font-bold text-amber-300">
+          <span className="text-sm">⚠</span> Needs attention
+        </div>
+      )}
       <div className="flex items-start gap-3">
         <GameIcon name={classIcon(c.class)} label={c.class} size={compact ? 44 : 52} round />
         <div className="min-w-0 flex-1">

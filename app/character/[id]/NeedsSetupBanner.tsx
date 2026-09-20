@@ -65,16 +65,18 @@ export default function NeedsSetupBanner({
   }
 
   return (
-    <section className="mt-4 max-w-2xl rounded border border-amber-500 bg-amber-950/40 p-4">
-      <p className="font-semibold text-amber-300">⚠ Needs attention</p>
-      <p className="mt-1 text-sm text-gray-300">
-        This character was auto-created from the game and is missing a couple of details
-        the addon can't detect. Fill these in and save.
+    <section className="mb-4 rounded-lg border-2 border-amber-400 bg-amber-500/10 p-5 shadow-lg shadow-amber-900/30">
+      <p className="flex items-center gap-2 text-lg font-bold text-amber-300">
+        <span className="text-2xl">⚠</span> This character needs attention
+      </p>
+      <p className="mt-1 text-sm text-amber-100/80">
+        It was auto-created from the game and is missing details the addon can&apos;t
+        detect. Fill these in so it shows up correctly everywhere.
       </p>
 
-      <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row">
         <div className="flex-1">
-          <label className="block text-xs text-gray-400">Main spec</label>
+          <label className="block text-xs font-medium text-amber-200">Main spec</label>
           <input
             type="text"
             value={mainSpec}
@@ -85,7 +87,7 @@ export default function NeedsSetupBanner({
         </div>
 
         <div className="flex-1">
-          <label className="block text-xs text-gray-400">Ruleset</label>
+          <label className="block text-xs font-medium text-amber-200">Ruleset</label>
           <select
             value={ruleset}
             onChange={(e) => setRuleset(e.target.value)}
@@ -103,7 +105,7 @@ export default function NeedsSetupBanner({
       <button
         onClick={save}
         disabled={saving}
-        className="mt-3 rounded bg-amber-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        className="mt-4 rounded bg-amber-500 px-5 py-2.5 text-sm font-bold text-neutral-950 hover:bg-amber-400 disabled:opacity-50"
       >
         {saving ? "Saving..." : "Save and dismiss"}
       </button>
