@@ -6,6 +6,8 @@ import {
   BOTTOM_SLOTS as BOTTOM,
   TOTAL_SLOTS,
 } from "../../../lib/gear";
+import { RACE_FACTION } from "../../../lib/options";
+import { classIcon, iconUrl } from "../../../lib/icons";
 
 type Item = {
   slot: string;
@@ -113,6 +115,8 @@ export default function GearCard({
   for (const i of items) bySlot[i.slot] = i;
 
   const filled = Object.values(bySlot).filter((i) => i.item_name).length;
+  const faction = RACE_FACTION[race];
+  const emblem = classIcon(charClass);
 
   function renderTile(slot: string) {
     return <Tile key={slot} slot={slot} entry={bySlot[slot]} />;
@@ -125,15 +129,39 @@ export default function GearCard({
       <div className="mt-4 flex items-stretch justify-center gap-2 sm:gap-3">
         <div className="flex flex-col gap-2">{LEFT.map(renderTile)}</div>
 
-        <div className="flex min-w-0 max-w-xs flex-1 flex-col items-center justify-center rounded bg-neutral-900 p-3 text-center">
-          <div className="text-lg font-bold">{characterName}</div>
-          <div className="mt-1 text-xs text-gray-400">
+        <div className="relative flex min-w-0 max-w-xs flex-1 flex-col items-center justify-center overflow-hidden rounded bg-neutral-900 p-3 text-center">
+          {/* Large faded class emblem standing in for a character model -
+              purely decorative, sits behind everything else in this panel. */}
+          {emblem && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={iconUrl(emblem)}
+              alt=""
+              draggable={false}
+              className="pointer-events-none absolute left-1/2 top-1/2 h-40 w-40 -translate-x-1/2 -translate-y-1/2 rounded-full object-cover opacity-10 grayscale"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+              }}
+            />
+          )}
+
+          <div className="relative text-lg font-bold">{characterName}</div>
+          <div className="relative mt-1 text-xs text-gray-400">
             Level {level} {race} {charClass}
           </div>
-          <div className="mt-6 text-2xl font-bold">
+          {faction && (
+            <span
+              className={`chip relative mt-2 ${
+                faction === "Alliance" ? "chip-alliance" : "chip-horde"
+              }`}
+            >
+              {faction}
+            </span>
+          )}
+          <div className="relative mt-6 text-2xl font-bold">
             {filled} / {TOTAL_SLOTS}
           </div>
-          <div className="text-xs text-gray-400">slots equipped</div>
+          <div className="relative text-xs text-gray-400">slots equipped</div>
         </div>
 
         <div className="flex flex-col gap-2">{RIGHT.map(renderTile)}</div>

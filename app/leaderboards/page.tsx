@@ -218,13 +218,16 @@ export default async function Leaderboards({
         </p>
       )}
 
-        <ol className="mt-6 grid gap-3 xl:grid-cols-2">
+        <ol className="mt-6 grid items-stretch gap-3 xl:grid-cols-2">
         {sorted.map((c, i) => {
           const faction = RACE_FACTION[c.race];
           const ownerBadges = accountAchievementsByUser[c.user_id ?? ""] ?? [];
           return (
-            <li key={c.id}>
-              <Link href={`/character/${c.id}`} className="lb-row">
+            <li key={c.id} className="h-full">
+              <Link
+                href={`/character/${c.id}`}
+                className={`lb-row h-full ${i < 3 ? `lb-row-${i + 1}` : ""}`}
+              >
                 <span className={`rank-badge ${i < 3 ? `rank-${i + 1}` : ""}`}>{i + 1}</span>
 
                 <GameIcon name={classIcon(c.class)} label={c.class} size={48} round />
