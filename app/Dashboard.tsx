@@ -236,12 +236,16 @@ export default function Dashboard({
       {error && <p className="mt-4 text-red-400">{error}</p>}
 
       <div className="mt-6 grid gap-4 xl:grid-cols-3">
-        <div className="xl:col-span-2">
+        <section className="rounded-lg border border-neutral-700 bg-neutral-900/40 p-4 xl:col-span-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+            Character list
+          </h2>
+
           {characters.length === 0 && !error && (
-            <p className="text-gray-400">You have no characters yet.</p>
+            <p className="mt-3 text-gray-400">You have no characters yet.</p>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
             {characters.map((c) => (
               <CharacterCard
                 key={c.id}
@@ -258,7 +262,7 @@ export default function Dashboard({
           >
             Create Character
           </Link>
-        </div>
+        </section>
 
         <div className="flex flex-col gap-4">
           <section className="rounded bg-neutral-800 p-4">
