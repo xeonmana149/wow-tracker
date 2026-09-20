@@ -11,6 +11,7 @@ import CharacterCard, { type CardCharacter } from "./CharacterCard";
 import GameIcon from "./GameIcon";
 import NextList from "./NextList";
 import { MoneyDisplay } from "./MoneyIcons";
+import AccountSyncSetup from "./AccountSyncSetup";
 
 
 const PRIMARY = [
@@ -143,6 +144,8 @@ export default function Dashboard({
   return (
     <main className="mx-auto max-w-[1500px] p-4 md:p-6">
       <h1 className="text-4xl font-bold">My Characters</h1>
+
+       <AccountSyncSetup />
 
       <div className="mt-6 flex flex-wrap gap-4">
         <div className="min-w-[8.5rem] flex-1 rounded bg-neutral-800 p-4">
