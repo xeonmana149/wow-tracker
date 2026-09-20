@@ -73,7 +73,7 @@ export default async function CharacterPage({
 
   const { data: wishlist } = await supabase
     .from("character_wishlist")
-    .select("id, item_name, note")
+    .select("id, item_name, note, priority, obtained")
     .eq("character_id", id)
     .order("created_at", { ascending: true });
 

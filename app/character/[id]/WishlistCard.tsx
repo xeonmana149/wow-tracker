@@ -3,11 +3,31 @@
 import { useEffect, useState, FormEvent } from "react";
 import { supabase } from "../../../lib/supabase";
 
-type WishlistItem = {
+type Priority = "High" | "Medium" | "Low";
+
+export type WishlistItem = {
   id: string;
   item_name: string;
   note: string | null;
+  priority: Priority;
+  obtained: boolean;
 };
+
+const PRIORITY_ORDER: Record<Priority, number> = { High: 0, Medium: 1, Low: 2 };
+const PRIORITY_STYLE: Record<Priority, string> = {
+  High: "bg-red-500/20 text-red-300",
+  Medium: "bg-amber-500/20 text-amber-300",
+  Low: "bg-neutral-600/40 text-gray-300",
+};
+
+// Not-yet-obtained items first (that's what you actually need to see at a
+// glance), highest priority first within each group, then oldest first.
+function sortItems(items: WishlistItem[]) {
+  return [...items].sort((a, b) => {
+    if (a.obtained !== b.obtained) return a.obtained ? 1 : -1;
+    return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+  });
+}
 
 export default function WishlistCard({
   characterId,
@@ -19,9 +39,10 @@ export default function WishlistCard({
   items: WishlistItem[];
 }) {
   const [isOwner, setIsOwner] = useState(false);
-  const [list, setList] = useState<WishlistItem[]>(items);
+  const [list, setList] = useState<WishlistItem[]>(() => sortItems(items));
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
+  const [priority, setPriority] = useState<Priority>("Medium");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -49,8 +70,9 @@ export default function WishlistCard({
         user_id: userData.user.id,
         item_name: name.trim(),
         note: note.trim() || null,
+        priority,
       })
-      .select("id, item_name, note")
+      .select("id, item_name, note, priority, obtained")
       .single();
 
     setSaving(false);
@@ -58,9 +80,10 @@ export default function WishlistCard({
       setMessage(error.message);
       return;
     }
-    if (data) setList((prev) => [...prev, data]);
+    if (data) setList((prev) => sortItems([...prev, data as WishlistItem]));
     setName("");
     setNote("");
+    setPriority("Medium");
   }
 
   async function removeItem(id: string) {
@@ -69,6 +92,19 @@ export default function WishlistCard({
     const previous = list;
     setList((l) => l.filter((i) => i.id !== id));
     const { error } = await supabase.from("character_wishlist").delete().eq("id", id);
+    if (error) {
+      setMessage(error.message);
+      setList(previous);
+    }
+  }
+
+  async function toggleObtained(id: string, current: boolean) {
+    const previous = list;
+    setList((l) => sortItems(l.map((i) => (i.id === id ? { ...i, obtained: !current } : i))));
+    const { error } = await supabase
+      .from("character_wishlist")
+      .update({ obtained: !current })
+      .eq("id", id);
     if (error) {
       setMessage(error.message);
       setList(previous);
@@ -90,11 +126,37 @@ export default function WishlistCard({
           {list.map((item) => (
             <li
               key={item.id}
-              className="flex items-start justify-between gap-2 rounded bg-neutral-900 p-2"
+              className={`flex items-start justify-between gap-2 rounded bg-neutral-900 p-2 ${
+                item.obtained ? "opacity-50" : ""
+              }`}
             >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-white">{item.item_name}</p>
-                {item.note && <p className="text-xs text-gray-400">{item.note}</p>}
+              <div className="flex min-w-0 items-start gap-2">
+                {isOwner && (
+                  <input
+                    type="checkbox"
+                    checked={item.obtained}
+                    onChange={() => toggleObtained(item.id, item.obtained)}
+                    title="Got it"
+                    className="mt-1 h-4 w-4 shrink-0 accent-green-600"
+                  />
+                )}
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <p
+                      className={`truncate text-sm font-medium text-white ${
+                        item.obtained ? "line-through" : ""
+                      }`}
+                    >
+                      {item.item_name}
+                    </p>
+                    <span
+                      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${PRIORITY_STYLE[item.priority]}`}
+                    >
+                      {item.priority}
+                    </span>
+                  </div>
+                  {item.note && <p className="text-xs text-gray-400">{item.note}</p>}
+                </div>
               </div>
               {isOwner && (
                 <button
@@ -124,6 +186,15 @@ export default function WishlistCard({
             placeholder="Where it drops, or any note (optional)"
             className="rounded bg-white p-2 text-sm text-black"
           />
+          <select
+            value={priority}
+            onChange={(e) => setPriority(e.target.value as Priority)}
+            className="rounded bg-white p-2 text-sm text-black"
+          >
+            <option value="High">High priority</option>
+            <option value="Medium">Medium priority</option>
+            <option value="Low">Low priority</option>
+          </select>
           <button
             type="submit"
             disabled={saving}

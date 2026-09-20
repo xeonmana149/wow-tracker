@@ -41,7 +41,17 @@ export type CardCharacter = {
   character_professions: { profession: string; skill: number }[];
   character_talents: { slot: number; tree: string; rank: number }[];
   character_legacy?: { rank: number }[];
+  // The card only ever shows the first couple still-wanted items, with a
+  // "+N more" for the rest - the full list (with priority and the
+  // obtained checkbox) lives on the character's own page.
+  character_wishlist?: { item_name: string; priority: "High" | "Medium" | "Low"; obtained: boolean }[];
 
+};
+
+const WISHLIST_PRIORITY_ORDER: Record<"High" | "Medium" | "Low", number> = {
+  High: 0,
+  Medium: 1,
+  Low: 2,
 };
 
 // Points in each tree for one spec, like 0/32/10
@@ -70,6 +80,12 @@ export default function CharacterCard({
     .filter((p) => PRIMARY_PROFESSIONS.includes(p.profession))
     .sort((a, b) => b.skill - a.skill)
     .slice(0, 2);
+
+  const stillWanted = (c.character_wishlist ?? [])
+    .filter((w) => !w.obtained)
+    .sort((a, b) => WISHLIST_PRIORITY_ORDER[a.priority] - WISHLIST_PRIORITY_ORDER[b.priority]);
+  const wishlistPreview = stillWanted.slice(0, 2);
+  const wishlistMore = stillWanted.length - wishlistPreview.length;
 
   const pad = compact ? "p-3" : "p-4";
   const gap = compact ? "mt-2" : "mt-3";
@@ -171,6 +187,18 @@ export default function CharacterCard({
             <span className="text-gray-500">No professions yet</span>
           )}
         </div>
+
+        {wishlistPreview.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-neutral-700 pt-2 text-xs">
+            <span className="text-gray-500">Wants:</span>
+            {wishlistPreview.map((w) => (
+              <span key={w.item_name} className="text-gray-300">
+                {w.item_name}
+              </span>
+            ))}
+            {wishlistMore > 0 && <span className="text-gray-500">+{wishlistMore} more</span>}
+          </div>
+        )}
       </div>
 
       <div className={`${gap} border-t border-neutral-700 pt-3`}>

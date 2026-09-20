@@ -55,7 +55,7 @@ export default function Dashboard({
       const { data, error } = await supabase
         .from("characters")
         .select(
-          "*, character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank)"
+          "*, character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained)"
         )
         .eq("user_id", userData.user.id)
         .order("level", { ascending: false });
