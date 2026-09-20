@@ -1,6 +1,7 @@
 import { supabase } from "../../lib/supabase";
 import { loadCardData } from "../../lib/server-data";
 import type { CardCharacter } from "../CharacterCard";
+import { loadBadgeIconOverrides } from "../../lib/badgeIconOverrides";
 import FriendsBrowser, { type FriendPlayer } from "./FriendsBrowser";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +46,7 @@ export default async function Friends() {
   }
 
   const players = Object.values(byPlayer).sort((a, b) => a.name.localeCompare(b.name));
+  const iconOverrides = await loadBadgeIconOverrides(supabase);
 
   return (
     <main className="mx-auto max-w-[1500px] p-4 md:p-6">
@@ -63,7 +65,12 @@ export default async function Friends() {
       )}
 
       {players.length > 0 && (
-        <FriendsBrowser players={players} treeNames={treeNames} specIcons={specIcons} />
+        <FriendsBrowser
+          players={players}
+          treeNames={treeNames}
+          specIcons={specIcons}
+          iconOverrides={iconOverrides}
+        />
       )}
     </main>
   );

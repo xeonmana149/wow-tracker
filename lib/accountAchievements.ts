@@ -27,11 +27,11 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
     label: "Class Collector - a level-60 character of every class",
   },
   alliance_completionist: {
-    icon: "inv_bannerpvp_01",
+    icon: "inv_bannerpvp_02",
     label: "Alliance Completionist - a level-60 character of every Alliance race",
   },
   horde_completionist: {
-    icon: "inv_bannerpvp_02",
+    icon: "inv_bannerpvp_01",
     label: "Horde Completionist - a level-60 character of every Horde race",
   },
   diplomat: {
@@ -39,7 +39,7 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
     label: "Diplomat - maxed a character of every race on both factions",
   },
   master_of_all_trades: {
-    icon: "inv_misc_gizmo_01",
+    icon: "trade_engineering",
     label: "Master of All Trades - every profession maxed by someone on the account",
   },
   tycoon: {

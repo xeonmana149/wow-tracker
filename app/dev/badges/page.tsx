@@ -21,10 +21,17 @@ import {
   ACHIEVEMENT_BADGES,
   GOLD_TIER_BADGE,
   EPIC_TIER_META,
+  CREATED_DATE_ICON,
+  CREATED_DATE_ICON_KEY,
   type AchievementKind,
   type GoldTier,
 } from "../../CharacterCard";
 import { ACCOUNT_ACHIEVEMENT_BADGES, type AccountAchievementKind } from "../../../lib/accountAchievements";
+import {
+  loadBadgeIconOverrides,
+  resolvedIcon,
+  type BadgeIconOverrides,
+} from "../../../lib/badgeIconOverrides";
 
 type Character = { id: string; name: string; class: string };
 
@@ -40,6 +47,45 @@ const TIERS: GoldTier[] = ["Bronze", "Silver", "Gold"];
 // inconsistent if you ever look at the raw row.
 const EPIC_TIER_PROGRESS: Record<GoldTier, number> = { Bronze: 1, Silver: 3, Gold: 5 };
 
+// Every badge that can have its icon overridden, for the icon-editor
+// section below. Keys match what CharacterCard/AccountBadges look up via
+// resolvedIcon() - see lib/badgeIconOverrides.ts.
+type IconEntry = { key: string; label: string; defaultIcon: string };
+
+function buildIconEntries(): IconEntry[] {
+  const entries: IconEntry[] = [];
+  for (const kind of PLAIN_KINDS) {
+    entries.push({ key: kind, label: ACHIEVEMENT_BADGES[kind].label, defaultIcon: ACHIEVEMENT_BADGES[kind].icon });
+  }
+  for (const tier of TIERS) {
+    entries.push({
+      key: `gold:${tier}`,
+      label: GOLD_TIER_BADGE[tier].label,
+      defaultIcon: GOLD_TIER_BADGE[tier].icon,
+    });
+  }
+  entries.push({
+    key: "epic_gear",
+    label: "Epic gear tier (Bronze/Silver/Gold all share this one icon - only the ring color differs)",
+    defaultIcon: EPIC_TIER_META.Bronze.icon,
+  });
+  entries.push({
+    key: CREATED_DATE_ICON_KEY,
+    label: "Character creation-date badge",
+    defaultIcon: CREATED_DATE_ICON,
+  });
+  for (const kind of ACCOUNT_KINDS) {
+    entries.push({
+      key: kind,
+      label: ACCOUNT_ACHIEVEMENT_BADGES[kind].label,
+      defaultIcon: ACCOUNT_ACHIEVEMENT_BADGES[kind].icon,
+    });
+  }
+  return entries;
+}
+
+const ICON_ENTRIES = buildIconEntries();
+
 export default function BadgeTesterPage() {
   const [userId, setUserId] = useState("");
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -48,8 +94,38 @@ export default function BadgeTesterPage() {
   const [goldTier, setGoldTierState] = useState<GoldTier | null>(null);
   const [epicTier, setEpicTierState] = useState<GoldTier | null>(null);
   const [accountEarned, setAccountEarned] = useState<Set<AccountAchievementKind>>(new Set());
+  const [iconOverrides, setIconOverrides] = useState<BadgeIconOverrides>({});
+  const [iconDrafts, setIconDrafts] = useState<Record<string, string>>({});
+  const [iconSaving, setIconSaving] = useState<string | null>(null);
   const [status, setStatus] = useState("Loading...");
   const [busy, setBusy] = useState(false);
+
+  async function refreshIconOverrides() {
+    const overrides = await loadBadgeIconOverrides(supabase);
+    setIconOverrides(overrides);
+    const drafts: Record<string, string> = {};
+    for (const entry of ICON_ENTRIES) {
+      drafts[entry.key] = resolvedIcon(overrides, entry.key, entry.defaultIcon);
+    }
+    setIconDrafts(drafts);
+  }
+
+  async function saveIcon(key: string) {
+    const icon = (iconDrafts[key] ?? "").trim();
+    if (!icon) return;
+    setIconSaving(key);
+    await supabase.from("badge_icons").upsert({ key, icon }, { onConflict: "key" });
+    await refreshIconOverrides();
+    setIconSaving(null);
+  }
+
+  async function resetIcon(key: string, defaultIcon: string) {
+    setIconSaving(key);
+    await supabase.from("badge_icons").delete().eq("key", key);
+    setIconDrafts((prev) => ({ ...prev, [key]: defaultIcon }));
+    await refreshIconOverrides();
+    setIconSaving(null);
+  }
 
   async function loadCharacterBadges(characterId: string) {
     const { data } = await supabase
@@ -94,6 +170,7 @@ export default function BadgeTesterPage() {
         await loadCharacterBadges(chars[0].id);
       }
       await loadAccountBadges(userData.user.id);
+      await refreshIconOverrides();
       setStatus("");
     }
     init();
@@ -229,6 +306,7 @@ export default function BadgeTesterPage() {
               {PLAIN_KINDS.map((kind) => {
                 const badge = ACHIEVEMENT_BADGES[kind];
                 const on = earnedPlain.has(kind);
+                const icon = resolvedIcon(iconOverrides, kind, badge.icon);
                 return (
                   <button
                     key={kind}
@@ -239,7 +317,7 @@ export default function BadgeTesterPage() {
                       on ? "bg-amber-500 text-neutral-950" : "bg-neutral-800 text-gray-300"
                     }`}
                   >
-                    <GameIcon src={wowIconUrl(badge.icon)} label={badge.label} size={22} round />
+                    <GameIcon src={wowIconUrl(icon)} label={badge.label} size={22} round />
                     {kind}
                   </button>
                 );
@@ -270,7 +348,7 @@ export default function BadgeTesterPage() {
                   }`}
                 >
                   <GameIcon
-                    src={wowIconUrl(GOLD_TIER_BADGE[tier].icon)}
+                    src={wowIconUrl(resolvedIcon(iconOverrides, `gold:${tier}`, GOLD_TIER_BADGE[tier].icon))}
                     label={GOLD_TIER_BADGE[tier].label}
                     size={22}
                     round
@@ -304,7 +382,7 @@ export default function BadgeTesterPage() {
                   } ${EPIC_TIER_META[tier].ring}`}
                 >
                   <GameIcon
-                    src={wowIconUrl(EPIC_TIER_META[tier].icon)}
+                    src={wowIconUrl(resolvedIcon(iconOverrides, "epic_gear", EPIC_TIER_META[tier].icon))}
                     label={EPIC_TIER_META[tier].label}
                     size={22}
                     round
@@ -334,6 +412,7 @@ export default function BadgeTesterPage() {
               {ACCOUNT_KINDS.map((kind) => {
                 const badge = ACCOUNT_ACHIEVEMENT_BADGES[kind];
                 const on = accountEarned.has(kind);
+                const icon = resolvedIcon(iconOverrides, kind, badge.icon);
                 return (
                   <button
                     key={kind}
@@ -344,7 +423,7 @@ export default function BadgeTesterPage() {
                       on ? "bg-sky-500 text-neutral-950" : "bg-neutral-800 text-gray-300"
                     }`}
                   >
-                    <GameIcon src={wowIconUrl(badge.icon)} label={badge.label} size={22} round />
+                    <GameIcon src={wowIconUrl(icon)} label={badge.label} size={22} round />
                     {kind}
                   </button>
                 );
@@ -360,9 +439,83 @@ export default function BadgeTesterPage() {
             </button>
           </section>
 
+          <section className="mt-4 rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+              Customize icons
+            </h2>
+            <p className="mt-1 text-xs text-gray-500">
+              Type any WoW icon name (as it appears in the URL on{" "}
+              <a
+                href="https://www.wowhead.com/classic/icons"
+                target="_blank"
+                rel="noreferrer"
+                className="text-sky-400 underline"
+              >
+                Wowhead&apos;s icon browser
+              </a>{" "}
+              or in a tooltip on{" "}
+              <a
+                href="https://www.wowhead.com"
+                target="_blank"
+                rel="noreferrer"
+                className="text-sky-400 underline"
+              >
+                Wowhead
+              </a>
+              , e.g. &quot;inv_sword_04&quot;) and hit Save. This changes it site-wide for
+              everyone, immediately - no code change or redeploy needed.
+            </p>
+
+            <div className="mt-3 flex flex-col gap-2">
+              {ICON_ENTRIES.map((entry) => {
+                const draft = iconDrafts[entry.key] ?? entry.defaultIcon;
+                const isOverridden = iconOverrides[entry.key] !== undefined;
+                return (
+                  <div
+                    key={entry.key}
+                    className="flex flex-wrap items-center gap-3 rounded bg-neutral-800 p-2.5"
+                  >
+                    <GameIcon src={wowIconUrl(draft)} label={entry.label} size={32} round />
+                    <div className="min-w-[10rem] flex-1">
+                      <div className="text-sm text-gray-200">{entry.label}</div>
+                      <div className="text-xs text-gray-500">
+                        {entry.key}
+                        {isOverridden && <span className="ml-1.5 text-sky-400">(customized)</span>}
+                      </div>
+                    </div>
+                    <input
+                      value={draft}
+                      onChange={(e) =>
+                        setIconDrafts((prev) => ({ ...prev, [entry.key]: e.target.value }))
+                      }
+                      placeholder="icon_name"
+                      className="w-48 rounded bg-white p-1.5 text-sm text-black"
+                    />
+                    <button
+                      disabled={iconSaving === entry.key}
+                      onClick={() => saveIcon(entry.key)}
+                      className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+                    >
+                      Save
+                    </button>
+                    {isOverridden && (
+                      <button
+                        disabled={iconSaving === entry.key}
+                        onClick={() => resetIcon(entry.key, entry.defaultIcon)}
+                        className="rounded bg-neutral-700 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+                      >
+                        Reset to default
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
           <p className="mt-4 text-xs text-gray-500">
             Go check the character page, Dashboard or Friends page in another tab to see how
-            whatever you just toggled actually looks.
+            whatever you just toggled or re-iconned actually looks.
           </p>
         </>
       )}

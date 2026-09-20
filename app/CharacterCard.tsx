@@ -9,6 +9,7 @@ import {
 } from "../lib/icons";
 import { characterBars } from "../lib/progress";
 import type { AchievementKind, GoldTier } from "../lib/achievements";
+import { resolvedIcon, type BadgeIconOverrides } from "../lib/badgeIconOverrides";
 import GameIcon from "./GameIcon";
 import ProgressBars from "./ProgressBars";
 
@@ -61,7 +62,8 @@ export const EPIC_TIER_META: Record<GoldTier, { icon: string; ring: string; labe
 
 // The 📅 created-date badge isn't a real achievement, but gets the same
 // icon treatment for visual consistency with the ones that are.
-const CREATED_DATE_ICON = "inv_misc_pocketwatch_01";
+export const CREATED_DATE_ICON = "inv_misc_pocketwatch_01";
+export const CREATED_DATE_ICON_KEY = "created_date";
 
 type CardAchievement = {
   kind: AchievementKind | "gold" | "epic_gear";
@@ -118,11 +120,16 @@ export default function CharacterCard({
   treeNames,
   specIcons,
   compact = false,
+  iconOverrides = {},
 }: {
   c: CardCharacter;
   treeNames: string[] | undefined;
   specIcons: Record<string, string>;
   compact?: boolean;
+  // Lets any badge icon be swapped at runtime via the badge_icons table
+  // (edited from the /dev/badges tester page) instead of needing a code
+  // change. Defaults to {} so passing nothing just uses every default.
+  iconOverrides?: BadgeIconOverrides;
 }) {
   const faction = RACE_FACTION[c.race];
   const professions = (c.character_professions ?? [])
@@ -168,35 +175,30 @@ export default function CharacterCard({
             {(c.achievements ?? []).map((a) => {
               if (a.kind === "gold" && a.tier) {
                 const badge = GOLD_TIER_BADGE[a.tier];
+                const icon = resolvedIcon(iconOverrides, `gold:${a.tier}`, badge.icon);
                 return (
                   <span key="gold" className="inline-block rounded-full ring-2 ring-amber-500/70">
-                    <GameIcon src={wowIconUrl(badge.icon)} label={badge.label} size={22} round />
+                    <GameIcon src={wowIconUrl(icon)} label={badge.label} size={22} round />
                   </span>
                 );
               }
               if (a.kind === "epic_gear" && a.tier) {
                 const meta = EPIC_TIER_META[a.tier];
+                const icon = resolvedIcon(iconOverrides, "epic_gear", meta.icon);
                 return (
                   <span key="epic_gear" className={`inline-block rounded-full ${meta.ring}`}>
-                    <GameIcon src={wowIconUrl(meta.icon)} label={meta.label} size={22} round />
+                    <GameIcon src={wowIconUrl(icon)} label={meta.label} size={22} round />
                   </span>
                 );
               }
               const badge = ACHIEVEMENT_BADGES[a.kind as AchievementKind];
               if (!badge) return null;
-              return (
-                <GameIcon
-                  key={a.kind}
-                  src={wowIconUrl(badge.icon)}
-                  label={badge.label}
-                  size={22}
-                  round
-                />
-              );
+              const icon = resolvedIcon(iconOverrides, a.kind, badge.icon);
+              return <GameIcon key={a.kind} src={wowIconUrl(icon)} label={badge.label} size={22} round />;
             })}
             {createdLabel && (
               <GameIcon
-                src={wowIconUrl(CREATED_DATE_ICON)}
+                src={wowIconUrl(resolvedIcon(iconOverrides, CREATED_DATE_ICON_KEY, CREATED_DATE_ICON))}
                 label={`Created ${createdLabel}`}
                 size={22}
                 round

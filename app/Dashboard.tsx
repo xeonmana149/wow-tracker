@@ -15,6 +15,7 @@ import AccountSyncSetup from "./AccountSyncSetup";
 import AccountBadges from "./AccountBadges";
 import { awardAchievement, ACHIEVEMENT_MESSAGE } from "../lib/achievements";
 import type { AccountAchievementKind } from "../lib/accountAchievements";
+import { loadBadgeIconOverrides, type BadgeIconOverrides } from "../lib/badgeIconOverrides";
 
 
 const PRIMARY = [
@@ -45,6 +46,7 @@ export default function Dashboard({
   const [legacyDraft, setLegacyDraft] = useState("0");
   const [legacyMessage, setLegacyMessage] = useState("");
   const [accountAchievements, setAccountAchievements] = useState<AccountAchievementKind[]>([]);
+  const [iconOverrides, setIconOverrides] = useState<BadgeIconOverrides>({});
 
   useEffect(() => {
     async function load() {
@@ -105,6 +107,8 @@ export default function Dashboard({
       setAccountAchievements(
         (accountAchievementRows ?? []).map((r) => r.kind as AccountAchievementKind)
       );
+
+      setIconOverrides(await loadBadgeIconOverrides(supabase));
 
       setStatus("ready");
     }
@@ -311,7 +315,7 @@ export default function Dashboard({
             it's for.
           </p>
           <div className="mt-3">
-            <AccountBadges kinds={accountAchievements} size="md" />
+            <AccountBadges kinds={accountAchievements} size="md" iconOverrides={iconOverrides} />
           </div>
         </section>
       )}
@@ -335,6 +339,7 @@ export default function Dashboard({
                 c={c}
                 treeNames={treeNames[c.class]}
                 specIcons={specIcons}
+                iconOverrides={iconOverrides}
               />
             ))}
           </div>

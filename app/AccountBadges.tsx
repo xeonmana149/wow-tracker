@@ -1,5 +1,6 @@
 import { ACCOUNT_ACHIEVEMENT_BADGES, type AccountAchievementKind } from "../lib/accountAchievements";
 import { wowIconUrl } from "../lib/icons";
+import { resolvedIcon, type BadgeIconOverrides } from "../lib/badgeIconOverrides";
 import GameIcon from "./GameIcon";
 
 // Small row of account-wide achievement badges - shared between the
@@ -9,9 +10,14 @@ import GameIcon from "./GameIcon";
 export default function AccountBadges({
   kinds,
   size = "sm",
+  iconOverrides = {},
 }: {
   kinds: AccountAchievementKind[];
   size?: "sm" | "md";
+  // Runtime icon overrides from the badge_icons table - see
+  // lib/badgeIconOverrides.ts. Defaults to {} so passing nothing just uses
+  // every badge's coded-in default icon.
+  iconOverrides?: BadgeIconOverrides;
 }) {
   if (kinds.length === 0) return null;
 
@@ -22,9 +28,10 @@ export default function AccountBadges({
       {kinds.map((kind) => {
         const badge = ACCOUNT_ACHIEVEMENT_BADGES[kind];
         if (!badge) return null;
+        const icon = resolvedIcon(iconOverrides, kind, badge.icon);
         return (
           <span key={kind} className="inline-block rounded-full ring-2 ring-sky-500/60">
-            <GameIcon src={wowIconUrl(badge.icon)} label={badge.label} size={px} round />
+            <GameIcon src={wowIconUrl(icon)} label={badge.label} size={px} round />
           </span>
         );
       })}

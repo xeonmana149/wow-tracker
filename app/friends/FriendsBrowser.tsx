@@ -6,6 +6,7 @@ import CharacterCard, { type CardCharacter } from "../CharacterCard";
 import GameIcon from "../GameIcon";
 import AccountBadges from "../AccountBadges";
 import type { AccountAchievementKind } from "../../lib/accountAchievements";
+import type { BadgeIconOverrides } from "../../lib/badgeIconOverrides";
 import CraftingDirectory from "./CraftingDirectory";
 
 export type FriendPlayer = {
@@ -19,10 +20,12 @@ export default function FriendsBrowser({
   players,
   treeNames,
   specIcons,
+  iconOverrides = {},
 }: {
   players: FriendPlayer[];
   treeNames: Record<string, string[]>;
   specIcons: Record<string, string>;
+  iconOverrides?: BadgeIconOverrides;
 }) {
   const [selected, setSelected] = useState("all");
 
@@ -135,7 +138,7 @@ export default function FriendsBrowser({
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5 truncate">
                     <span className="truncate font-bold">{p.name}</span>
-                    <AccountBadges kinds={p.accountAchievements ?? []} />
+                    <AccountBadges kinds={p.accountAchievements ?? []} iconOverrides={iconOverrides} />
                   </span>
                   <span className="sub block truncate text-xs text-gray-400">
                     {p.characters.length}{" "}
@@ -156,7 +159,13 @@ export default function FriendsBrowser({
           <>
             <div className="mb-3 flex flex-wrap items-baseline gap-x-3">
               <h2 className="text-xl font-bold">{current ? current.name : "Everyone"}</h2>
-              {current && <AccountBadges kinds={current.accountAchievements ?? []} size="md" />}
+              {current && (
+                <AccountBadges
+                  kinds={current.accountAchievements ?? []}
+                  size="md"
+                  iconOverrides={iconOverrides}
+                />
+              )}
               <p className="text-sm text-gray-400">
                 {shown.length} {shown.length === 1 ? "character" : "characters"}
                 {!current && " · highest level first"}
@@ -167,7 +176,12 @@ export default function FriendsBrowser({
               {shown.map(({ c, owner }) => (
                 <div key={c.id}>
                   {!current && <div className="mb-1 pl-1 text-xs text-gray-500">{owner}</div>}
-                  <CharacterCard c={c} treeNames={treeNames[c.class]} specIcons={specIcons} />
+                  <CharacterCard
+                    c={c}
+                    treeNames={treeNames[c.class]}
+                    specIcons={specIcons}
+                    iconOverrides={iconOverrides}
+                  />
                 </div>
               ))}
             </div>
