@@ -92,6 +92,11 @@ export async function POST(req: NextRequest) {
             class: parsed.basic?.class || "Unknown",
             faction: parsed.basic?.faction ?? null,
             realm,
+            // The database requires every character to have a non-empty
+            // main_spec - the addon doesn't know your intended spec at
+            // creation time, so this is a placeholder you can edit on the
+            // site afterward.
+            main_spec: "Unspecified",
             level: typeof parsed.basic?.level === "number" ? parsed.basic.level : 1,
             guild: parsed.basic?.guild ?? null,
           })
