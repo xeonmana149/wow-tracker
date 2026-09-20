@@ -13,7 +13,7 @@ import StatsCard from "./StatsCard";
 import ProgressBars from "../../ProgressBars";
 import NextList from "../../NextList";
 import ImportPanel from "./ImportPanel";
-import SyncSetup from "./SyncSetup";
+
 
 export const dynamic = "force-dynamic";
 
@@ -234,7 +234,6 @@ export default async function CharacterPage({
           activeSpec={character.active_spec ?? 1}
           />
 
-           <SyncSetup characterId={character.id} ownerId={character.user_id} />
 
         </div>
 
