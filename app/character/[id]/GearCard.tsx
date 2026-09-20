@@ -12,6 +12,7 @@ type Item = {
   item_name: string | null;
   item_link: string | null;
   item_quality: string | null;
+  item_icon: string | null;
   tooltip: string[] | null;
 };
 
@@ -56,11 +57,26 @@ function Tile({ slot, entry }: { slot: string; entry: Item | undefined }) {
               }
             : undefined
         }
-        className={`flex h-16 w-16 flex-col items-center justify-center gap-0.5 rounded border-2 px-1 text-center leading-tight sm:w-24 ${
+        className={`flex h-20 w-16 flex-col items-center justify-center gap-0.5 rounded border-2 px-1 text-center leading-tight sm:w-24 ${
           hasItem ? "" : "border-neutral-700 bg-neutral-900"
         }`}
       >
-        <span className="text-[10px] text-gray-400">{slot}</span>
+        {hasItem ? (
+          entry?.item_icon && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={entry.item_icon}
+              alt=""
+              draggable={false}
+              className="h-6 w-6 shrink-0 rounded border border-black/40 object-cover"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+              }}
+            />
+          )
+        ) : (
+          <span className="text-[10px] text-gray-400">{slot}</span>
+        )}
         {entry?.item_name && (
           <span
             className="line-clamp-2 w-full break-words text-[11px] font-semibold"

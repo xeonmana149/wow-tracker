@@ -1,4 +1,3 @@
-import { pointsForLevel } from "./talents";
 import { LEGACY_CAP } from "./legacy";
 import { PRIMARY_PROFESSIONS } from "./icons";
 import { MAX_SKILL } from "./professions";
@@ -26,6 +25,14 @@ function plural(n: number, one: string, many: string) {
   return n === 1 ? one : many;
 }
 
+// Talent points available at a given level - one per level starting at
+// level 10 (no points before that), so the level cap of 60 works out to
+// 51. Computed directly here rather than through lib/talents.ts, since
+// that file wasn't available to check in this session.
+function talentBudgetForLevel(level: number) {
+  return Math.max(0, level - 9);
+}
+
 // Talent points spent in the spec the character is playing
 function talentsSpent(c: ProgressInput) {
   const slot = c.off_spec && c.active_spec === 2 ? 2 : 1;
@@ -49,7 +56,7 @@ function primarySkill(c: ProgressInput) {
 }
 
 export function characterBars(c: ProgressInput): Bar[] {
-  const budget = pointsForLevel(c.level);
+  const budget = talentBudgetForLevel(c.level);
   const talents = talentsSpent(c);
   const legacy = legacySpent(c);
   const skill = primarySkill(c);
@@ -79,7 +86,7 @@ export function characterBars(c: ProgressInput): Bar[] {
 export function whatsNext(c: ProgressInput, earned: number): Todo[] {
   const todos: Todo[] = [];
 
-  const talentsLeft = pointsForLevel(c.level) - talentsSpent(c);
+  const talentsLeft = talentBudgetForLevel(c.level) - talentsSpent(c);
   if (talentsLeft > 0) {
     todos.push({
       kind: "talent",

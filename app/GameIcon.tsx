@@ -24,7 +24,6 @@ export default function GameIcon({
 }) {
   const [failed, setFailed] = useState(false);
   const shape = round ? "rounded-full" : "rounded";
-  const box = { width: size, height: size };
   const resolvedSrc = src ?? (name ? iconUrl(name) : null);
 
   // Without this, once one icon 404s (setting failed=true), this component
@@ -37,35 +36,37 @@ export default function GameIcon({
     setFailed(false);
   }, [resolvedSrc]);
 
-  const image =
-    !resolvedSrc || failed ? (
-      <span
-        className={`inline-flex shrink-0 items-center justify-center border border-amber-900/70 bg-neutral-900 text-[10px] font-bold text-amber-200 ${shape}`}
-        style={box}
-      >
-        {label.slice(0, 2).toUpperCase()}
-      </span>
-    ) : (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={resolvedSrc}
-        alt={label}
-        width={size}
-        height={size}
-        draggable={false}
-        onError={() => setFailed(true)}
-        className={`shrink-0 border border-amber-900/70 object-cover ${shape}`}
-        style={box}
-      />
-    );
-
-  // A custom themed tooltip instead of the browser's plain title attribute -
-  // shown on hover via group-hover, positioned above the icon. `group/icon`
-  // is a scoped group name so nested GameIcons (or other hoverable things
-  // nearby) don't accidentally trigger each other's tooltips.
+  // The wrapper's size (set here, via inline style) is what's authoritative
+  // for the icon's box - the image/fallback tile inside just fills it
+  // completely (h-full w-full), rather than trying to size itself. That
+  // way nothing about a surrounding flex row (stretch, wrapping, etc.) can
+  // squash or stretch the icon into a non-square oval - its box can't move.
   return (
-    <span className="group/icon relative inline-flex">
-      {image}
+    <span
+      className="group/icon relative inline-block shrink-0 align-middle"
+      style={{ width: size, height: size }}
+    >
+      {!resolvedSrc || failed ? (
+        <span
+          className={`flex h-full w-full items-center justify-center border border-amber-900/70 bg-neutral-900 text-[10px] font-bold text-amber-200 ${shape}`}
+        >
+          {label.slice(0, 2).toUpperCase()}
+        </span>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={resolvedSrc}
+          alt={label}
+          draggable={false}
+          onError={() => setFailed(true)}
+          className={`h-full w-full border border-amber-900/70 object-cover ${shape}`}
+        />
+      )}
+
+      {/* A custom themed tooltip instead of the browser's plain title
+          attribute - shown on hover via group-hover, positioned above the
+          icon. `group/icon` is a scoped group name so nested GameIcons
+          don't accidentally trigger each other's tooltips. */}
       <span
         role="tooltip"
         className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-max max-w-[260px] -translate-x-1/2 scale-95 rounded-lg border border-amber-700/70 bg-neutral-950 px-3 py-2 text-sm font-medium leading-snug text-amber-100 opacity-0 shadow-lg shadow-black/60 transition-all duration-100 group-hover/icon:scale-100 group-hover/icon:opacity-100"
