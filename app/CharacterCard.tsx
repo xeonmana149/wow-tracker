@@ -16,7 +16,7 @@ export type { AchievementKind, GoldTier };
 // Plain yes/no achievements - anyone can earn each of these independently
 // (see lib/achievements.ts). Doesn't cover "gold" or "epic_gear", which
 // are tiered instead and rendered separately below.
-const ACHIEVEMENT_BADGES: Record<AchievementKind, { icon: string; label: string }> = {
+export const ACHIEVEMENT_BADGES: Record<AchievementKind, { icon: string; label: string }> = {
   max_level: { icon: "👑", label: "Reached the level cap" },
   legendary_item: { icon: "🟠", label: "Obtained a Legendary item" },
   maxed_profession: { icon: "⭐", label: "Maxed a profession" },
@@ -27,7 +27,7 @@ const ACHIEVEMENT_BADGES: Record<AchievementKind, { icon: string; label: string 
   well_rounded: { icon: "🧭", label: "Well-Rounded - has both a main and an off spec" },
 };
 
-const GOLD_TIER_BADGE: Record<GoldTier, { icon: string; label: string }> = {
+export const GOLD_TIER_BADGE: Record<GoldTier, { icon: string; label: string }> = {
   Bronze: { icon: "🥉", label: "Bronze wealth tier - 50g+" },
   Silver: { icon: "🥈", label: "Silver wealth tier - 500g+" },
   Gold: { icon: "🥇", label: "Gold wealth tier - 5000g+" },
@@ -36,7 +36,7 @@ const GOLD_TIER_BADGE: Record<GoldTier, { icon: string; label: string }> = {
 // Epic-gear tier reuses one gem icon for all three tiers (there's no great
 // bronze/silver/gold gem emoji set) and shows the tier via a colored ring
 // instead.
-const EPIC_TIER_META: Record<GoldTier, { ring: string; label: string }> = {
+export const EPIC_TIER_META: Record<GoldTier, { ring: string; label: string }> = {
   Bronze: { ring: "ring-2 ring-amber-700", label: "Equipped 1+ Epic items - Bronze tier" },
   Silver: { ring: "ring-2 ring-gray-300", label: "Equipped 3+ Epic items - Silver tier" },
   Gold: { ring: "ring-2 ring-yellow-400", label: "Equipped 5+ Epic items - Gold tier" },
