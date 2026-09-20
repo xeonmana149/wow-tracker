@@ -102,6 +102,10 @@ export async function POST(req: NextRequest) {
             ruleset: "PVE",
             level: typeof parsed.basic?.level === "number" ? parsed.basic.level : 1,
             guild: parsed.basic?.guild ?? null,
+            // Flags this character on the website so the owner gets a
+            // "Needs attention" banner prompting them to fill in the real
+            // main spec and ruleset (the addon can't know either yet).
+            needs_setup: true,
           })
           .select("id")
           .single();
