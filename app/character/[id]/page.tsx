@@ -14,6 +14,7 @@ import ProgressBars from "../../ProgressBars";
 import NextList from "../../NextList";
 import ImportPanel from "./ImportPanel";
 import NeedsSetupBanner from "./NeedsSetupBanner";
+import WishlistCard from "./WishlistCard";
 
 
 export const dynamic = "force-dynamic";
@@ -69,6 +70,12 @@ export default async function CharacterPage({
     .select("rank")
     .eq("character_id", id);
   const legacySpent = (legacyRows ?? []).reduce((n, r) => n + r.rank, 0);
+
+  const { data: wishlist } = await supabase
+    .from("character_wishlist")
+    .select("id, item_name, note")
+    .eq("character_id", id)
+    .order("created_at", { ascending: true });
 
   const faction = RACE_FACTION[character.race];
 
@@ -265,6 +272,12 @@ export default async function CharacterPage({
             race={character.race}
             charClass={character.class}
             level={character.level}
+          />
+
+          <WishlistCard
+            characterId={character.id}
+            ownerId={character.user_id}
+            items={wishlist ?? []}
           />
         </div>
       </div>

@@ -7,7 +7,7 @@ import { LEGACY_CAP } from "../lib/legacy";
 import { PROFESSION_ICONS, classIcon } from "../lib/icons";
 import { SUPPLIED_BY } from "../lib/professions";
 import { missingProfessions, whatsNext, type Todo } from "../lib/progress";
-import CharacterCard, { type CardCharacter } from "./CharacterCard";
+import CharacterCard, { type CardCharacter, type MilestoneKind } from "./CharacterCard";
 import GameIcon from "./GameIcon";
 import NextList from "./NextList";
 import { MoneyDisplay } from "./MoneyIcons";
@@ -63,7 +63,24 @@ export default function Dashboard({
       if (error) {
         setError(error.message);
       } else {
-        setCharacters((data ?? []) as CardCharacter[]);
+        // Milestones are account-wide "firsts" (only 3 rows max, one per
+        // kind), so it's cheap to just grab all of them and match them up
+        // to whichever of your characters holds each one.
+        const { data: milestoneRows } = await supabase
+          .from("milestones")
+          .select("kind, character_id");
+        const milestonesByCharacter = new Map<string, MilestoneKind[]>();
+        for (const m of (milestoneRows ?? []) as { kind: MilestoneKind; character_id: string }[]) {
+          const list = milestonesByCharacter.get(m.character_id) ?? [];
+          list.push(m.kind);
+          milestonesByCharacter.set(m.character_id, list);
+        }
+
+        const withMilestones = (data ?? []).map((c) => ({
+          ...c,
+          milestones: milestonesByCharacter.get(c.id) ?? [],
+        }));
+        setCharacters(withMilestones as CardCharacter[]);
       }
 
       const { data: profile } = await supabase

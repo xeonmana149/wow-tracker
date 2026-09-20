@@ -10,6 +10,16 @@ import { characterBars } from "../lib/progress";
 import GameIcon from "./GameIcon";
 import ProgressBars from "./ProgressBars";
 
+// One of the three "firsts" tracked account-wide - see the milestones
+// table. Optional because most characters won't hold any.
+export type MilestoneKind = "first_max_level" | "first_epic_item" | "first_maxed_profession";
+
+const MILESTONE_BADGES: Record<MilestoneKind, { icon: string; label: string }> = {
+  first_max_level: { icon: "🥇", label: "First to hit max level" },
+  first_epic_item: { icon: "🟣", label: "First to equip an Epic or Legendary item" },
+  first_maxed_profession: { icon: "⭐", label: "First to max a profession" },
+};
+
 export type CardCharacter = {
   id: string;
   name: string;
@@ -26,6 +36,7 @@ export type CardCharacter = {
   active_spec?: number | null;
   money_copper?: number;
   needs_setup?: boolean;
+  milestones?: MilestoneKind[];
   profiles?: { display_name?: string; legacy_points?: number } | null;
   character_professions: { profession: string; skill: number }[];
   character_talents: { slot: number; tree: string; rank: number }[];
@@ -81,6 +92,19 @@ export default function CharacterCard({
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-lg font-bold text-white">{c.name}</span>
             <span className="rounded bg-neutral-600 px-2 py-0.5 text-xs">{c.character_type}</span>
+            {(c.milestones ?? []).map((kind) => {
+              const badge = MILESTONE_BADGES[kind];
+              if (!badge) return null;
+              return (
+                <span
+                  key={kind}
+                  title={badge.label}
+                  className="grid h-5 w-5 place-items-center rounded-full bg-amber-500/20 text-xs"
+                >
+                  {badge.icon}
+                </span>
+              );
+            })}
           </div>
           <div className="mt-1 flex items-center gap-2 text-sm text-gray-400">
             <GameIcon name={RACE_ICONS[c.race]} label={c.race} size={20} round />
