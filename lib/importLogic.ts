@@ -12,6 +12,11 @@ export type ParsedTraitNode = {
 export type ParsedExport = {
   meta?: { exportedAt?: string };
   basic?: {
+    name?: string;
+    race?: string;
+    class?: string;
+    faction?: string;
+    realm?: string;
     level?: number;
     money?: number;
     guild?: string | null;
