@@ -12,6 +12,14 @@ export function iconUrlForFileId(fileId: number | string | null | undefined): st
   return `https://wow.zamimg.com/images/wow/icons/large/${name}.jpg`;
 }
 
+// Same live icon CDN as iconUrlForFileId, but for icons picked by name up
+// front (achievement badges) rather than looked up from an addon-reported
+// file ID. Used instead of the local /talent-icons/ folder because there
+// are far more of these than are worth bundling - the CDN has essentially
+// every icon in the game.
+export function wowIconUrl(name: string) {
+  return `https://wow.zamimg.com/images/wow/icons/large/${name}.jpg`;
+}
 
 // Picture helpers. Safe to use in any component.
 

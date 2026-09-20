@@ -15,30 +15,42 @@ export type AccountAchievementKind =
   | "big_family"
   | "pvp_dynasty";
 
+// Icon names are real WoW icon names, resolved to actual game art through
+// wowIconUrl() (see lib/icons.ts) by whatever renders these - AccountBadges
+// for the site, or the badge tester page directly.
 export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
   AccountAchievementKind,
   { icon: string; label: string }
 > = {
-  class_collector: { icon: "🧩", label: "Class Collector - a level-60 character of every class" },
+  class_collector: {
+    icon: "achievement_general",
+    label: "Class Collector - a level-60 character of every class",
+  },
   alliance_completionist: {
-    icon: "🦁",
+    icon: "inv_bannerpvp_01",
     label: "Alliance Completionist - a level-60 character of every Alliance race",
   },
   horde_completionist: {
-    icon: "🐺",
+    icon: "inv_bannerpvp_02",
     label: "Horde Completionist - a level-60 character of every Horde race",
   },
   diplomat: {
-    icon: "🕊️",
+    icon: "achievement_reputation_01",
     label: "Diplomat - maxed a character of every race on both factions",
   },
   master_of_all_trades: {
-    icon: "🛠️",
+    icon: "inv_misc_gizmo_01",
     label: "Master of All Trades - every profession maxed by someone on the account",
   },
-  tycoon: { icon: "💎", label: "Tycoon - 10,000 combined gold across your characters" },
-  big_family: { icon: "👨‍👩‍👧‍👦", label: "Big Family - 5 or more characters" },
-  pvp_dynasty: { icon: "🏰", label: "PvP Dynasty - 2 or more characters at the top PvP rank" },
+  tycoon: {
+    icon: "inv_misc_coin_06",
+    label: "Tycoon - 10,000 combined gold across your characters",
+  },
+  big_family: { icon: "inv_misc_bag_10", label: "Big Family - 5 or more characters" },
+  pvp_dynasty: {
+    icon: "inv_jewelry_ring_03",
+    label: "PvP Dynasty - 2 or more characters at the top PvP rank",
+  },
 };
 
 const ACCOUNT_ACHIEVEMENT_MESSAGE: Record<AccountAchievementKind, (name: string) => string> = {

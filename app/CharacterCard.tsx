@@ -5,6 +5,7 @@ import {
   PROFESSION_ICONS,
   RACE_ICONS,
   classIcon,
+  wowIconUrl,
 } from "../lib/icons";
 import { characterBars } from "../lib/progress";
 import type { AchievementKind, GoldTier } from "../lib/achievements";
@@ -16,31 +17,51 @@ export type { AchievementKind, GoldTier };
 // Plain yes/no achievements - anyone can earn each of these independently
 // (see lib/achievements.ts). Doesn't cover "gold" or "epic_gear", which
 // are tiered instead and rendered separately below.
+// Icon names are real WoW icon names, resolved to actual game art through
+// wowIconUrl() - the same live icon CDN used for gear icons elsewhere on
+// the site (see lib/icons.ts). If a name is ever wrong, GameIcon quietly
+// falls back to a text tile instead of breaking.
 export const ACHIEVEMENT_BADGES: Record<AchievementKind, { icon: string; label: string }> = {
-  max_level: { icon: "👑", label: "Reached the level cap" },
-  legendary_item: { icon: "🟠", label: "Obtained a Legendary item" },
-  maxed_profession: { icon: "⭐", label: "Maxed a profession" },
-  renaissance: { icon: "🎓", label: "Maxed every profession (2 primary + all 3 secondary)" },
-  maxed_legacy: { icon: "🏵️", label: "Maxed the account's Legacy points" },
-  top_pvp_rank: { icon: "⚔️", label: "Reached the top PvP rank" },
-  founding_member: { icon: "🏛️", label: "Founding Member - created during launch week" },
-  well_rounded: { icon: "🧭", label: "Well-Rounded - has both a main and an off spec" },
+  max_level: { icon: "achievement_level_60", label: "Reached the level cap" },
+  legendary_item: { icon: "inv_hammer_unique_sulfuras", label: "Obtained a Legendary item" },
+  maxed_profession: { icon: "inv_misc_wrench_01", label: "Maxed a profession" },
+  renaissance: { icon: "inv_misc_book_09", label: "Maxed every profession (2 primary + all 3 secondary)" },
+  maxed_legacy: { icon: "inv_misc_rune_01", label: "Maxed the account's Legacy points" },
+  top_pvp_rank: { icon: "achievement_pvp_rank_grandmarshal", label: "Reached the top PvP rank" },
+  founding_member: { icon: "inv_misc_map_01", label: "Founding Member - created during launch week" },
+  well_rounded: { icon: "ability_dualwield", label: "Well-Rounded - has both a main and an off spec" },
 };
 
 export const GOLD_TIER_BADGE: Record<GoldTier, { icon: string; label: string }> = {
-  Bronze: { icon: "🥉", label: "Bronze wealth tier - 50g+" },
-  Silver: { icon: "🥈", label: "Silver wealth tier - 500g+" },
-  Gold: { icon: "🥇", label: "Gold wealth tier - 5000g+" },
+  Bronze: { icon: "inv_misc_coin_01", label: "Bronze wealth tier - 50g+" },
+  Silver: { icon: "inv_misc_coin_03", label: "Silver wealth tier - 500g+" },
+  Gold: { icon: "inv_misc_coin_05", label: "Gold wealth tier - 5000g+" },
 };
 
 // Epic-gear tier reuses one gem icon for all three tiers (there's no great
-// bronze/silver/gold gem emoji set) and shows the tier via a colored ring
-// instead.
-export const EPIC_TIER_META: Record<GoldTier, { ring: string; label: string }> = {
-  Bronze: { ring: "ring-2 ring-amber-700", label: "Equipped 1+ Epic items - Bronze tier" },
-  Silver: { ring: "ring-2 ring-gray-300", label: "Equipped 3+ Epic items - Silver tier" },
-  Gold: { ring: "ring-2 ring-yellow-400", label: "Equipped 5+ Epic items - Gold tier" },
+// distinct bronze/silver/gold gem in the game's icon set) and shows the
+// tier via a colored ring around it instead.
+export const EPIC_TIER_META: Record<GoldTier, { icon: string; ring: string; label: string }> = {
+  Bronze: {
+    icon: "inv_misc_gem_amethyst_02",
+    ring: "ring-2 ring-amber-700",
+    label: "Equipped 1+ Epic items - Bronze tier",
+  },
+  Silver: {
+    icon: "inv_misc_gem_amethyst_02",
+    ring: "ring-2 ring-gray-300",
+    label: "Equipped 3+ Epic items - Silver tier",
+  },
+  Gold: {
+    icon: "inv_misc_gem_amethyst_02",
+    ring: "ring-2 ring-yellow-400",
+    label: "Equipped 5+ Epic items - Gold tier",
+  },
 };
+
+// The 📅 created-date badge isn't a real achievement, but gets the same
+// icon treatment for visual consistency with the ones that are.
+const CREATED_DATE_ICON = "inv_misc_pocketwatch_01";
 
 type CardAchievement = {
   kind: AchievementKind | "gold" | "epic_gear";
@@ -148,46 +169,38 @@ export default function CharacterCard({
               if (a.kind === "gold" && a.tier) {
                 const badge = GOLD_TIER_BADGE[a.tier];
                 return (
-                  <span
-                    key="gold"
-                    title={badge.label}
-                    className="grid h-5 w-5 place-items-center rounded-full bg-amber-500/20 text-xs"
-                  >
-                    {badge.icon}
+                  <span key="gold" className="inline-block rounded-full ring-2 ring-amber-500/70">
+                    <GameIcon src={wowIconUrl(badge.icon)} label={badge.label} size={22} round />
                   </span>
                 );
               }
               if (a.kind === "epic_gear" && a.tier) {
                 const meta = EPIC_TIER_META[a.tier];
                 return (
-                  <span
-                    key="epic_gear"
-                    title={meta.label}
-                    className={`grid h-5 w-5 place-items-center rounded-full bg-purple-500/20 text-xs ${meta.ring}`}
-                  >
-                    🟣
+                  <span key="epic_gear" className={`inline-block rounded-full ${meta.ring}`}>
+                    <GameIcon src={wowIconUrl(meta.icon)} label={meta.label} size={22} round />
                   </span>
                 );
               }
               const badge = ACHIEVEMENT_BADGES[a.kind as AchievementKind];
               if (!badge) return null;
               return (
-                <span
+                <GameIcon
                   key={a.kind}
-                  title={badge.label}
-                  className="grid h-5 w-5 place-items-center rounded-full bg-amber-500/20 text-xs"
-                >
-                  {badge.icon}
-                </span>
+                  src={wowIconUrl(badge.icon)}
+                  label={badge.label}
+                  size={22}
+                  round
+                />
               );
             })}
             {createdLabel && (
-              <span
-                title={`Created ${createdLabel}`}
-                className="grid h-5 w-5 place-items-center rounded-full bg-neutral-600/40 text-xs"
-              >
-                📅
-              </span>
+              <GameIcon
+                src={wowIconUrl(CREATED_DATE_ICON)}
+                label={`Created ${createdLabel}`}
+                size={22}
+                round
+              />
             )}
           </div>
           <div className="mt-1 flex items-center gap-2 text-sm text-gray-400">

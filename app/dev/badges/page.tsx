@@ -15,6 +15,8 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
+import { wowIconUrl } from "../../../lib/icons";
+import GameIcon from "../../GameIcon";
 import {
   ACHIEVEMENT_BADGES,
   GOLD_TIER_BADGE,
@@ -233,11 +235,11 @@ export default function BadgeTesterPage() {
                     disabled={busy}
                     onClick={() => togglePlain(kind)}
                     title={badge.label}
-                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm disabled:opacity-50 ${
+                    className={`flex items-center gap-1.5 rounded-full py-1.5 pl-1.5 pr-3 text-sm disabled:opacity-50 ${
                       on ? "bg-amber-500 text-neutral-950" : "bg-neutral-800 text-gray-300"
                     }`}
                   >
-                    <span>{badge.icon}</span>
+                    <GameIcon src={wowIconUrl(badge.icon)} label={badge.label} size={22} round />
                     {kind}
                   </button>
                 );
@@ -263,11 +265,16 @@ export default function BadgeTesterPage() {
                   disabled={busy}
                   onClick={() => setGoldTier(tier)}
                   title={GOLD_TIER_BADGE[tier].label}
-                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm disabled:opacity-50 ${
+                  className={`flex items-center gap-1.5 rounded-full py-1.5 pl-1.5 pr-3 text-sm disabled:opacity-50 ${
                     goldTier === tier ? "bg-amber-500 text-neutral-950" : "bg-neutral-800 text-gray-300"
                   }`}
                 >
-                  <span>{GOLD_TIER_BADGE[tier].icon}</span>
+                  <GameIcon
+                    src={wowIconUrl(GOLD_TIER_BADGE[tier].icon)}
+                    label={GOLD_TIER_BADGE[tier].label}
+                    size={22}
+                    round
+                  />
                   {tier}
                 </button>
               ))}
@@ -292,11 +299,17 @@ export default function BadgeTesterPage() {
                   disabled={busy}
                   onClick={() => setEpicTier(tier)}
                   title={EPIC_TIER_META[tier].label}
-                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm disabled:opacity-50 ${
+                  className={`flex items-center gap-1.5 rounded-full py-1.5 pl-1.5 pr-3 text-sm disabled:opacity-50 ${
                     epicTier === tier ? "bg-purple-500 text-neutral-950" : "bg-neutral-800 text-gray-300"
                   } ${EPIC_TIER_META[tier].ring}`}
                 >
-                  🟣 {tier}
+                  <GameIcon
+                    src={wowIconUrl(EPIC_TIER_META[tier].icon)}
+                    label={EPIC_TIER_META[tier].label}
+                    size={22}
+                    round
+                  />
+                  {tier}
                 </button>
               ))}
             </div>
@@ -327,11 +340,11 @@ export default function BadgeTesterPage() {
                     disabled={busy}
                     onClick={() => toggleAccount(kind)}
                     title={badge.label}
-                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm disabled:opacity-50 ${
+                    className={`flex items-center gap-1.5 rounded-full py-1.5 pl-1.5 pr-3 text-sm disabled:opacity-50 ${
                       on ? "bg-sky-500 text-neutral-950" : "bg-neutral-800 text-gray-300"
                     }`}
                   >
-                    <span>{badge.icon}</span>
+                    <GameIcon src={wowIconUrl(badge.icon)} label={badge.label} size={22} round />
                     {kind}
                   </button>
                 );
