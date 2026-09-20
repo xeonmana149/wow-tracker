@@ -152,7 +152,12 @@ export default function Dashboard({
 
        <AccountSyncSetup />
 
-      <div className="mt-6 flex flex-wrap gap-4">
+      <section className="mt-6 rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+          Account statistics
+        </h2>
+
+        <div className="mt-3 flex flex-wrap gap-4">
         <div className="min-w-[8.5rem] flex-1 rounded bg-neutral-800 p-4">
           <div className="text-2xl font-bold">{characters.length}</div>
           <div className="text-sm text-gray-400">Characters</div>
@@ -225,7 +230,8 @@ export default function Dashboard({
             </>
           )}
         </div>
-      </div>
+        </div>
+      </section>
 
       {error && <p className="mt-4 text-red-400">{error}</p>}
 
