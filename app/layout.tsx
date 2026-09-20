@@ -5,6 +5,7 @@ import "./globals.css";
 import "./theme.css";
 import SiteNav from "./SiteNav";
 import LaunchCountdown from "./LaunchCountdown";
+import ActivitySidebar from "./ActivitySidebar";
 
 const heading = Cinzel({
   subsets: ["latin"],
@@ -44,6 +45,12 @@ export default function RootLayout({
           <LaunchCountdown />
         </div>
         {children}
+
+        {/* Floating activity feed, docked to the right on wide screens only -
+            lives here (not inside any one page) so it's the same on every
+            tab, and it's `fixed` positioned so it never affects the width
+            or centering of the content above. */}
+        <ActivitySidebar />
       </body>
     </html>
   );
