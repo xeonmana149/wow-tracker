@@ -108,6 +108,23 @@ const WISHLIST_PRIORITY_ORDER: Record<"High" | "Medium" | "Low", number> = {
   Low: 2,
 };
 
+// Colors the character-type tag AND gives the whole card a matching
+// left-edge accent, so the type is readable at a glance across a long
+// list without having to read every tag - color plus the text label
+// together, never color alone. Matched case-insensitively since the
+// database's exact casing ("PvPer" vs "Pvper") isn't guaranteed.
+const CHARACTER_TYPE_STYLES: Record<string, { pill: string; border: string }> = {
+  main: { pill: "bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/50", border: "#d9a441" },
+  alt: { pill: "bg-sky-500/20 text-sky-300 ring-1 ring-sky-500/50", border: "#4d8fd6" },
+  pvper: { pill: "bg-rose-500/20 text-rose-300 ring-1 ring-rose-500/50", border: "#c9574a" },
+  gathering: { pill: "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/50", border: "#3f9a68" },
+};
+const DEFAULT_TYPE_STYLE = { pill: "bg-neutral-600 text-white", border: "transparent" };
+
+function characterTypeStyle(type: string) {
+  return CHARACTER_TYPE_STYLES[type.toLowerCase()] ?? DEFAULT_TYPE_STYLE;
+}
+
 // Points in each tree for one spec, like 0/32/10
 function talentSplit(c: CardCharacter, slot: number, treeNames: string[] | undefined) {
   const per: Record<string, number> = {};
@@ -186,12 +203,14 @@ export default function CharacterCard({
 
   const pad = compact ? "p-3" : "p-4";
   const gap = compact ? "mt-2" : "mt-3";
+  const typeStyle = characterTypeStyle(c.character_type);
 
   return (
     <div
-      className={`rounded bg-neutral-800 ${pad} ${
+      className={`rounded border-l-4 bg-neutral-800 ${pad} ${
         c.needs_setup && showNeedsAttention ? "ring-2 ring-amber-400" : ""
       }`}
+      style={{ borderLeftColor: typeStyle.border }}
     >
       {c.needs_setup && showNeedsAttention && (
         <div className="mb-2 flex items-center gap-1.5 rounded bg-amber-500/15 px-2 py-1 text-xs font-bold text-amber-300">
@@ -214,7 +233,9 @@ export default function CharacterCard({
                 same as account badges elsewhere on the site. */}
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-lg font-bold text-white hover:underline">{c.name}</span>
-              <span className="rounded bg-neutral-600 px-2 py-0.5 text-xs">{c.character_type}</span>
+              <span className={`rounded px-2 py-0.5 text-xs font-semibold ${typeStyle.pill}`}>
+                {c.character_type}
+              </span>
             </div>
             <div className="mt-1 flex items-center gap-2 text-sm text-gray-400">
               <GameIcon name={RACE_ICONS[c.race]} label={c.race} size={20} round />

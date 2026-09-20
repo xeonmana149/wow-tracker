@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { classIcon } from "../../lib/icons";
+import { classIcon, wowIconUrl } from "../../lib/icons";
 import CharacterCard, { type CardCharacter } from "../CharacterCard";
 import GameIcon from "../GameIcon";
 import AccountBadges from "../AccountBadges";
@@ -52,22 +52,7 @@ export default function FriendsBrowser({
             : "border-neutral-700 bg-neutral-800 hover:bg-neutral-700"
         }`}
       >
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-amber-900/70 bg-neutral-900 text-amber-200">
-          <svg
-            viewBox="0 0 24 24"
-            width="20"
-            height="20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M14 5l5 5-2 2-5-5z" />
-            <path d="M12 7L4 15l2 2 8-8" />
-          </svg>
-        </span>
+        <GameIcon src={wowIconUrl("trade_alchemy")} label="Crafting directory" size={44} round />
         <span className="min-w-0 flex-1">
           <span className="block text-lg font-bold text-white">Crafting directory</span>
           <span className="block text-sm text-gray-400">
