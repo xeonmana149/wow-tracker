@@ -122,6 +122,18 @@ export async function POST(req: NextRequest) {
           );
         }
         characterId = created.id;
+
+        // Best-effort activity feed entry - never blocks the sync itself.
+        try {
+          await supabaseAdmin.from("activity_events").insert({
+            character_id: characterId,
+            user_id: userId,
+            kind: "character_created",
+            message: `${name} joined the roster`,
+          });
+        } catch {
+          // ignored on purpose
+        }
       }
     }
   }

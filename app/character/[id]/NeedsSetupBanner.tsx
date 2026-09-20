@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
+import { SPECS } from "../../../lib/options";
 
 const RULESET_OPTIONS = ["PVP", "PVE", "RPPVE", "HARDCORE"];
 const CHARACTER_TYPE_OPTIONS = ["Unspecified", "Main", "Alt", "Gatherer", "PvPer"];
@@ -13,6 +14,7 @@ type Props = {
   currentMainSpec: string | null;
   currentRuleset: string | null;
   currentCharacterType: string | null;
+  characterClass: string;
 };
 
 export default function NeedsSetupBanner({
@@ -22,12 +24,21 @@ export default function NeedsSetupBanner({
   currentMainSpec,
   currentRuleset,
   currentCharacterType,
+  characterClass,
 }: Props) {
   const [isOwner, setIsOwner] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  const [mainSpec, setMainSpec] = useState(
-    currentMainSpec && currentMainSpec !== "Unspecified" ? currentMainSpec : ""
-  );
+  // The site's own class -> spec list (same one used everywhere else, so
+  // whatever gets picked here matches the spec icon lookups on the
+  // character card and page). Falls back to a free-text box only if the
+  // class isn't one SPECS knows about.
+  const classSpecs = SPECS[characterClass] ?? [];
+  const [mainSpec, setMainSpec] = useState(() => {
+    if (currentMainSpec && classSpecs.some((s) => s.name === currentMainSpec)) {
+      return currentMainSpec;
+    }
+    return classSpecs[0]?.name ?? "";
+  });
   const [ruleset, setRuleset] = useState(
     currentRuleset && RULESET_OPTIONS.includes(currentRuleset) ? currentRuleset : "PVE"
   );
@@ -54,15 +65,21 @@ export default function NeedsSetupBanner({
     }
     setSaving(true);
     setMessage("");
-    const { error } = await supabase
-      .from("characters")
-      .update({
-        main_spec: mainSpec.trim(),
-        ruleset,
-        character_type: characterType,
-        needs_setup: false,
-      })
-      .eq("id", characterId);
+    // Picking a spec from the dropdown also sets the matching role
+    // (Tank/Healer/DPS), same default the rest of the site uses for that
+    // spec - the addon has no way to set this at creation time, so it's
+    // been sitting on the column's default (DPS) until now.
+    const matchedRole = classSpecs.find((s) => s.name === mainSpec)?.role;
+    const update: Record<string, string | boolean> = {
+      main_spec: mainSpec.trim(),
+      ruleset,
+      character_type: characterType,
+      needs_setup: false,
+    };
+    if (matchedRole) {
+      update.main_role = matchedRole;
+    }
+    const { error } = await supabase.from("characters").update(update).eq("id", characterId);
 
     if (error) {
       setMessage(error.message);
@@ -86,13 +103,27 @@ export default function NeedsSetupBanner({
       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
         <div className="flex-1">
           <label className="block text-xs font-medium text-amber-200">Main spec</label>
-          <input
-            type="text"
-            value={mainSpec}
-            onChange={(e) => setMainSpec(e.target.value)}
-            placeholder="e.g. Retribution"
-            className="mt-1 w-full rounded bg-neutral-900 px-3 py-2 text-sm text-white"
-          />
+          {classSpecs.length > 0 ? (
+            <select
+              value={mainSpec}
+              onChange={(e) => setMainSpec(e.target.value)}
+              className="mt-1 w-full rounded bg-neutral-900 px-3 py-2 text-sm text-white"
+            >
+              {classSpecs.map((s) => (
+                <option key={s.name} value={s.name}>
+                  {s.name} ({s.role})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={mainSpec}
+              onChange={(e) => setMainSpec(e.target.value)}
+              placeholder="e.g. Retribution"
+              className="mt-1 w-full rounded bg-neutral-900 px-3 py-2 text-sm text-white"
+            />
+          )}
         </div>
 
         <div className="flex-1">

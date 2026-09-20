@@ -120,10 +120,30 @@ export default function EditForm({ character }: { character: Character }) {
 
     if (error) {
       setMessage(`Something went wrong: ${error.message}`);
-    } else {
-      router.push(`/character/${character.id}`);
-      router.refresh();
+      return;
     }
+
+    // Activity feed: only fires on a genuine rank increase, never a
+    // decrease or an unchanged save. Best-effort - never blocks the save
+    // itself, since the character update above already succeeded.
+    if (pvpRank > character.pvp_rank) {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        if (userData.user) {
+          await supabase.from("activity_events").insert({
+            character_id: character.id,
+            user_id: userData.user.id,
+            kind: "pvp_rank_up",
+            message: `${firstName.trim()} reached PvP rank ${pvpRank}`,
+          });
+        }
+      } catch {
+        // ignored on purpose
+      }
+    }
+
+    router.push(`/character/${character.id}`);
+    router.refresh();
   }
 
   return (

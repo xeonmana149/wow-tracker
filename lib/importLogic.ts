@@ -114,6 +114,21 @@ export type ImportResult = {
   talentUnknown: string[];
 };
 
+type ActivityEvent = {
+  character_id: string;
+  user_id: string;
+  kind: "level_up" | "profession_maxed" | "character_created" | "epic_gear" | "gold_milestone" | "pvp_rank_up";
+  message: string;
+};
+
+// Epic and Legendary item-link quality colors (RRGGBB, as extractItemColor
+// in the addon returns them) - treated as one "notable gear" event rather
+// than two separate kinds.
+const NOTABLE_GEAR_COLORS = new Set(["a335ee", "ff8000"]);
+
+// Gold amounts (in real gold, not copper) worth calling out per character.
+const GOLD_MILESTONES = [100, 500, 1000, 5000];
+
 // Applies a parsed addon export to a character's rows. Shared between the
 // browser Import panel (the normal anon-key client, checked by RLS as the
 // logged-in owner) and the auto-sync API route (the service-role client,
@@ -127,6 +142,21 @@ export async function applyImport(
   professions: { id: string; profession: string; skill: number }[],
   parsed: ParsedExport
 ): Promise<ImportResult> {
+  // Read the character's own current values BEFORE anything below changes
+  // them - this is what lets the activity feed notice a level-up or a
+  // maxed profession, by comparing against what's about to be written.
+  const { data: before, error: beforeError } = await supabase
+    .from("characters")
+    .select("id, name, level, user_id, money_copper")
+    .eq("id", characterId)
+    .single();
+
+  if (beforeError || !before) {
+    throw new Error("Character not found");
+  }
+
+  const events: ActivityEvent[] = [];
+
   // 1. Character-level fields.
   const charUpdate: Record<string, number | string> = {};
   if (typeof parsed.basic?.level === "number") charUpdate.level = parsed.basic.level;
@@ -136,6 +166,36 @@ export async function applyImport(
   if (Object.keys(charUpdate).length > 0) {
     const { error } = await supabase.from("characters").update(charUpdate).eq("id", characterId);
     if (error) throw new Error(error.message);
+  }
+
+  if (typeof parsed.basic?.level === "number" && parsed.basic.level > before.level) {
+    events.push({
+      character_id: characterId,
+      user_id: before.user_id,
+      kind: "level_up",
+      message: `${before.name} reached level ${parsed.basic.level}`,
+    });
+  }
+
+  // Gold milestones - fire once when a sync's new balance crosses a
+  // threshold that the previous known balance hadn't reached yet. Uses
+  // the "before" row read at the top of this function, so a single sync
+  // can only ever cross each threshold once (no double-firing on a
+  // future sync that stays above it).
+  if (typeof parsed.basic?.money === "number") {
+    const beforeCopper = before.money_copper ?? 0;
+    const afterCopper = parsed.basic.money;
+    for (const gold of GOLD_MILESTONES) {
+      const thresholdCopper = gold * 10000;
+      if (beforeCopper < thresholdCopper && afterCopper >= thresholdCopper) {
+        events.push({
+          character_id: characterId,
+          user_id: before.user_id,
+          kind: "gold_milestone",
+          message: `${before.name} hit ${gold} gold`,
+        });
+      }
+    }
   }
 
   // 2. Stats.
@@ -152,6 +212,8 @@ export async function applyImport(
   }
 
   // 3. Professions - update ones you already track, add ones you don't yet.
+  //    Also notes when a profession crosses the max-skill line for the
+  //    first time, for the activity feed.
   for (const p of parsed.professions ?? []) {
     const skill = Math.min(MAX_SKILL, Math.max(1, p.skill || 1));
     const existing = professions.find(
@@ -161,17 +223,47 @@ export async function applyImport(
       if (existing.skill !== skill) {
         await supabase.from("character_professions").update({ skill }).eq("id", existing.id);
       }
+      if (skill >= MAX_SKILL && existing.skill < MAX_SKILL) {
+        events.push({
+          character_id: characterId,
+          user_id: before.user_id,
+          kind: "profession_maxed",
+          message: `${before.name} maxed ${p.name}`,
+        });
+      }
     } else {
       await supabase.from("character_professions").insert({
         character_id: characterId,
         profession: p.name,
         skill,
       });
+      if (skill >= MAX_SKILL) {
+        events.push({
+          character_id: characterId,
+          user_id: before.user_id,
+          kind: "profession_maxed",
+          message: `${before.name} maxed ${p.name}`,
+        });
+      }
     }
   }
 
   // 4. Equipped gear - upsert whatever's filled, and clear out any tracked
   //    slot that's no longer present in the export (i.e. you unequipped it).
+  //    Also compares against what was in each slot before, so equipping a
+  //    new Epic or Legendary item (whichever quality - the two are
+  //    combined into a single "notable gear" event, not split) can be
+  //    logged to the activity feed.
+  const { data: previousGear } = await supabase
+    .from("equipped_gear")
+    .select("slot, item_link, item_quality")
+    .eq("character_id", characterId);
+  const previousBySlot = new Map(
+    ((previousGear ?? []) as { slot: string; item_link: string; item_quality: string | null }[]).map(
+      (g) => [g.slot, g]
+    )
+  );
+
   const gearRows: {
     character_id: string;
     slot: string;
@@ -199,6 +291,18 @@ export async function applyImport(
       tooltip: item.tooltip ?? [],
       updated_at: new Date().toISOString(),
     });
+
+    const quality = item.color?.toLowerCase();
+    const prev = previousBySlot.get(siteSlot);
+    const isNewItem = prev?.item_link !== item.link;
+    if (quality && NOTABLE_GEAR_COLORS.has(quality) && isNewItem) {
+      events.push({
+        character_id: characterId,
+        user_id: before.user_id,
+        kind: "epic_gear",
+        message: `${before.name} equipped ${item.name}`,
+      });
+    }
   }
 
   if (gearRows.length > 0) {
@@ -216,8 +320,6 @@ export async function applyImport(
       .in("slot", emptySlots);
     if (error) throw new Error(error.message);
   }
-
-  // 5. Talents - only nodes the addon already resolved a name and tree for
 
   // 5. Talents - only nodes the addon already resolved a name and tree for
   //    get written into the planner. Unresolved ones stay reference-only.
@@ -244,6 +346,16 @@ export async function applyImport(
           `entryID ${node.entryID ?? "?"} (${node.rank}/${node.maxRank ?? node.rank})`
         );
       }
+    }
+  }
+
+  // Best-effort - a failure to log an activity event should never break
+  // the sync itself, so this is never allowed to throw.
+  if (events.length > 0) {
+    try {
+      await supabase.from("activity_events").insert(events);
+    } catch {
+      // ignored on purpose
     }
   }
 

@@ -12,6 +12,7 @@ import GameIcon from "./GameIcon";
 import NextList from "./NextList";
 import { MoneyDisplay } from "./MoneyIcons";
 import AccountSyncSetup from "./AccountSyncSetup";
+import ActivityFeed from "./ActivityFeed";
 
 
 const PRIMARY = [
@@ -90,6 +91,22 @@ export default function Dashboard({
       setLegacyMessage(error.message);
       return;
     }
+
+    // Legacy points live on the profile, not on a character, so this event
+    // has no character_id - just a message and whoever gained the point.
+    // Best-effort only, same as the sync-route events: never blocks saving.
+    if (points > legacy) {
+      try {
+        await supabase.from("activity_events").insert({
+          user_id: userId,
+          kind: "legacy_point",
+          message: `Reached ${points} Legacy point${points === 1 ? "" : "s"}`,
+        });
+      } catch {
+        // ignored on purpose
+      }
+    }
+
     setLegacy(points);
     setLegacyMessage("");
     setEditingLegacy(false);
@@ -232,6 +249,8 @@ export default function Dashboard({
         </div>
         </div>
       </section>
+
+      <ActivityFeed />
 
       {error && <p className="mt-4 text-red-400">{error}</p>}
 
