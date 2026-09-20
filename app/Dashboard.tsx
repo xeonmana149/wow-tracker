@@ -143,7 +143,12 @@ export default function Dashboard({
 
   return (
     <main className="mx-auto max-w-[1500px] p-4 md:p-6">
-      <h1 className="text-4xl font-bold">My Characters</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-4xl font-bold">My Characters</h1>
+        <Link href="/download" className="rounded bg-blue-600 px-4 py-2 text-white">
+          Downloads
+        </Link>
+      </div>
 
        <AccountSyncSetup />
 
