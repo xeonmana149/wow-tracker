@@ -86,13 +86,14 @@ function compare(a: Character, b: Character, keys: NumKey[]) {
 export default async function Leaderboards({
   searchParams,
 }: {
-  searchParams: Promise<{ sort?: string }>;
+  searchParams: Promise<{ sort?: string; mains?: string }>;
 }) {
-  const { sort } = await searchParams;
+  const { sort, mains } = await searchParams;
   const key: string =
     sort && (sort === "total" || Object.keys(boards).includes(sort))
       ? sort
       : "total";
+  const mainsOnly = mains === "1";
 
   const { data, error } = await supabase
     .from("characters")
@@ -102,13 +103,21 @@ export default async function Leaderboards({
   const specIcons = await loadSpecIcons();
   const rows = (data ?? []) as Row[];
 
-  const characters: Character[] = rows.map((r) => {
+  const allCharacters: Character[] = rows.map((r) => {
     return {
       ...r,
       professions_maxed: r.character_professions.filter((p) => p.skill >= MAX_SKILL)
         .length,
     };
   });
+
+  // "Mains only" compares just each player's main against other mains,
+  // rather than every alt/gatherer/PvPer character too - filtered before
+  // any of the points/ranking math below runs, so a main's rank reflects
+  // only how it stacks up against other mains.
+  const characters = mainsOnly
+    ? allCharacters.filter((c) => c.character_type === "Main")
+    : allCharacters;
 
   // points[board][character id] = how many characters this one beats
   const points: Record<string, Record<string, number>> = {};
@@ -149,22 +158,33 @@ export default async function Leaderboards({
       <AuthStatus />
       <h1 className="text-3xl font-bold">Leaderboards</h1>
 
-      <nav className="mt-6 flex flex-wrap gap-2">
-        {tabs.map(([k, label]) => (
-          <Link
-            key={k}
-            href={`/leaderboards?sort=${k}`}
-            className={`nav-btn ${k === key ? "nav-btn-active" : ""}`}
-          >
-            {label}
-          </Link>
-        ))}
-      </nav>
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <nav className="flex flex-wrap gap-2">
+          {tabs.map(([k, label]) => (
+            <Link
+              key={k}
+              href={`/leaderboards?sort=${k}${mainsOnly ? "&mains=1" : ""}`}
+              className={`nav-btn ${k === key ? "nav-btn-active" : ""}`}
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
+
+        <Link
+          href={`/leaderboards?sort=${key}${mainsOnly ? "" : "&mains=1"}`}
+          aria-pressed={mainsOnly}
+          className={`nav-btn ${mainsOnly ? "nav-btn-active" : ""}`}
+        >
+          {mainsOnly ? "✓ Mains only" : "Mains only"}
+        </Link>
+      </div>
 
       {key === "total" && (
         <p className="mt-4 max-w-xl text-sm text-gray-400">
           Each board gives a character one point for every character it beats.
           Total adds them all up.
+          {mainsOnly && " Only characters marked as a Main are being compared."}
         </p>
       )}
 
@@ -173,7 +193,9 @@ export default async function Leaderboards({
       )}
 
       {characters.length === 0 && !error && (
-        <p className="mt-6 text-gray-400">No characters yet.</p>
+        <p className="mt-6 text-gray-400">
+          {mainsOnly ? "No mains yet." : "No characters yet."}
+        </p>
       )}
 
         <ol className="mt-6 grid gap-3 xl:grid-cols-2">

@@ -29,7 +29,44 @@ export default function FriendsBrowser({
     : everyone;
 
   return (
-    <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-start">
+    <div className="mt-6 flex flex-col gap-4">
+      {/* Its own area, separate from the player tabs below - not just
+          one more name in that list. */}
+      <button
+        type="button"
+        onClick={() => setSelected("crafting")}
+        aria-pressed={selected === "crafting"}
+        className={`flex w-full items-center gap-3 rounded-lg border p-4 text-left transition-colors ${
+          selected === "crafting"
+            ? "border-amber-400 bg-amber-500/10"
+            : "border-neutral-700 bg-neutral-800 hover:bg-neutral-700"
+        }`}
+      >
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-amber-900/70 bg-neutral-900 text-amber-200">
+          <svg
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M14 5l5 5-2 2-5-5z" />
+            <path d="M12 7L4 15l2 2 8-8" />
+          </svg>
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-lg font-bold text-white">Crafting directory</span>
+          <span className="block text-sm text-gray-400">
+            Who can make what across the whole group
+          </span>
+        </span>
+      </button>
+
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
       {/* The list of friends. It never moves, only what's on the right changes. */}
       <aside className="lg:sticky lg:top-4 lg:w-72 lg:shrink-0">
         <div className="flex gap-2 overflow-x-auto pb-1 lg:max-h-[calc(100vh-2rem)] lg:flex-col lg:overflow-y-auto lg:overflow-x-visible">
@@ -62,36 +99,6 @@ export default function FriendsBrowser({
               <span className="sub block truncate text-xs text-gray-400">
                 {everyone.length} characters · {players.length}{" "}
                 {players.length === 1 ? "player" : "players"}
-              </span>
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSelected("crafting")}
-            aria-pressed={selected === "crafting"}
-            className={`friend-tab ${selected === "crafting" ? "friend-tab-active" : ""}`}
-          >
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-amber-900/70 bg-neutral-900 text-amber-200">
-              <svg
-                viewBox="0 0 24 24"
-                width="18"
-                height="18"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M14 5l5 5-2 2-5-5z" />
-                <path d="M12 7L4 15l2 2 8-8" />
-              </svg>
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-bold">Crafting directory</span>
-              <span className="sub block truncate text-xs text-gray-400">
-                Who can make what
               </span>
             </span>
           </button>
@@ -156,6 +163,7 @@ export default function FriendsBrowser({
           </>
         )}
       </section>
+      </div>
     </div>
   );
 }

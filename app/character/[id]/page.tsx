@@ -166,14 +166,6 @@ export default async function CharacterPage({
         </div>
       </header>
 
-      <NeedsSetupBanner
-        characterId={character.id}
-        ownerId={character.user_id}
-        needsSetup={character.needs_setup}
-        currentMainSpec={character.main_spec}
-        currentRuleset={character.ruleset}
-      />
-
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <section className="rounded bg-neutral-800 p-4">
           <h2 className="font-bold">Progress</h2>
