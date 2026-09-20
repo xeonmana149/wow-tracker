@@ -159,7 +159,8 @@ export default function Dashboard({
   const perCharacter = characters.map((c) => ({ c, todos: whatsNext(c, legacy) }));
 
   return (
-    <main className="mx-auto max-w-[1500px] p-4 md:p-6">
+    <div className="mx-auto flex max-w-[1800px] flex-col gap-4 p-4 md:flex-row md:items-start md:p-6">
+      <main className="min-w-0 flex-1">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-4xl font-bold">My Characters</h1>
         <Link href="/download" className="rounded bg-blue-600 px-4 py-2 text-white">
@@ -249,8 +250,6 @@ export default function Dashboard({
         </div>
         </div>
       </section>
-
-      <ActivityFeed />
 
       {error && <p className="mt-4 text-red-400">{error}</p>}
 
@@ -372,6 +371,11 @@ export default function Dashboard({
           </section>
         </div>
       </div>
-    </main>
+      </main>
+
+      <aside className="w-full shrink-0 md:sticky md:top-4 md:h-[calc(100vh-2rem)] md:w-80">
+        <ActivityFeed />
+      </aside>
+    </div>
   );
 }
