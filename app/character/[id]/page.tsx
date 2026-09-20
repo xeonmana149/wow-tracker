@@ -105,6 +105,7 @@ export default async function CharacterPage({
         needsSetup={character.needs_setup}
         currentMainSpec={character.main_spec}
         currentRuleset={character.ruleset}
+        currentCharacterType={character.character_type}
       />
 
       <Link href="/" className="text-blue-400">← Back</Link>

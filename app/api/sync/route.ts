@@ -100,6 +100,11 @@ export async function POST(req: NextRequest) {
             // on the site afterward if they're wrong for this character.
             main_spec: "Unspecified",
             ruleset: "PVE",
+            // Explicitly "Unspecified" rather than leaving this out of the
+            // insert - the column's own default is "Main", which would
+            // silently mark every auto-created character as a main even
+            // though the addon has no way to actually know that.
+            character_type: "Unspecified",
             level: typeof parsed.basic?.level === "number" ? parsed.basic.level : 1,
             guild: parsed.basic?.guild ?? null,
             // Flags this character on the website so the owner gets a

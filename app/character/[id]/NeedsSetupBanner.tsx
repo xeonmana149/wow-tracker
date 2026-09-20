@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 
 const RULESET_OPTIONS = ["PVP", "PVE", "RPPVE", "HARDCORE"];
+const CHARACTER_TYPE_OPTIONS = ["Unspecified", "Main", "Alt", "Gatherer", "PvPer"];
 
 type Props = {
   characterId: string;
@@ -11,6 +12,7 @@ type Props = {
   needsSetup: boolean;
   currentMainSpec: string | null;
   currentRuleset: string | null;
+  currentCharacterType: string | null;
 };
 
 export default function NeedsSetupBanner({
@@ -19,6 +21,7 @@ export default function NeedsSetupBanner({
   needsSetup,
   currentMainSpec,
   currentRuleset,
+  currentCharacterType,
 }: Props) {
   const [isOwner, setIsOwner] = useState(false);
   const [dismissed, setDismissed] = useState(false);
@@ -27,6 +30,11 @@ export default function NeedsSetupBanner({
   );
   const [ruleset, setRuleset] = useState(
     currentRuleset && RULESET_OPTIONS.includes(currentRuleset) ? currentRuleset : "PVE"
+  );
+  const [characterType, setCharacterType] = useState(
+    currentCharacterType && CHARACTER_TYPE_OPTIONS.includes(currentCharacterType)
+      ? currentCharacterType
+      : "Unspecified"
   );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -51,6 +59,7 @@ export default function NeedsSetupBanner({
       .update({
         main_spec: mainSpec.trim(),
         ruleset,
+        character_type: characterType,
         needs_setup: false,
       })
       .eq("id", characterId);
@@ -96,6 +105,21 @@ export default function NeedsSetupBanner({
             {RULESET_OPTIONS.map((r) => (
               <option key={r} value={r}>
                 {r}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex-1">
+          <label className="block text-xs font-medium text-amber-200">Character type</label>
+          <select
+            value={characterType}
+            onChange={(e) => setCharacterType(e.target.value)}
+            className="mt-1 w-full rounded bg-neutral-900 px-3 py-2 text-sm text-white"
+          >
+            {CHARACTER_TYPE_OPTIONS.map((t) => (
+              <option key={t} value={t}>
+                {t}
               </option>
             ))}
           </select>
