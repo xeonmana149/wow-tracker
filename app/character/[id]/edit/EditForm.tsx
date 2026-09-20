@@ -4,6 +4,7 @@ import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { copperToParts, partsToCopper } from "../../../../lib/money";
+import { awardAchievement, ACHIEVEMENT_MESSAGE } from "../../../../lib/achievements";
 import {
   RACES,
   CLASSES,
@@ -123,23 +124,57 @@ export default function EditForm({ character }: { character: Character }) {
       return;
     }
 
-    // Activity feed: only fires on a genuine rank increase, never a
-    // decrease or an unchanged save. Best-effort - never blocks the save
-    // itself, since the character update above already succeeded.
-    if (pvpRank > character.pvp_rank) {
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        if (userData.user) {
-          await supabase.from("activity_events").insert({
+    // Activity feed + achievements - best-effort, never blocks the save
+    // itself since the character update above already succeeded.
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const uid = userData.user?.id;
+      if (uid) {
+        const newEvents: { character_id: string; user_id: string; kind: string; message: string }[] =
+          [];
+
+        // Only fires on a genuine rank increase, never a decrease or an
+        // unchanged save.
+        if (pvpRank > character.pvp_rank) {
+          newEvents.push({
             character_id: character.id,
-            user_id: userData.user.id,
+            user_id: uid,
             kind: "pvp_rank_up",
             message: `${firstName.trim()} reached PvP rank ${pvpRank}`,
           });
         }
-      } catch {
-        // ignored on purpose
+
+        const TOP_PVP_RANK = 14;
+        if (pvpRank >= TOP_PVP_RANK) {
+          const earned = await awardAchievement(supabase, character.id, "top_pvp_rank");
+          if (earned) {
+            newEvents.push({
+              character_id: character.id,
+              user_id: uid,
+              kind: "achievement_earned",
+              message: ACHIEVEMENT_MESSAGE.top_pvp_rank(firstName.trim()),
+            });
+          }
+        }
+
+        if (mainSpec && offSpec) {
+          const earned = await awardAchievement(supabase, character.id, "well_rounded");
+          if (earned) {
+            newEvents.push({
+              character_id: character.id,
+              user_id: uid,
+              kind: "achievement_earned",
+              message: ACHIEVEMENT_MESSAGE.well_rounded(firstName.trim()),
+            });
+          }
+        }
+
+        if (newEvents.length > 0) {
+          await supabase.from("activity_events").insert(newEvents);
+        }
       }
+    } catch {
+      // ignored on purpose
     }
 
     router.push(`/character/${character.id}`);

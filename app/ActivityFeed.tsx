@@ -12,7 +12,8 @@ type ActivityKind =
   | "epic_gear"
   | "gold_milestone"
   | "legacy_point"
-  | "pvp_rank_up";
+  | "pvp_rank_up"
+  | "achievement_earned";
 
 type Event = {
   id: string;
@@ -30,6 +31,7 @@ const KIND_ICON: Record<ActivityKind, string> = {
   gold_milestone: "💰",
   legacy_point: "🏆",
   pvp_rank_up: "⚔",
+  achievement_earned: "🏅",
 };
 
 // How many events the sidebar keeps in view at once. New ones push onto

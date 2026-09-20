@@ -7,17 +7,44 @@ import {
   classIcon,
 } from "../lib/icons";
 import { characterBars } from "../lib/progress";
+import type { AchievementKind, GoldTier } from "../lib/achievements";
 import GameIcon from "./GameIcon";
 import ProgressBars from "./ProgressBars";
 
-// One of the three "firsts" tracked account-wide - see the milestones
-// table. Optional because most characters won't hold any.
-export type MilestoneKind = "first_max_level" | "first_epic_item" | "first_maxed_profession";
+export type { AchievementKind, GoldTier };
 
-const MILESTONE_BADGES: Record<MilestoneKind, { icon: string; label: string }> = {
-  first_max_level: { icon: "🥇", label: "First to hit max level" },
-  first_epic_item: { icon: "🟣", label: "First to equip an Epic or Legendary item" },
-  first_maxed_profession: { icon: "⭐", label: "First to max a profession" },
+// Plain yes/no achievements - anyone can earn each of these independently
+// (see lib/achievements.ts). Doesn't cover "gold" or "epic_gear", which
+// are tiered instead and rendered separately below.
+const ACHIEVEMENT_BADGES: Record<AchievementKind, { icon: string; label: string }> = {
+  max_level: { icon: "👑", label: "Reached the level cap" },
+  legendary_item: { icon: "🟠", label: "Obtained a Legendary item" },
+  maxed_profession: { icon: "⭐", label: "Maxed a profession" },
+  renaissance: { icon: "🎓", label: "Maxed every profession (2 primary + all 3 secondary)" },
+  maxed_legacy: { icon: "🏵️", label: "Maxed the account's Legacy points" },
+  top_pvp_rank: { icon: "⚔️", label: "Reached the top PvP rank" },
+  founding_member: { icon: "🏛️", label: "Founding Member - created during launch week" },
+  well_rounded: { icon: "🧭", label: "Well-Rounded - has both a main and an off spec" },
+};
+
+const GOLD_TIER_BADGE: Record<GoldTier, { icon: string; label: string }> = {
+  Bronze: { icon: "🥉", label: "Bronze wealth tier - 50g+" },
+  Silver: { icon: "🥈", label: "Silver wealth tier - 500g+" },
+  Gold: { icon: "🥇", label: "Gold wealth tier - 5000g+" },
+};
+
+// Epic-gear tier reuses one gem icon for all three tiers (there's no great
+// bronze/silver/gold gem emoji set) and shows the tier via a colored ring
+// instead.
+const EPIC_TIER_META: Record<GoldTier, { ring: string; label: string }> = {
+  Bronze: { ring: "ring-2 ring-amber-700", label: "Equipped 1+ Epic items - Bronze tier" },
+  Silver: { ring: "ring-2 ring-gray-300", label: "Equipped 3+ Epic items - Silver tier" },
+  Gold: { ring: "ring-2 ring-yellow-400", label: "Equipped 5+ Epic items - Gold tier" },
+};
+
+type CardAchievement = {
+  kind: AchievementKind | "gold" | "epic_gear";
+  tier?: GoldTier | null;
 };
 
 export type CardCharacter = {
@@ -37,7 +64,7 @@ export type CardCharacter = {
   money_copper?: number;
   needs_setup?: boolean;
   created_at?: string | null;
-  milestones?: MilestoneKind[];
+  achievements?: CardAchievement[];
   profiles?: { display_name?: string; legacy_points?: number } | null;
   character_professions: { profession: string; skill: number }[];
   character_talents: { slot: number; tree: string; rank: number }[];
@@ -117,12 +144,36 @@ export default function CharacterCard({
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-lg font-bold text-white">{c.name}</span>
             <span className="rounded bg-neutral-600 px-2 py-0.5 text-xs">{c.character_type}</span>
-            {(c.milestones ?? []).map((kind) => {
-              const badge = MILESTONE_BADGES[kind];
+            {(c.achievements ?? []).map((a) => {
+              if (a.kind === "gold" && a.tier) {
+                const badge = GOLD_TIER_BADGE[a.tier];
+                return (
+                  <span
+                    key="gold"
+                    title={badge.label}
+                    className="grid h-5 w-5 place-items-center rounded-full bg-amber-500/20 text-xs"
+                  >
+                    {badge.icon}
+                  </span>
+                );
+              }
+              if (a.kind === "epic_gear" && a.tier) {
+                const meta = EPIC_TIER_META[a.tier];
+                return (
+                  <span
+                    key="epic_gear"
+                    title={meta.label}
+                    className={`grid h-5 w-5 place-items-center rounded-full bg-purple-500/20 text-xs ${meta.ring}`}
+                  >
+                    🟣
+                  </span>
+                );
+              }
+              const badge = ACHIEVEMENT_BADGES[a.kind as AchievementKind];
               if (!badge) return null;
               return (
                 <span
-                  key={kind}
+                  key={a.kind}
                   title={badge.label}
                   className="grid h-5 w-5 place-items-center rounded-full bg-amber-500/20 text-xs"
                 >

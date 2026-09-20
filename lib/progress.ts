@@ -1,4 +1,4 @@
-import { pointsForLevel, MAX_POINTS } from "./talents";
+import { pointsForLevel } from "./talents";
 import { LEGACY_CAP } from "./legacy";
 import { PRIMARY_PROFESSIONS } from "./icons";
 import { MAX_SKILL } from "./professions";
@@ -60,8 +60,8 @@ export function characterBars(c: ProgressInput): Bar[] {
       key: "talents",
       label: "Talents",
       value: talents,
-      max: MAX_POINTS,
-      text: `${talents} / ${MAX_POINTS}`,
+      max: budget > 0 ? budget : 1,
+      text: budget > 0 ? `${talents} / ${budget}` : "from level 10",
     },
     { key: "legacy", label: "Legacy", value: legacy, max: LEGACY_CAP, text: `${legacy} / ${LEGACY_CAP}` },
     {

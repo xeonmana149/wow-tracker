@@ -1,7 +1,5 @@
 "use client";
 
-import GameIcon from "../../GameIcon";
-import { RACE_ICONS, classIcon } from "../../../lib/icons";
 import {
   LEFT_SLOTS as LEFT,
   RIGHT_SLOTS as RIGHT,
@@ -14,21 +12,7 @@ type Item = {
   item_name: string | null;
   item_link: string | null;
   item_quality: string | null;
-  item_icon: string | null;
   tooltip: string[] | null;
-};
-
-// Standard WoW class colors.
-const CLASS_COLORS: Record<string, string> = {
-  Warrior: "#C79C6E",
-  Paladin: "#F58CBA",
-  Hunter: "#ABD473",
-  Rogue: "#FFF569",
-  Priest: "#FFFFFF",
-  Shaman: "#0070DE",
-  Mage: "#69CCF0",
-  Warlock: "#9482C9",
-  Druid: "#FF7D0A",
 };
 
 function ItemTooltip({ entry }: { entry: Item }) {
@@ -48,18 +32,11 @@ function ItemTooltip({ entry }: { entry: Item }) {
       </div>
       {lines
         .filter((line) => line !== entry.item_name)
-        .map((line, i) => {
-          const isMadeBy = /^<.*>$/.test(line.trim());
-          return (
-            <div
-              key={i}
-              className={isMadeBy ? "" : "text-gray-300"}
-              style={isMadeBy ? { color: "#40bf40" } : undefined}
-            >
-              {line}
-            </div>
-          );
-        })}
+        .map((line, i) => (
+          <div key={i} className="text-gray-300">
+            {line}
+          </div>
+        ))}
     </div>
   );
 }
@@ -84,24 +61,13 @@ function Tile({ slot, entry }: { slot: string; entry: Item | undefined }) {
         }`}
       >
         <span className="text-[10px] text-gray-400">{slot}</span>
-
-        {entry?.item_icon ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={entry.item_icon}
-            alt={entry.item_name ?? slot}
-            className="h-8 w-8 rounded sm:h-10 sm:w-10"
-            loading="lazy"
-          />
-        ) : (
-          entry?.item_name && (
-            <span
-              className="line-clamp-2 w-full break-words text-[11px] font-semibold"
-              style={{ color: color ?? "white" }}
-            >
-              {entry.item_name}
-            </span>
-          )
+        {entry?.item_name && (
+          <span
+            className="line-clamp-2 w-full break-words text-[11px] font-semibold"
+            style={{ color: color ?? "white" }}
+          >
+            {entry.item_name}
+          </span>
         )}
       </div>
 
@@ -131,7 +97,6 @@ export default function GearCard({
   for (const i of items) bySlot[i.slot] = i;
 
   const filled = Object.values(bySlot).filter((i) => i.item_name).length;
-  const classColor = CLASS_COLORS[charClass] ?? "#c8aa6e";
 
   function renderTile(slot: string) {
     return <Tile key={slot} slot={slot} entry={bySlot[slot]} />;
@@ -144,25 +109,11 @@ export default function GearCard({
       <div className="mt-4 flex items-stretch justify-center gap-2 sm:gap-3">
         <div className="flex flex-col gap-2">{LEFT.map(renderTile)}</div>
 
-        <div
-          className="flex min-w-0 max-w-xs flex-1 flex-col items-center justify-center rounded p-3 text-center"
-          style={{
-            background: `radial-gradient(circle at 50% 30%, ${classColor}33, #0a0a0a 70%)`,
-            border: `2px solid ${classColor}`,
-          }}
-        >
-          <div className="relative">
-            <GameIcon name={classIcon(charClass)} label={charClass} size={64} round />
-            <div className="absolute -bottom-1 -right-1 rounded-full border-2 border-neutral-900 bg-neutral-900">
-              <GameIcon name={RACE_ICONS[race]} label={race} size={24} round />
-            </div>
-          </div>
-
-          <div className="mt-3 text-lg font-bold">{characterName}</div>
-          <div className="mt-1 text-xs" style={{ color: classColor }}>
+        <div className="flex min-w-0 max-w-xs flex-1 flex-col items-center justify-center rounded bg-neutral-900 p-3 text-center">
+          <div className="text-lg font-bold">{characterName}</div>
+          <div className="mt-1 text-xs text-gray-400">
             Level {level} {race} {charClass}
           </div>
-
           <div className="mt-6 text-2xl font-bold">
             {filled} / {TOTAL_SLOTS}
           </div>
