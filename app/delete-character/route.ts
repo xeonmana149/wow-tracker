@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "../../../lib/supabaseAdmin";
+import { supabaseAdmin } from "../../lib/supabaseAdmin";
 
 // Mirrors the character-lookup logic in /api/sync/route.ts, so a token that
 // can create/update a character through that endpoint can also remove it
