@@ -178,7 +178,7 @@ export default function CharacterCard({
                 const icon = resolvedIcon(iconOverrides, `gold:${a.tier}`, badge.icon);
                 return (
                   <span key="gold" className="inline-block rounded-full ring-2 ring-amber-500/70">
-                    <GameIcon src={wowIconUrl(icon)} label={badge.label} size={22} round />
+                    <GameIcon src={wowIconUrl(icon)} label={badge.label} size={28} round />
                   </span>
                 );
               }
@@ -187,20 +187,20 @@ export default function CharacterCard({
                 const icon = resolvedIcon(iconOverrides, "epic_gear", meta.icon);
                 return (
                   <span key="epic_gear" className={`inline-block rounded-full ${meta.ring}`}>
-                    <GameIcon src={wowIconUrl(icon)} label={meta.label} size={22} round />
+                    <GameIcon src={wowIconUrl(icon)} label={meta.label} size={28} round />
                   </span>
                 );
               }
               const badge = ACHIEVEMENT_BADGES[a.kind as AchievementKind];
               if (!badge) return null;
               const icon = resolvedIcon(iconOverrides, a.kind, badge.icon);
-              return <GameIcon key={a.kind} src={wowIconUrl(icon)} label={badge.label} size={22} round />;
+              return <GameIcon key={a.kind} src={wowIconUrl(icon)} label={badge.label} size={28} round />;
             })}
             {createdLabel && (
               <GameIcon
                 src={wowIconUrl(resolvedIcon(iconOverrides, CREATED_DATE_ICON_KEY, CREATED_DATE_ICON))}
                 label={`Created ${createdLabel}`}
-                size={22}
+                size={28}
                 round
               />
             )}

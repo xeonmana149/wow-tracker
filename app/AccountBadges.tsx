@@ -21,7 +21,7 @@ export default function AccountBadges({
 }) {
   if (kinds.length === 0) return null;
 
-  const px = size === "md" ? 26 : 22;
+  const px = size === "md" ? 32 : 28;
 
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
