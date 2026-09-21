@@ -63,23 +63,47 @@ export default function Dashboard({
       }
       setUserId(userData.user.id);
 
-      const { data, error } = await supabase
-        .from("characters")
-        .select(
-          "*, character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained)"
-        )
-        .eq("user_id", userData.user.id)
-        .order("level", { ascending: false });
+      // None of these five requests depend on each other's results - they
+      // all just need the user id we already have - so they're fired off
+      // together with Promise.all instead of one at a time. Sequentially,
+      // each await sits and waits on its own round-trip before the next one
+      // even starts; five round-trips stacked up before this page could
+      // even render is the main reason every click into the dashboard felt
+      // slow. Run together, the wait is roughly whichever single request is
+      // slowest, not the sum of all five.
+      const [
+        { data, error },
+        { data: achievementRows },
+        { data: profile },
+        { data: accountAchievementRows },
+        overrides,
+      ] = await Promise.all([
+        supabase
+          .from("characters")
+          .select(
+            "*, character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained)"
+          )
+          .eq("user_id", userData.user.id)
+          .order("level", { ascending: false }),
+        // Achievements are per-character now (not a server-wide "first"),
+        // but there still aren't many rows total for a small friend group,
+        // so it's simplest to just grab them all and match them up.
+        supabase.from("achievements").select("kind, tier, character_id"),
+        supabase
+          .from("profiles")
+          .select("legacy_points, addon_version, tray_version")
+          .eq("id", userData.user.id)
+          .single(),
+        supabase
+          .from("account_achievements")
+          .select("kind")
+          .eq("user_id", userData.user.id),
+        loadBadgeIconOverrides(supabase),
+      ]);
 
       if (error) {
         setError(error.message);
       } else {
-        // Achievements are per-character now (not a server-wide "first"),
-        // but there still aren't many rows total for a small friend group,
-        // so it's simplest to just grab them all and match them up.
-        const { data: achievementRows } = await supabase
-          .from("achievements")
-          .select("kind, tier, character_id");
         type Row = { kind: AchievementKind | "gold" | "epic_gear"; tier: GoldTier | null; character_id: string };
         const achievementsByCharacter = new Map<
           string,
@@ -98,26 +122,17 @@ export default function Dashboard({
         setCharacters(withAchievements as CardCharacter[]);
       }
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("legacy_points, addon_version, tray_version")
-        .eq("id", userData.user.id)
-        .single();
       setLegacy(Math.min(LEGACY_CAP, profile?.legacy_points ?? 0));
       setMyVersions({
         addon: profile?.addon_version ?? null,
         tray: profile?.tray_version ?? null,
       });
 
-      const { data: accountAchievementRows } = await supabase
-        .from("account_achievements")
-        .select("kind")
-        .eq("user_id", userData.user.id);
       setAccountAchievements(
         (accountAchievementRows ?? []).map((r) => r.kind as AccountAchievementKind)
       );
 
-      setIconOverrides(await loadBadgeIconOverrides(supabase));
+      setIconOverrides(overrides);
 
       setStatus("ready");
     }

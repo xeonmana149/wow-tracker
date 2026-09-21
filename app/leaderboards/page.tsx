@@ -175,29 +175,39 @@ export default async function Leaderboards({
       : "total";
   const mainsOnly = view === "character" && mains === "1";
 
-  const { data, error } = await supabase
-    .from("characters")
-    .select("*, profiles(display_name), character_professions(skill)")
-    .limit(500);
+  // These four requests don't depend on each other, so they're fired off
+  // together with Promise.all rather than one at a time - the same fix as
+  // the character page and Dashboard. Sequentially, each await waits on its
+  // own round-trip before the next one starts; run together, the wait is
+  // roughly whichever single one is slowest, not the sum of all four.
+  const [
+    { data, error },
+    specIcons,
+    { data: accountAchievementRows },
+    iconOverrides,
+  ] = await Promise.all([
+    supabase
+      .from("characters")
+      .select("*, profiles(display_name), character_professions(skill)")
+      .limit(500),
+    loadSpecIcons(),
+    // Account-wide badges live on the user, not any one character, so
+    // they're fetched once here and matched up by user_id per row below -
+    // the same approach as the Friends page. A character can show up
+    // multiple times (once per character a player has), so the same
+    // player's badges will repeat next to each of their entries - that's
+    // expected, not a bug.
+    supabase.from("account_achievements").select("user_id, kind"),
+    loadBadgeIconOverrides(supabase) as Promise<BadgeIconOverrides>,
+  ]);
 
-  const specIcons = await loadSpecIcons();
   const rows = (data ?? []) as Row[];
-
-  // Account-wide badges live on the user, not any one character, so they're
-  // fetched once here and matched up by user_id per row below - the same
-  // approach as the Friends page. A character can show up multiple times
-  // (once per character a player has), so the same player's badges will
-  // repeat next to each of their entries - that's expected, not a bug.
-  const { data: accountAchievementRows } = await supabase
-    .from("account_achievements")
-    .select("user_id, kind");
   const accountAchievementsByUser: Record<string, AccountAchievementKind[]> = {};
   for (const row of (accountAchievementRows ?? []) as { user_id: string; kind: AccountAchievementKind }[]) {
     const list = accountAchievementsByUser[row.user_id] ?? [];
     list.push(row.kind);
     accountAchievementsByUser[row.user_id] = list;
   }
-  const iconOverrides: BadgeIconOverrides = await loadBadgeIconOverrides(supabase);
 
   const allCharacters: Character[] = rows.map((r) => {
     return {
