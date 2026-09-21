@@ -141,6 +141,11 @@ export default async function CharacterPage({
               {character.ruleset && <span className="chip">{character.ruleset}</span>}
               <span className="chip">{character.character_type}</span>
               {character.guild && <span className="chip">{`<${character.guild}>`}</span>}
+              {typeof character.honor_points === "number" && character.honor_points > 0 && (
+                <span className="chip" title="Honor points">
+                  Honor: {character.honor_points.toLocaleString()}
+                </span>
+              )}
               <span className="chip">
                 Owned by {character.profiles?.display_name ?? "Unknown"}
               </span>

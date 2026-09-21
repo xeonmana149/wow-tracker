@@ -87,6 +87,8 @@ export type CardCharacter = {
   off_role: string | null;
   active_spec?: number | null;
   money_copper?: number;
+  pvp_rank?: number;
+  honor_points?: number;
   needs_setup?: boolean;
   created_at?: string | null;
   achievements?: CardAchievement[];
@@ -302,6 +304,11 @@ export default function CharacterCard({
             )}
             {c.ruleset && <span className="chip">{c.ruleset}</span>}
             {c.guild && <span className="chip">{`<${c.guild}>`}</span>}
+            {typeof c.honor_points === "number" && c.honor_points > 0 && (
+              <span className="chip" title="Honor points">
+                Honor: {c.honor_points.toLocaleString()}
+              </span>
+            )}
           </div>
 
           <div className={`${gap} flex flex-col gap-2 text-sm`}>
