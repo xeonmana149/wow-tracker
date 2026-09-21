@@ -13,8 +13,7 @@ export type AchievementKind =
   | "renaissance"
   | "maxed_legacy"
   | "top_pvp_rank"
-  | "founding_member"
-  | "well_rounded";
+  | "founding_member";
 
 // The two achievements that upgrade through Bronze/Silver/Gold instead of
 // being a flat yes/no: "gold" (account gold on this character) and
@@ -54,7 +53,6 @@ export const ACHIEVEMENT_MESSAGE: Record<AchievementKind, (name: string) => stri
   maxed_legacy: (name) => `${name} maxed the account's Legacy points!`,
   top_pvp_rank: (name) => `${name} reached the top PvP rank!`,
   founding_member: (name) => `${name} earned the Founding Member badge!`,
-  well_rounded: (name) => `${name} filled out both a main and an off spec - Well-Rounded!`,
 };
 
 export function goldTierMessage(name: string, tier: GoldTier): string {

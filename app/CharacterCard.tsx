@@ -33,7 +33,6 @@ export const ACHIEVEMENT_BADGES: Record<AchievementKind, { icon: string; label: 
   maxed_legacy: { icon: "inv_misc_rune_01", label: "Maxed the account's Legacy points" },
   top_pvp_rank: { icon: "achievement_pvp_rank_grandmarshal", label: "Reached the top PvP rank" },
   founding_member: { icon: "inv_misc_map_01", label: "Founding Member - created during launch week" },
-  well_rounded: { icon: "ability_dualwield", label: "Well-Rounded - has both a main and an off spec" },
 };
 
 export const GOLD_TIER_BADGE: Record<GoldTier, { icon: string; label: string }> = {

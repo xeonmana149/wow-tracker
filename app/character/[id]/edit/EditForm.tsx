@@ -3,7 +3,7 @@
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
-import { copperToParts, partsToCopper } from "../../../../lib/money";
+import { copperToParts } from "../../../../lib/money";
 import { awardAchievement, ACHIEVEMENT_MESSAGE } from "../../../../lib/achievements";
 import {
   RACES,
@@ -56,17 +56,17 @@ export default function EditForm({ character }: { character: Character }) {
   const [offSpec, setOffSpec] = useState(validSpec(character.class, character.off_spec));
   const [offRole, setOffRole] = useState(character.off_role ?? "");
   const [ruleset, setRuleset] = useState(character.ruleset ?? "");
-  const [level, setLevel] = useState(character.level);
-  const [guild, setGuild] = useState(character.guild ?? "");
   const [characterType, setCharacterType] = useState(character.character_type);
   const [pvpRank, setPvpRank] = useState(character.pvp_rank);
   const [honorPoints, setHonorPoints] = useState(character.honor_points);
-  const startMoney = copperToParts(character.money_copper);
-  const [gold, setGold] = useState(startMoney.gold);
-  const [silver, setSilver] = useState(startMoney.silver);
-  const [copper, setCopper] = useState(startMoney.copper);
   const [legacyPointsSpent, setLegacyPointsSpent] = useState(character.legacy_points_spent);
   const [message, setMessage] = useState("");
+
+  // Level, guild and gold aren't edited here at all - the addon overwrites
+  // all three on every sync (see importLogic.ts's charUpdate), so a manual
+  // edit here would just get silently reverted the next time you log out
+  // or /reload in-game. They're shown read-only below for context instead.
+  const currentMoney = copperToParts(character.money_copper);
 
   const specs = SPECS[charClass] ?? [];
 
@@ -104,8 +104,6 @@ export default function EditForm({ character }: { character: Character }) {
         name: `${firstName.trim()} ${lastName.trim()}`,
         race,
         class: charClass,
-        level,
-        guild: guild.trim() || null,
         character_type: characterType,
         ruleset,
         main_spec: mainSpec,
@@ -114,7 +112,6 @@ export default function EditForm({ character }: { character: Character }) {
         off_role: offSpec ? offRole : null,
         pvp_rank: pvpRank,
         honor_points: honorPoints,
-        money_copper: partsToCopper(gold, silver, copper),
         legacy_points_spent: legacyPointsSpent,
       })
       .eq("id", character.id);
@@ -157,18 +154,6 @@ export default function EditForm({ character }: { character: Character }) {
           }
         }
 
-        if (mainSpec && offSpec) {
-          const earned = await awardAchievement(supabase, character.id, "well_rounded");
-          if (earned) {
-            newEvents.push({
-              character_id: character.id,
-              user_id: uid,
-              kind: "achievement_earned",
-              message: ACHIEVEMENT_MESSAGE.well_rounded(firstName.trim()),
-            });
-          }
-        }
-
         if (newEvents.length > 0) {
           await supabase.from("activity_events").insert(newEvents);
         }
@@ -182,248 +167,226 @@ export default function EditForm({ character }: { character: Character }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-6 flex max-w-sm flex-col gap-4">
-      <label className="flex flex-col gap-1">
-        First name
-        <input
-          value={firstName}
-          onChange={(e) => setFirstName(e.target.value)}
-          pattern="\S+"
-          title="One word, no spaces"
-          className="rounded bg-white p-2 text-black"
-          required
-        />
-      </label>
+    <form onSubmit={handleSubmit} className="mt-6 flex max-w-3xl flex-col gap-6">
+      <div className="rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+          From your last sync
+        </h2>
+        <p className="mt-1 text-xs text-gray-500">
+          Level, guild and gold come from the addon and update automatically every time you log
+          out or /reload - editing them here would just get overwritten, so they're not editable
+          on this page.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-4 text-sm">
+          <div>
+            <div className="text-gray-500">Level</div>
+            <div className="font-semibold text-white">{character.level}</div>
+          </div>
+          <div>
+            <div className="text-gray-500">Guild</div>
+            <div className="font-semibold text-white">{character.guild || "None"}</div>
+          </div>
+          <div>
+            <div className="text-gray-500">Gold</div>
+            <div className="font-semibold text-white">
+              {currentMoney.gold}g {currentMoney.silver}s {currentMoney.copper}c
+            </div>
+          </div>
+        </div>
+      </div>
 
-      <label className="flex flex-col gap-1">
-        Last name
-        <input
-          value={lastName}
-          onChange={(e) => setLastName(e.target.value)}
-          pattern="\S+"
-          title="One word, no spaces"
-          className="rounded bg-white p-2 text-black"
-          required
-        />
-      </label>
-
-      <label className="flex flex-col gap-1">
-        Race
-        <select
-          value={race}
-          onChange={(e) => setRace(e.target.value)}
-          className="rounded bg-white p-2 text-black"
-          required
-        >
-          <option value="">Choose a race</option>
-          {RACES.map((r) => (
-            <option key={r}>{r}</option>
-          ))}
-        </select>
-        {race && (
-          <span className="text-sm text-gray-400">Faction: {RACE_FACTION[race]}</span>
-        )}
-      </label>
-
-      <label className="flex flex-col gap-1">
-        Class
-        <select
-          value={charClass}
-          onChange={(e) => handleClassChange(e.target.value)}
-          className="rounded bg-white p-2 text-black"
-          required
-        >
-          <option value="">Choose a class</option>
-          {CLASSES.map((c) => (
-            <option key={c}>{c}</option>
-          ))}
-        </select>
-      </label>
-
-      <label className="flex flex-col gap-1">
-        Main spec
-        <select
-          value={mainSpec}
-          onChange={(e) => handleMainSpecChange(e.target.value)}
-          disabled={!charClass}
-          className="rounded bg-white p-2 text-black disabled:opacity-50"
-          required
-        >
-          <option value="">
-            {charClass ? "Choose a spec" : "Choose a class first"}
-          </option>
-          {specs.map((s) => (
-            <option key={s.name}>{s.name}</option>
-          ))}
-        </select>
-      </label>
-
-      <label className="flex flex-col gap-1">
-        Main spec role
-        <select
-          value={mainRole}
-          onChange={(e) => setMainRole(e.target.value)}
-          className="rounded bg-white p-2 text-black"
-          required
-        >
-          <option value="">Choose a role</option>
-          {ROLES.map((r) => (
-            <option key={r}>{r}</option>
-          ))}
-        </select>
-      </label>
-
-      <label className="flex flex-col gap-1">
-        Off spec (optional)
-        <select
-          value={offSpec}
-          onChange={(e) => handleOffSpecChange(e.target.value)}
-          disabled={!charClass}
-          className="rounded bg-white p-2 text-black disabled:opacity-50"
-        >
-          <option value="">None</option>
-          {specs
-            .filter((s) => s.name !== mainSpec)
-            .map((s) => (
-              <option key={s.name}>{s.name}</option>
-            ))}
-        </select>
-      </label>
-
-      {offSpec && (
+      <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1">
-          Off spec role
+          First name
+          <input
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            pattern="\S+"
+            title="One word, no spaces"
+            className="rounded bg-white p-2 text-black"
+            required
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          Last name
+          <input
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            pattern="\S+"
+            title="One word, no spaces"
+            className="rounded bg-white p-2 text-black"
+            required
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          Race
           <select
-            value={offRole}
-            onChange={(e) => setOffRole(e.target.value)}
+            value={race}
+            onChange={(e) => setRace(e.target.value)}
             className="rounded bg-white p-2 text-black"
             required
           >
+            <option value="">Choose a race</option>
+            {RACES.map((r) => (
+              <option key={r}>{r}</option>
+            ))}
+          </select>
+          {race && (
+            <span className="text-sm text-gray-400">Faction: {RACE_FACTION[race]}</span>
+          )}
+        </label>
+
+        <label className="flex flex-col gap-1">
+          Class
+          <select
+            value={charClass}
+            onChange={(e) => handleClassChange(e.target.value)}
+            className="rounded bg-white p-2 text-black"
+            required
+          >
+            <option value="">Choose a class</option>
+            {CLASSES.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          Character type
+          <select
+            value={characterType}
+            onChange={(e) => setCharacterType(e.target.value)}
+            className="rounded bg-white p-2 text-black"
+          >
+            {CHARACTER_TYPES.map((t) => (
+              <option key={t}>{t}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          Ruleset
+          <select
+            value={ruleset}
+            onChange={(e) => setRuleset(e.target.value)}
+            className="rounded bg-white p-2 text-black"
+            required
+          >
+            <option value="">Choose a ruleset</option>
+            {RULESETS.map((r) => (
+              <option key={r}>{r}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          Main spec
+          <select
+            value={mainSpec}
+            onChange={(e) => handleMainSpecChange(e.target.value)}
+            disabled={!charClass}
+            className="rounded bg-white p-2 text-black disabled:opacity-50"
+            required
+          >
+            <option value="">
+              {charClass ? "Choose a spec" : "Choose a class first"}
+            </option>
+            {specs.map((s) => (
+              <option key={s.name}>{s.name}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          Main spec role
+          <select
+            value={mainRole}
+            onChange={(e) => setMainRole(e.target.value)}
+            className="rounded bg-white p-2 text-black"
+            required
+          >
+            <option value="">Choose a role</option>
             {ROLES.map((r) => (
               <option key={r}>{r}</option>
             ))}
           </select>
         </label>
-      )}
 
-      <label className="flex flex-col gap-1">
-        Ruleset
-        <select
-          value={ruleset}
-          onChange={(e) => setRuleset(e.target.value)}
-          className="rounded bg-white p-2 text-black"
-          required
-        >
-          <option value="">Choose a ruleset</option>
-          {RULESETS.map((r) => (
-            <option key={r}>{r}</option>
-          ))}
-        </select>
-      </label>
+        <label className="flex flex-col gap-1">
+          Off spec (optional)
+          <select
+            value={offSpec}
+            onChange={(e) => handleOffSpecChange(e.target.value)}
+            disabled={!charClass}
+            className="rounded bg-white p-2 text-black disabled:opacity-50"
+          >
+            <option value="">None</option>
+            {specs
+              .filter((s) => s.name !== mainSpec)
+              .map((s) => (
+                <option key={s.name}>{s.name}</option>
+              ))}
+          </select>
+        </label>
 
-      <label className="flex flex-col gap-1">
-        Level
-        <input
-          type="number"
-          min={1}
-          max={60}
-          value={level}
-          onChange={(e) => setLevel(Number(e.target.value))}
-          className="rounded bg-white p-2 text-black"
-        />
-      </label>
+        {offSpec && (
+          <label className="flex flex-col gap-1">
+            Off spec role
+            <select
+              value={offRole}
+              onChange={(e) => setOffRole(e.target.value)}
+              className="rounded bg-white p-2 text-black"
+              required
+            >
+              {ROLES.map((r) => (
+                <option key={r}>{r}</option>
+              ))}
+            </select>
+          </label>
+        )}
 
-      <label className="flex flex-col gap-1">
-        Guild (optional)
-        <input
-          value={guild}
-          onChange={(e) => setGuild(e.target.value)}
-          className="rounded bg-white p-2 text-black"
-        />
-      </label>
-
-      <label className="flex flex-col gap-1">
-        Character type
-        <select
-          value={characterType}
-          onChange={(e) => setCharacterType(e.target.value)}
-          className="rounded bg-white p-2 text-black"
-        >
-          {CHARACTER_TYPES.map((t) => (
-            <option key={t}>{t}</option>
-          ))}
-        </select>
-      </label>
-
-      <label className="flex flex-col gap-1">
-        PvP rank (0 to 14)
-        <input
-          type="number"
-          min={0}
-          max={14}
-          value={pvpRank}
-          onChange={(e) => setPvpRank(Number(e.target.value))}
-          className="rounded bg-white p-2 text-black"
-        />
-      </label>
-
-      <label className="flex flex-col gap-1">
-        Honor points
-        <input
-          type="number"
-          min={0}
-          value={honorPoints}
-          onChange={(e) => setHonorPoints(Number(e.target.value))}
-          className="rounded bg-white p-2 text-black"
-        />
-      </label>
-
-      <label className="flex flex-col gap-1">
-        Money
-        <div className="flex gap-2">
+        <label className="flex flex-col gap-1">
+          PvP rank (0 to 14)
           <input
             type="number"
             min={0}
-            value={gold}
-            onChange={(e) => setGold(Number(e.target.value))}
-            placeholder="Gold"
-            className="w-24 rounded bg-white p-2 text-black"
+            max={14}
+            value={pvpRank}
+            onChange={(e) => setPvpRank(Number(e.target.value))}
+            className="rounded bg-white p-2 text-black"
           />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          Honor points
           <input
             type="number"
             min={0}
-            max={99}
-            value={silver}
-            onChange={(e) => setSilver(Number(e.target.value))}
-            placeholder="Silver"
-            className="w-20 rounded bg-white p-2 text-black"
+            value={honorPoints}
+            onChange={(e) => setHonorPoints(Number(e.target.value))}
+            className="rounded bg-white p-2 text-black"
           />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          Legacy points spent
           <input
             type="number"
             min={0}
-            max={99}
-            value={copper}
-            onChange={(e) => setCopper(Number(e.target.value))}
-            placeholder="Copper"
-            className="w-20 rounded bg-white p-2 text-black"
+            value={legacyPointsSpent}
+            onChange={(e) => setLegacyPointsSpent(Number(e.target.value))}
+            className="rounded bg-white p-2 text-black"
           />
-        </div>
-      </label>
+        </label>
+      </div>
 
-      <label className="flex flex-col gap-1">
-        Legacy points spent
-        <input
-          type="number"
-          min={0}
-          value={legacyPointsSpent}
-          onChange={(e) => setLegacyPointsSpent(Number(e.target.value))}
-          className="rounded bg-white p-2 text-black"
-        />
-      </label>
-
-      <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-white">
-        Save Changes
-      </button>
+      <div>
+        <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-white">
+          Save Changes
+        </button>
+      </div>
 
       {message && <p className="text-red-400">{message}</p>}
     </form>
