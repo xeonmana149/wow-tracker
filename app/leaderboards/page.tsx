@@ -300,7 +300,16 @@ export default async function Leaderboards({
                   )}
                 </div>
 
-                <div className="score">
+                <div
+                  className={`score ${key === "total" ? "cursor-help border-b border-dotted border-gray-500" : ""}`}
+                  title={
+                    key === "total"
+                      ? Object.entries(boards)
+                          .map(([boardKey, b]) => `${b.label}: ${points[boardKey][c.id]}`)
+                          .join("\n")
+                      : undefined
+                  }
+                >
                   {key === "total" ? `${totals[c.id]} pts` : boards[key].show(c)}
                 </div>
               </Link>
