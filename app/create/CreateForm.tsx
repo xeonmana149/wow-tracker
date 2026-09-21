@@ -70,7 +70,6 @@ function Choice({
 export default function CreateForm({ specIcons }: { specIcons: Record<string, string> }) {
   const router = useRouter();
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
-  const [pvpFaction, setPvpFaction] = useState<string | null>(null);
   const [ruleset, setRuleset] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -88,23 +87,12 @@ export default function CreateForm({ specIcons }: { specIcons: Record<string, st
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
+    supabase.auth.getUser().then(({ data }) => {
       setLoggedIn(!!data.user);
-      if (!data.user) return;
-
-      // If you already have a PVP character, new PVP characters must match its faction
-      const { data: mine } = await supabase
-        .from("characters")
-        .select("race")
-        .eq("user_id", data.user.id)
-        .eq("ruleset", "PVP");
-      const first = (mine ?? [])[0];
-      setPvpFaction(first ? RACE_FACTION[first.race] ?? null : null);
     });
   }, []);
 
   // What each step offers, based on the steps before it
-  const lockedFaction = ruleset === "PVP" ? pvpFaction : null;
   const racesForFaction = RACES.filter((r) => RACE_FACTION[r] === faction);
   const classesForRace = RACE_CLASSES[race] ?? [];
   const specs = SPECS[charClass] ?? [];
@@ -132,18 +120,7 @@ export default function CreateForm({ specIcons }: { specIcons: Record<string, st
     setOffRole("");
   }
 
-  function handleRulesetChange(r: string) {
-    setRuleset(r);
-    // A PVP ruleset with an existing PVP character fixes the faction
-    if (r === "PVP" && pvpFaction && faction !== pvpFaction) {
-      setFaction(pvpFaction);
-      setRace("");
-      clearClass();
-    }
-  }
-
   function handleFactionChange(f: string) {
-    if (lockedFaction && f !== lockedFaction) return;
     if (f === faction) return;
     setFaction(f);
     setRace("");
@@ -247,10 +224,7 @@ export default function CreateForm({ specIcons }: { specIcons: Record<string, st
 
           <div className="mt-5 flex flex-col gap-6">
             <Field label="1. Ruleset">
-              <Choice options={RULESETS} value={ruleset} onChange={handleRulesetChange} />
-              <p className="text-xs text-gray-500">
-                All of your PVP characters have to be on the same faction.
-              </p>
+              <Choice options={RULESETS} value={ruleset} onChange={setRuleset} />
             </Field>
 
             <Field label="2. Name">
@@ -275,33 +249,23 @@ export default function CreateForm({ specIcons }: { specIcons: Record<string, st
 
             <Field label="3. Faction">
               <div className="grid grid-cols-2 gap-3">
-                {FACTIONS.map((f) => {
-                  const blocked = !!lockedFaction && f !== lockedFaction;
-                  return (
-                    <button
-                      key={f}
-                      type="button"
-                      disabled={blocked}
-                      onClick={() => handleFactionChange(f)}
-                      className={`rounded px-4 py-3 font-bold disabled:opacity-30 ${
-                        faction === f
-                          ? f === "Alliance"
-                            ? "bg-blue-600 text-white"
-                            : "bg-red-700 text-white"
-                          : "bg-neutral-700 text-gray-300 hover:bg-neutral-600"
-                      }`}
-                    >
-                      {f}
-                    </button>
-                  );
-                })}
+                {FACTIONS.map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => handleFactionChange(f)}
+                    className={`rounded px-4 py-3 font-bold ${
+                      faction === f
+                        ? f === "Alliance"
+                          ? "bg-blue-600 text-white"
+                          : "bg-red-700 text-white"
+                        : "bg-neutral-700 text-gray-300 hover:bg-neutral-600"
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
               </div>
-              {lockedFaction && (
-                <p className="text-xs text-yellow-500">
-                  Your other PVP characters are {lockedFaction}, so a PVP character has to be{" "}
-                  {lockedFaction} too.
-                </p>
-              )}
             </Field>
 
             <Field label="4. Race">
