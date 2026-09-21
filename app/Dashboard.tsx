@@ -407,7 +407,7 @@ export default function Dashboard({
       </div>
 
       {(addonOutdated || trayOutdated) && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-purple-700 bg-purple-950/40 p-3 text-sm text-purple-200">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#6b5229] bg-[#3a2d18]/40 p-3 text-sm text-[#e6d6ac]">
           <div className="flex items-start gap-2">
             {ICON_INFO}
             <div>
@@ -428,7 +428,7 @@ export default function Dashboard({
           </div>
           <Link
             href="/download"
-            className="shrink-0 rounded bg-purple-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-600"
+            className="shrink-0 rounded bg-[#c9a566] px-3 py-1.5 text-xs font-semibold text-[#2b1c0b] hover:bg-[#d9b877]"
           >
             View Instructions →
           </Link>
