@@ -160,7 +160,7 @@ export default function NeedsSetupBanner({
       <button
         onClick={save}
         disabled={saving}
-        className="mt-4 rounded bg-amber-500 px-5 py-2.5 text-sm font-bold text-neutral-950 hover:bg-amber-400 disabled:opacity-50"
+        className="mt-4 rounded bg-red-700 px-5 py-2.5 text-sm disabled:opacity-50"
       >
         {saving ? "Saving..." : "Save and dismiss"}
       </button>

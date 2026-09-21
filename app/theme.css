@@ -167,24 +167,6 @@ span.bg-neutral-950 {
 
 /* ---------- Buttons ---------- */
 
-/* Primary and "selected": bronze */
-button.bg-blue-600,
-a.bg-blue-600 {
-  background: linear-gradient(180deg, #e0b555 0%, #b98a32 48%, #8f6520 100%);
-  color: #22150a;
-  font-weight: 600;
-  outline: 1px solid #f6dc95;
-  outline-offset: -2px;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 244, 200, 0.55);
-  text-shadow: 0 1px 0 rgba(255, 236, 170, 0.45);
-}
-
-button.bg-blue-600:hover:not(:disabled),
-a.bg-blue-600:hover {
-  filter: brightness(1.12);
-  text-decoration: none;
-}
-
 /* Secondary: dark bevel */
 button.bg-neutral-700,
 button.bg-neutral-800 {
@@ -201,12 +183,17 @@ button.bg-neutral-800:hover:not(:disabled) {
   outline-color: var(--gold-soft);
 }
 
-/* Danger / primary-action: crimson with a gold frame, like the game's
-   own "Options" button - also used as the main CTA style (Set up,
-   Create Character, Generate token, etc), not just literal danger
-   actions, so it's styled for links too. */
+/* The single site-wide "primary action" button: crimson with a gold
+   frame, like the game's own "Options" button. bg-blue-600 is kept as a
+   hook alongside bg-red-700/800 purely so every existing "primary"
+   button in the codebase (forms' Save/Submit, Create Character, Import,
+   etc - originally written as bg-blue-600 back when this was a bronze
+   gradient) picks up the same look without hunting down every call site;
+   new buttons can use either class name, they render identically. */
+button.bg-blue-600,
 button.bg-red-700,
 button.bg-red-800,
+a.bg-blue-600,
 a.bg-red-700,
 a.bg-red-800 {
   background: linear-gradient(180deg, #9c2f2a 0%, #7a221d 55%, #591813 100%);
@@ -222,14 +209,17 @@ a.bg-red-800 {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
 
+button.bg-blue-600:hover:not(:disabled),
 button.bg-red-700:hover:not(:disabled),
 button.bg-red-800:hover:not(:disabled),
+a.bg-blue-600:hover,
 a.bg-red-700:hover,
 a.bg-red-800:hover {
   filter: brightness(1.15);
   text-decoration: none;
 }
 
+button.bg-blue-600:disabled,
 button.bg-red-700:disabled,
 button.bg-red-800:disabled {
   filter: grayscale(0.4);
