@@ -9,6 +9,14 @@ import type { FriendPlayer } from "./FriendsBrowser";
 
 type Entry = { id: string; name: string; cls: string; owner: string; skill: number; recipes: string[] };
 
+// Herbalism/Mining/Skinning are "primary" professions in the sense that they
+// take up one of your two primary profession slots, but they don't actually
+// craft anything - they gather materials for the other primary professions.
+// Worth its own row so it doesn't get lost among Alchemy/Blacksmithing/etc.
+const GATHERING_PROFESSIONS = new Set(["Herbalism", "Mining", "Skinning"]);
+const CRAFTING_PROFESSIONS = PRIMARY_PROFESSIONS.filter((p) => !GATHERING_PROFESSIONS.has(p));
+const GATHERING_LIST = PRIMARY_PROFESSIONS.filter((p) => GATHERING_PROFESSIONS.has(p));
+
 const ALL_PROFESSIONS = [...PRIMARY_PROFESSIONS, ...SECONDARY_PROFESSIONS];
 
 // Everyone in the group who has this profession, best first
@@ -252,10 +260,37 @@ export default function CraftingDirectory({ players }: { players: FriendPlayer[]
         <SearchResults results={searchResults} />
       ) : (
         <>
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-            {ALL_PROFESSIONS.map((p) => (
-              <TabButton key={p} p={p} />
-            ))}
+          <div className="mt-4 flex flex-col gap-3">
+            <div>
+              <h3 className="mb-1 text-xs uppercase tracking-wide text-gray-500">
+                Crafting professions
+              </h3>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {CRAFTING_PROFESSIONS.map((p) => (
+                  <TabButton key={p} p={p} />
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className="mb-1 text-xs uppercase tracking-wide text-gray-500">
+                Gathering professions
+              </h3>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {GATHERING_LIST.map((p) => (
+                  <TabButton key={p} p={p} />
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className="mb-1 text-xs uppercase tracking-wide text-gray-500">
+                Secondary professions
+              </h3>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {SECONDARY_PROFESSIONS.map((p) => (
+                  <TabButton key={p} p={p} />
+                ))}
+              </div>
+            </div>
           </div>
           <div className="mt-4">
             <ProfessionPanel profession={tab} list={lists[tab]} />
