@@ -14,6 +14,7 @@ export default function AccountSyncSetup() {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -53,6 +54,20 @@ export default function AccountSyncSetup() {
     setLoading(false);
   }
 
+  async function copyToken() {
+    if (!token) return;
+    try {
+      await navigator.clipboard.writeText(token);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard access can fail (e.g. an insecure/non-HTTPS context, or a
+      // browser that blocks it) - fall back to just letting them select and
+      // copy the text manually, since it's already shown right there.
+      setMessage("Couldn't copy automatically - select the token above and copy it manually.");
+    }
+  }
+
   return (
     <section className="mt-4 max-w-2xl rounded bg-neutral-800 p-4">
       <div className="flex items-center justify-between">
@@ -76,7 +91,15 @@ export default function AccountSyncSetup() {
           {token ? (
             <div className="mt-3 rounded bg-neutral-900 p-3">
               <p className="text-xs text-gray-500">Your account sync token:</p>
-              <code className="break-all text-sm text-amber-300">{token}</code>
+              <div className="mt-1 flex flex-wrap items-center gap-3">
+                <code className="break-all text-sm text-amber-300">{token}</code>
+                <button
+                  onClick={copyToken}
+                  className="rounded bg-neutral-700 px-3 py-1 text-xs font-semibold text-white hover:bg-neutral-600"
+                >
+                  {copied ? "Copied!" : "Copy"}
+                </button>
+              </div>
             </div>
           ) : (
             <p className="mt-3 text-sm text-gray-400">No token generated yet.</p>

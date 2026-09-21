@@ -242,7 +242,8 @@ export default function Dashboard({
         <div className="mt-4 rounded-lg border border-purple-700 bg-purple-950/40 p-3 text-sm text-purple-200">
           {addonOutdated && (
             <p>
-              A new version of the WoWForeverTracker addon ({LATEST_VERSIONS.addon}) is out -{" "}
+              A new version of the WoWForeverTracker addon ({LATEST_VERSIONS.addon}, you have{" "}
+              {myVersions.addon}) is out -{" "}
               <Link href="/download" className="font-semibold underline">
                 download it
               </Link>{" "}
@@ -251,7 +252,8 @@ export default function Dashboard({
           )}
           {trayOutdated && (
             <p className={addonOutdated ? "mt-1" : undefined}>
-              A new version of the background sync app ({LATEST_VERSIONS.tray}) is out -{" "}
+              A new version of the background sync app ({LATEST_VERSIONS.tray}, you have{" "}
+              {myVersions.tray}) is out -{" "}
               <Link href="/download" className="font-semibold underline">
                 download it
               </Link>{" "}
