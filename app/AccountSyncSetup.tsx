@@ -17,12 +17,9 @@ export default function AccountSyncSetup({ openSignal }: { openSignal?: number }
   const [userId, setUserId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
-  // Lets a button elsewhere on the page (the Dashboard's "Set Up Auto-Sync"
-  // stat-strip button) force this open without this component needing to
-  // hand over full control of its own open/closed state - every increment
-  // of openSignal just means "someone wants this open now". Left undefined,
-  // nothing changes: the section behaves exactly as before, opened only by
-  // its own header button.
+  // The Dashboard's "Set Up Auto-Sync" stat-strip button is the only way to
+  // open this now (there's no header/toggle of its own) - every increment
+  // of openSignal just means "someone wants this open now".
   useEffect(() => {
     if (openSignal !== undefined && openSignal > 0) setOpen(true);
   }, [openSignal]);
@@ -97,67 +94,62 @@ export default function AccountSyncSetup({ openSignal }: { openSignal?: number }
     window.open(`http://127.0.0.1:${SYNC_APP_PORT}/setup?prefillToken=${token}`, "_blank");
   }
 
+  // No standalone header/box of its own anymore - the Dashboard's own
+  // "Set Up Auto-Sync" button is the only way in, so there's nothing to
+  // show (and no duplicate title bar sitting around) until that's clicked.
+  if (!open) return null;
+
   return (
     <section className="mt-4 max-w-2xl rounded bg-neutral-800 p-4">
       <div className="flex items-center justify-between">
         <h2 className="font-bold">Account Auto-Sync Setup</h2>
-        <button
-          onClick={() => setOpen(!open)}
-          className="rounded bg-red-700 px-3 py-1 text-sm"
-        >
-          {open ? "Hide" : "Set up"}
+        <button onClick={() => setOpen(false)} className="text-xs text-gray-400 underline">
+          Hide
         </button>
       </div>
 
-      {open && (
-        <>
-          <p className="mt-2 text-sm text-gray-400">
-            One token for your whole account. If the companion app is already running on this
-            computer, "Open Sync App" jumps straight to its setup page with the token already
-            filled in - tick your characters there and hit Save. Set it up once and it keeps every
-            character you play in sync, creating a new character on this site automatically the
-            first time it sees one it doesn&apos;t recognize yet. Treat it like a password.
+      <p className="mt-2 text-sm text-gray-400">
+        One token for your whole account. If the companion app is already running on this
+        computer, "Open Sync App" jumps straight to its setup page with the token already filled
+        in - tick your characters there and hit Save. Set it up once and it keeps every character
+        you play in sync, creating a new character on this site automatically the first time it
+        sees one it doesn&apos;t recognize yet. Treat it like a password.
+      </p>
+
+      {token ? (
+        <div className="mt-3 rounded bg-neutral-900 p-3">
+          <p className="text-xs text-gray-500">Your account sync token:</p>
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <code className="break-all text-sm text-amber-300">{token}</code>
+            <button onClick={openSyncApp} className="rounded bg-red-700 px-3 py-1 text-xs">
+              Open Sync App
+            </button>
+            <button
+              onClick={copyToken}
+              className="rounded bg-neutral-700 px-3 py-1 text-xs font-semibold text-white hover:bg-neutral-600"
+            >
+              {copied ? "Copied!" : "Copy"}
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            "Open Sync App" only works if the companion app is already running on this computer.
+            Setting it up for the first time, or on a different PC? Use Copy and paste it in there
+            instead.
           </p>
-
-          {token ? (
-            <div className="mt-3 rounded bg-neutral-900 p-3">
-              <p className="text-xs text-gray-500">Your account sync token:</p>
-              <div className="mt-1 flex flex-wrap items-center gap-3">
-                <code className="break-all text-sm text-amber-300">{token}</code>
-                <button
-                  onClick={openSyncApp}
-                  className="rounded bg-red-700 px-3 py-1 text-xs"
-                >
-                  Open Sync App
-                </button>
-                <button
-                  onClick={copyToken}
-                  className="rounded bg-neutral-700 px-3 py-1 text-xs font-semibold text-white hover:bg-neutral-600"
-                >
-                  {copied ? "Copied!" : "Copy"}
-                </button>
-              </div>
-              <p className="mt-2 text-xs text-gray-500">
-                "Open Sync App" only works if the companion app is already running on this
-                computer. Setting it up for the first time, or on a different PC? Use Copy and
-                paste it in there instead.
-              </p>
-            </div>
-          ) : (
-            <p className="mt-3 text-sm text-gray-400">No token generated yet.</p>
-          )}
-
-          <button
-            onClick={generateToken}
-            disabled={loading}
-            className="mt-3 rounded bg-red-700 px-4 py-2 text-sm disabled:opacity-50"
-          >
-            {loading ? "Generating..." : token ? "Generate new token" : "Generate token"}
-          </button>
-
-          {message && <p className="mt-3 text-sm text-amber-300">{message}</p>}
-        </>
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-gray-400">No token generated yet.</p>
       )}
+
+      <button
+        onClick={generateToken}
+        disabled={loading}
+        className="mt-3 rounded bg-red-700 px-4 py-2 text-sm disabled:opacity-50"
+      >
+        {loading ? "Generating..." : token ? "Generate new token" : "Generate token"}
+      </button>
+
+      {message && <p className="mt-3 text-sm text-amber-300">{message}</p>}
     </section>
   );
 }
