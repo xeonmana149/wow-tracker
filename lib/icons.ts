@@ -37,12 +37,12 @@ export const RACE_ICONS: Record<string, string> = {
   Dwarf: "race_dwarf_male",
   "Night Elf": "race_nightelf_male",
   Gnome: "race_gnome_male",
-  "Alliance Skyborne": "race_skyborne_alliance",
+  "High Order Skyborne": "race_skyborne_alliance",
   Orc: "race_orc_male",
   Undead: "race_scourge_male",
   Tauren: "race_tauren_male",
   Troll: "race_troll_male",
-  "Horde Skyborne": "race_skyborne_horde",
+  "Windshaper Skyborne": "race_skyborne_horde",
 };
 
 export function classIcon(cls: string) {

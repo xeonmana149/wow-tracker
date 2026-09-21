@@ -51,18 +51,21 @@ export const SPECS: Record<string, Spec[]> = {
 
 export const CLASSES = Object.keys(SPECS);
 
-// Each race and its faction. Skyborne is a separate race for each faction.
+// Each race and its faction. Skyborne is a separate race for each faction -
+// "High Order Skyborne" on the Alliance side, "Windshaper Skyborne" on the
+// Horde side - these are the actual in-lore race names the server uses
+// (matching what UnitRace() reports in-game), not generic faction labels.
 export const RACE_FACTION: Record<string, "Alliance" | "Horde"> = {
   Human: "Alliance",
   Dwarf: "Alliance",
   "Night Elf": "Alliance",
   Gnome: "Alliance",
-  "Alliance Skyborne": "Alliance",
+  "High Order Skyborne": "Alliance",
   Orc: "Horde",
   Undead: "Horde",
   Tauren: "Horde",
   Troll: "Horde",
-  "Horde Skyborne": "Horde",
+  "Windshaper Skyborne": "Horde",
 };
 
 export const RACES = Object.keys(RACE_FACTION);
@@ -78,10 +81,10 @@ export const RACE_CLASSES: Record<string, string[]> = {
   Dwarf: ["Hunter", "Paladin", "Priest", "Rogue", "Shaman", "Warrior"],
   "Night Elf": ["Druid", "Hunter", "Priest", "Rogue", "Warrior"],
   Gnome: ["Mage", "Priest", "Rogue", "Warlock", "Warrior"],
-  "Alliance Skyborne": ["Druid", "Hunter", "Mage", "Rogue", "Warrior"],
+  "High Order Skyborne": ["Druid", "Hunter", "Mage", "Rogue", "Warrior"],
   Orc: ["Hunter", "Mage", "Rogue", "Shaman", "Warlock", "Warrior"],
   Undead: ["Mage", "Paladin", "Priest", "Rogue", "Warlock", "Warrior"],
   Tauren: ["Druid", "Hunter", "Shaman", "Warrior"],
   Troll: ["Hunter", "Mage", "Priest", "Rogue", "Shaman", "Warlock", "Warrior"],
-  "Horde Skyborne": ["Druid", "Hunter", "Rogue", "Shaman", "Warrior"],
+  "Windshaper Skyborne": ["Druid", "Hunter", "Rogue", "Shaman", "Warrior"],
 };
