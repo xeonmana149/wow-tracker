@@ -8,6 +8,11 @@ import { supabase } from "../lib/supabase";
 // folder deeper (e.g. app/dashboard/AccountSyncSetup.tsx) needs
 // "../../lib/supabase" instead, same rule as your other components.
 
+// Same fixed port the companion app's setup server listens on
+// (SETUP_PORT in sync.js) - it never changes, so it's safe to hardcode
+// here rather than needing the two to agree on it some other way.
+const SYNC_APP_PORT = 47891;
+
 export default function AccountSyncSetup() {
   const [userId, setUserId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -68,6 +73,20 @@ export default function AccountSyncSetup() {
     }
   }
 
+  // Opens the companion app's own setup page directly, with the token
+  // already in the URL - the app fills its token field from that and skips
+  // the whole copy/switch/paste dance. This only works when the app is
+  // already running on THIS computer (it's a plain link to localhost, not
+  // a request this page makes, so there's nothing to catch or retry if
+  // it isn't - the browser just fails to load that tab, same as typing a
+  // dead address). Doesn't help for a friend syncing from a second PC or
+  // for the app's very first-ever run before it's installed - Copy is the
+  // fallback for those.
+  function openSyncApp() {
+    if (!token) return;
+    window.open(`http://127.0.0.1:${SYNC_APP_PORT}/setup?prefillToken=${token}`, "_blank");
+  }
+
   return (
     <section className="mt-4 max-w-2xl rounded bg-neutral-800 p-4">
       <div className="flex items-center justify-between">
@@ -83,9 +102,11 @@ export default function AccountSyncSetup() {
       {open && (
         <>
           <p className="mt-2 text-sm text-gray-400">
-            One token for your whole account - paste it into the companion app once, and it keeps
-            every character you play in sync, creating a new character on this site automatically
-            the first time it sees one it doesn&apos;t recognize yet. Treat it like a password.
+            One token for your whole account. If the companion app is already running on this
+            computer, "Open Sync App" jumps straight to its setup page with the token already
+            filled in - tick your characters there and hit Save. Set it up once and it keeps every
+            character you play in sync, creating a new character on this site automatically the
+            first time it sees one it doesn&apos;t recognize yet. Treat it like a password.
           </p>
 
           {token ? (
@@ -94,12 +115,23 @@ export default function AccountSyncSetup() {
               <div className="mt-1 flex flex-wrap items-center gap-3">
                 <code className="break-all text-sm text-amber-300">{token}</code>
                 <button
+                  onClick={openSyncApp}
+                  className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-500"
+                >
+                  Open Sync App
+                </button>
+                <button
                   onClick={copyToken}
                   className="rounded bg-neutral-700 px-3 py-1 text-xs font-semibold text-white hover:bg-neutral-600"
                 >
                   {copied ? "Copied!" : "Copy"}
                 </button>
               </div>
+              <p className="mt-2 text-xs text-gray-500">
+                "Open Sync App" only works if the companion app is already running on this
+                computer. Setting it up for the first time, or on a different PC? Use Copy and
+                paste it in there instead.
+              </p>
             </div>
           ) : (
             <p className="mt-3 text-sm text-gray-400">No token generated yet.</p>
