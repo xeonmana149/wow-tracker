@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties, ReactNode } from "react";
 import {
   LEFT_SLOTS as LEFT,
   RIGHT_SLOTS as RIGHT,
@@ -16,6 +17,135 @@ type Item = {
   item_quality: string | null;
   item_icon: string | null;
   tooltip: string[] | null;
+};
+
+// A plain stroke-only glyph per slot, standing in for the game's own
+// paperdoll silhouette until something's equipped there - same visual
+// language as the icon set already used elsewhere on the site (a bare svg
+// wrapper, a handful of line paths), not a photo-real Blizzard texture,
+// since we only have access to item icons (via the CDN below), not the
+// client's own UI-PaperDoll-Slot-* art.
+function SlotGlyph({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="60%"
+      height="60%"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="text-neutral-600"
+    >
+      {children}
+    </svg>
+  );
+}
+
+const SLOT_ICONS: Record<string, ReactNode> = {
+  Head: (
+    <SlotGlyph>
+      <path d="M5 13a7 7 0 0 1 14 0v3a2 2 0 0 1-2 2h-1v-3H8v3H7a2 2 0 0 1-2-2z" />
+      <path d="M5 13h14" />
+    </SlotGlyph>
+  ),
+  Neck: (
+    <SlotGlyph>
+      <path d="M6 4c0 4 2.5 7 6 7s6-3 6-7" />
+      <circle cx="12" cy="15" r="3" />
+    </SlotGlyph>
+  ),
+  Shoulders: (
+    <SlotGlyph>
+      <path d="M3 12a4 4 0 0 1 8 0v3H3z" />
+      <path d="M13 12a4 4 0 0 1 8 0v3h-8z" />
+    </SlotGlyph>
+  ),
+  Back: (
+    <SlotGlyph>
+      <path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z" />
+    </SlotGlyph>
+  ),
+  Chest: (
+    <SlotGlyph>
+      <path d="M8 4l4 2 4-2 3 4-2 2v9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-9l-2-2z" />
+    </SlotGlyph>
+  ),
+  Wrists: (
+    <SlotGlyph>
+      <rect x="5" y="9" width="14" height="6" rx="2" />
+    </SlotGlyph>
+  ),
+  Hands: (
+    <SlotGlyph>
+      <path d="M8 12V6a1.5 1.5 0 0 1 3 0v5" />
+      <path d="M11 11V5a1.5 1.5 0 0 1 3 0v6" />
+      <path d="M14 11.5V6a1.5 1.5 0 0 1 3 0v7" />
+      <path d="M8 12l-1.5 1a2 2 0 0 0-.9 2.4L7 19a3 3 0 0 0 3 2h4a3 3 0 0 0 3-2l1-4v-2" />
+    </SlotGlyph>
+  ),
+  Waist: (
+    <SlotGlyph>
+      <rect x="3" y="10" width="18" height="4" rx="1" />
+      <rect x="10" y="9" width="4" height="6" rx="1" />
+    </SlotGlyph>
+  ),
+  Legs: (
+    <SlotGlyph>
+      <path d="M9 3h6l1 9-1 9h-3l-1-8-1 8H7l1-9z" />
+    </SlotGlyph>
+  ),
+  Feet: (
+    <SlotGlyph>
+      <path d="M9 3v9l-4 3.5c-1 1-.5 2.5.8 2.5H19a1 1 0 0 0 1-1c0-2-1.5-3-3-3.5l-3-1V3z" />
+    </SlotGlyph>
+  ),
+  "Ring 1": (
+    <SlotGlyph>
+      <circle cx="12" cy="15" r="5" />
+      <path d="M9.5 10 11 5h2l1.5 5" />
+    </SlotGlyph>
+  ),
+  "Ring 2": (
+    <SlotGlyph>
+      <circle cx="12" cy="15" r="5" />
+      <path d="M9.5 10 11 5h2l1.5 5" />
+    </SlotGlyph>
+  ),
+  "Trinket 1": (
+    <SlotGlyph>
+      <circle cx="12" cy="13" r="6" />
+      <path d="M12 3v4" />
+    </SlotGlyph>
+  ),
+  "Trinket 2": (
+    <SlotGlyph>
+      <circle cx="12" cy="13" r="6" />
+      <path d="M12 3v4" />
+    </SlotGlyph>
+  ),
+  "Main Hand": (
+    <SlotGlyph>
+      <path d="M6.5 17.5 17 7" />
+      <path d="M14 4l6 6-3 3-6-6z" />
+      <path d="M5 19l1.5-1.5" />
+    </SlotGlyph>
+  ),
+  "Off Hand": (
+    <SlotGlyph>
+      <path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z" />
+      <path d="M12 3v18" />
+    </SlotGlyph>
+  ),
+  "Ranged / Relic": (
+    <SlotGlyph>
+      <path d="M6 3c6 3 6 15 0 18" />
+      <path d="M6 3v18" />
+      <path d="M6 12h12" />
+    </SlotGlyph>
+  ),
 };
 
 function ItemTooltip({ entry }: { entry: Item }) {
@@ -44,6 +174,26 @@ function ItemTooltip({ entry }: { entry: Item }) {
   );
 }
 
+function EmptySlotTooltip({ slot }: { slot: string }) {
+  return (
+    <div
+      className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max -translate-x-1/2 rounded-md px-3 py-1.5 text-sm shadow-lg"
+      style={{
+        background: "linear-gradient(180deg, #0c0c14, #000005)",
+        border: "1px solid #c8aa6e",
+      }}
+    >
+      <span className="text-white">{slot}</span> <span className="text-gray-500">(empty)</span>
+    </div>
+  );
+}
+
+// A single equipment socket. Empty, it shows a dim glyph for that slot type
+// (the closest we can get to the game's own paperdoll silhouettes, since we
+// only have item icons to draw from, not the client's UI-PaperDoll-Slot-*
+// art). Equipped, the item's own icon fills the entire socket edge-to-edge
+// - same as the game, where the icon replaces the slot outline rather than
+// sitting inside it - with the item-quality color taking over the frame.
 function Tile({ slot, entry }: { slot: string; entry: Item | undefined }) {
   const hasItem = !!entry?.item_name;
   const color = entry?.item_quality ? `#${entry.item_quality}` : null;
@@ -51,49 +201,38 @@ function Tile({ slot, entry }: { slot: string; entry: Item | undefined }) {
   return (
     <div className="group relative">
       <div
-        style={
-          hasItem
-            ? {
-                borderColor: color ?? "#4ade80",
-                backgroundColor: color ? `${color}26` : "#052e16",
-              }
-            : undefined
-        }
-        className={`flex h-20 w-16 flex-col items-center justify-center gap-0.5 rounded border-2 px-1 text-center leading-tight sm:w-24 ${
-          hasItem ? "" : "border-neutral-700 bg-neutral-900"
-        }`}
+        className="gear-slot flex h-16 w-16 items-center justify-center overflow-hidden sm:h-20 sm:w-20"
+        style={hasItem ? ({ "--slot-quality": color ?? "#9d9d9d" } as CSSProperties) : undefined}
+        data-filled={hasItem || undefined}
       >
         {hasItem ? (
-          entry?.item_icon && (
+          entry?.item_icon ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={entry.item_icon}
-              alt=""
+              alt={entry.item_name ?? ""}
               draggable={false}
-              className="h-6 w-6 shrink-0 rounded border border-black/40 object-cover"
+              className="h-full w-full object-cover"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).style.display = "none";
               }}
             />
+          ) : (
+            <span
+              className="line-clamp-3 px-1 text-center text-[10px] font-semibold leading-tight"
+              style={{ color: color ?? "white" }}
+            >
+              {entry.item_name}
+            </span>
           )
         ) : (
-          <span className="text-[10px] text-gray-400">{slot}</span>
-        )}
-        {entry?.item_name && (
-          <span
-            className="line-clamp-2 w-full break-words text-[11px] font-semibold"
-            style={{ color: color ?? "white" }}
-          >
-            {entry.item_name}
-          </span>
+          SLOT_ICONS[slot] ?? <span className="text-[10px] text-gray-500">{slot}</span>
         )}
       </div>
 
-      {hasItem && (
-        <div className="pointer-events-none invisible opacity-0 group-hover:visible group-hover:opacity-100">
-          <ItemTooltip entry={entry} />
-        </div>
-      )}
+      <div className="pointer-events-none invisible opacity-0 group-hover:visible group-hover:opacity-100">
+        {hasItem ? <ItemTooltip entry={entry as Item} /> : <EmptySlotTooltip slot={slot} />}
+      </div>
     </div>
   );
 }

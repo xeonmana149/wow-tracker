@@ -225,6 +225,49 @@ button.bg-red-800:disabled {
   filter: grayscale(0.4);
 }
 
+/* Equipped-gear slot - an inset metal socket with small corner rivets,
+   like the game's own paperdoll slots. The quality-color border for an
+   equipped item is set via the --slot-quality custom property (it depends
+   on the item, so it's set inline per-tile); an empty slot just keeps the
+   plain bronze frame. */
+.gear-slot {
+  position: relative;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #0c0a07 0%, #171310 100%);
+  outline: 2px solid var(--frame);
+  outline-offset: -2px;
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.8),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(255, 230, 180, 0.06);
+}
+
+.gear-slot[data-filled] {
+  outline-color: var(--slot-quality, var(--gold-soft));
+}
+
+.gear-slot::before,
+.gear-slot::after {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: var(--gold-soft);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+  transform: rotate(45deg);
+  z-index: 1;
+}
+
+.gear-slot::before {
+  top: -3px;
+  left: -3px;
+}
+
+.gear-slot::after {
+  bottom: -3px;
+  right: -3px;
+}
+
 /* In-game stat-panel section header ("General", "Defense", etc) - a full
    pill rather than a rounded rectangle, with a bronze bevel and a gold
    frame, matching the game's own character-panel headers. */
