@@ -42,14 +42,11 @@ const SETUP_PORT = 47891;
 const DEFAULT_SITE_URL = "https://wow-tracker-amber.vercel.app";
 
 // Bump this to match lib/versions.ts's "tray" value every time you package
-// a new build of this app to send out. It's how a friend running an old
-// copy finds out - see checkForUpdates() below.
+// a new build of this app to send out. Sent along with every sync (see
+// postSync below) so the website can tell you're on an old copy and show
+// its own "update available" banner - this app no longer checks or nags
+// about that itself.
 const TRAY_VERSION = "1.0.0";
-
-// How often to check the site for a newer version, once running (not on
-// every 15-second sync loop - that'd be needlessly chatty for something
-// that only ever changes when you ship a release).
-const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 // ---------------------------------------------------------------------
 // Only ever allow one copy of this app to run at once. Without this, if
@@ -256,100 +253,6 @@ function hasAnyCharacter(cfg) {
 // The setup page
 // ---------------------------------------------------------------------
 
-// ---------------------------------------------------------------------
-// Checking for updates - both this app and (once the addon reports its own
-// version - see the note on addonVersionByPath below) the addon itself.
-// ---------------------------------------------------------------------
-const updateStatus = {
-  trayOutdated: false,
-  latestTrayVersion: null,
-  trayDownloadUrl: "/download",
-  addonOutdated: false,
-  latestAddonVersion: null,
-  addonDownloadUrl: "/download",
-};
-
-// Filled in from each character's own export data, IF the addon includes
-// an addonVersion field in what it writes - it doesn't yet, as far as this
-// code knows, so this stays empty and the addon-update check is simply
-// never true until that's added. To wire it up: have the addon put
-// something like ["addonVersion"] = "1.0.0" into the same Lua table it
-// writes ["json"] into, so it ends up at data.meta.addonVersion here (see
-// syncOneCharacter below, which reads exactly that path).
-const addonVersionByPath = new Map();
-
-function getJson(siteUrl, urlPath) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(siteUrl + urlPath);
-    const lib = url.protocol === "https:" ? https : http;
-    const req = lib.request(url, { method: "GET" }, (res) => {
-      let responseBody = "";
-      res.on("data", (chunk) => (responseBody += chunk));
-      res.on("end", () => {
-        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-          try {
-            resolve(JSON.parse(responseBody));
-          } catch (e) {
-            reject(new Error("Bad JSON in /api/versions response"));
-          }
-        } else {
-          reject(new Error(`HTTP ${res.statusCode}`));
-        }
-      });
-    });
-    req.on("error", reject);
-    req.end();
-  });
-}
-
-// Re-checks the site's /api/versions and updates the shared updateStatus
-// object the setup page reads from. Pops a tray notification only the
-// moment something NEWLY becomes outdated, not on every repeat check, so
-// it doesn't nag every 6 hours forever once you've already seen it once.
-async function checkForUpdates(getCfg) {
-  const cfg = getCfg();
-  if (!cfg.siteUrl) return;
-
-  try {
-    const body = await getJson(cfg.siteUrl, "/api/versions");
-    const latest = body.latest || {};
-    const downloadUrls = body.downloadUrls || {};
-
-    updateStatus.latestTrayVersion = latest.tray || null;
-    updateStatus.trayDownloadUrl = downloadUrls.tray || "/download";
-    updateStatus.latestAddonVersion = latest.addon || null;
-    updateStatus.addonDownloadUrl = downloadUrls.addon || "/download";
-
-    const trayOutdated = !!latest.tray && latest.tray !== TRAY_VERSION;
-
-    const seenAddonVersions = [...addonVersionByPath.values()];
-    const addonOutdated =
-      !!latest.addon && seenAddonVersions.some((v) => v && v !== latest.addon);
-
-    const trayJustBecameOutdated = trayOutdated && !updateStatus.trayOutdated;
-    const addonJustBecameOutdated = addonOutdated && !updateStatus.addonOutdated;
-
-    updateStatus.trayOutdated = trayOutdated;
-    updateStatus.addonOutdated = addonOutdated;
-
-    if (trayJustBecameOutdated) {
-      notify(
-        "WoW Forever Tracker",
-        `A new version of this app (${latest.tray}) is available - open Settings to download it.`
-      );
-    }
-    if (addonJustBecameOutdated) {
-      notify(
-        "WoW Forever Tracker",
-        `A new version of the WoWForeverTracker addon (${latest.addon}) is available - grab it from the website.`
-      );
-    }
-  } catch (e) {
-    // Silent on purpose - a failed check (offline, site hiccup) shouldn't
-    // interrupt anything or throw an error notification of its own.
-  }
-}
-
 // One character row's markup, shared between rows found by the disk scan
 // and rows already configured but not found this time. The "Remove from
 // website" button uses formaction/formmethod to submit to a different URL
@@ -409,15 +312,6 @@ function renderSetupPage(cfg, candidates, status) {
     banner = `<div class="banner banner-error">Couldn't remove that character: ${status.removeError}</div>`;
   }
 
-  const siteBase = (cfg.siteUrl || DEFAULT_SITE_URL).replace(/\/$/, "");
-  let updateBanner = "";
-  if (updateStatus.trayOutdated) {
-    updateBanner += `<div class="banner-update">A new version of this app (${updateStatus.latestTrayVersion}, you have ${TRAY_VERSION}) is out - <a href="${siteBase}${updateStatus.trayDownloadUrl}" target="_blank" rel="noopener">download it</a> and reinstall over this folder.</div>`;
-  }
-  if (updateStatus.addonOutdated) {
-    updateBanner += `<div class="banner-update">A new version of the WoWForeverTracker addon (${updateStatus.latestAddonVersion}) is out - <a href="${siteBase}${updateStatus.addonDownloadUrl}" target="_blank" rel="noopener">download it</a> and replace the addon folder in WoW.</div>`;
-  }
-
   return `<!doctype html>
 <html>
 <head>
@@ -435,8 +329,6 @@ function renderSetupPage(cfg, candidates, status) {
   button:hover { background: #e6c34f; }
   .banner { background: #22331f; border: 1px solid #4a7a3a; color: #bfe6ae; padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; }
   .banner-error { background: #3a2020; border-color: #7a4a4a; color: #f0c8c8; }
-  .banner-update { background: #2a2440; border: 1px solid #5a4a8a; color: #d8cdf0; padding: 12px 16px; border-radius: 6px; margin-bottom: 12px; }
-  .banner-update a { color: #c9b6f5; font-weight: 700; }
   .char-row { border: 1px solid #3a2f1e; border-radius: 8px; padding: 14px; margin-top: 14px; background: #201810; }
   .char-label { font-weight: 600; margin-bottom: 4px; }
   .footer-note { margin-top: 30px; font-size: 12px; color: #7d7357; }
@@ -452,7 +344,6 @@ function renderSetupPage(cfg, candidates, status) {
 <body>
   <h1>WoW Forever Tracker</h1>
   <p class="lead">One account token, one time. Tick which characters to watch - new ones you play show up here automatically and get created on the site the first time they sync.</p>
-  ${updateBanner}
   ${banner}
   <form method="POST" action="/save">
     <label>Your website's address
@@ -492,10 +383,6 @@ function startSetupServer(applyConfig) {
         removed: url.searchParams.get("removed") || null,
         removeError: url.searchParams.get("removeError") || null,
       };
-      // Refreshed on every page load too, not just the background timer,
-      // so opening Settings right after an update ships shows it straight
-      // away instead of waiting up to 6 hours.
-      await checkForUpdates(() => cfg);
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(renderSetupPage(cfg, candidates, status));
     } else if (req.method === "POST" && req.url === "/save") {
@@ -738,7 +625,11 @@ function postJson(siteUrl, urlPath, payloadObj) {
 }
 
 function postSync(siteUrl, token, data) {
-  return postJson(siteUrl, "/api/sync", { token, data });
+  // Tags every sync with this app's own version, so the website can record
+  // it on your profile and show its own "update available" banner there -
+  // this app no longer checks or nags about updates itself (see the note
+  // near TRAY_VERSION above).
+  return postJson(siteUrl, "/api/sync", { token, data, trayVersion: TRAY_VERSION });
 }
 
 function postDeleteCharacter(siteUrl, token, name, realm) {
@@ -766,16 +657,17 @@ async function syncOneCharacter(siteUrl, accountToken, character, force) {
     return;
   }
 
-  // See the note on addonVersionByPath near checkForUpdates() - this only
-  // ever finds something once the addon actually writes an addonVersion
-  // field, and is a harmless no-op read until then.
-  if (data && data.meta && data.meta.addonVersion) {
-    addonVersionByPath.set(character.path, data.meta.addonVersion);
-  }
-
   try {
     await postSync(siteUrl, accountToken, data);
-    notify("WoW Forever Tracker", `Synced ${character.label}!`);
+    // Only confirm success out loud when this was a manual "Sync now" click
+    // (force = true). The normal background sync runs every 15 seconds for
+    // every character you've ticked, so popping a notification + sound on
+    // every single one of those would mean a constant stream of "Synced!"
+    // toasts all evening - noisy for something that's supposed to be
+    // invisible when it's working. A failure is still worth interrupting
+    // you for either way, since that's the one case you'd actually want to
+    // know about and act on.
+    if (force) notify("WoW Forever Tracker", `Synced ${character.label}!`);
   } catch (e) {
     notify("WoW Forever Tracker", `${character.label} sync failed: ${e.message}`);
   }
@@ -880,9 +772,6 @@ async function main() {
 
   checkAndSync(getCfg, false);
   setInterval(() => checkAndSync(getCfg, false), 15000);
-
-  checkForUpdates(getCfg);
-  setInterval(() => checkForUpdates(getCfg), UPDATE_CHECK_INTERVAL_MS);
 }
 
 main();

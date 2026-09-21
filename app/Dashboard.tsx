@@ -16,6 +16,7 @@ import AccountBadges from "./AccountBadges";
 import { awardAchievement, ACHIEVEMENT_MESSAGE } from "../lib/achievements";
 import type { AccountAchievementKind } from "../lib/accountAchievements";
 import { loadBadgeIconOverrides, type BadgeIconOverrides } from "../lib/badgeIconOverrides";
+import { LATEST_VERSIONS } from "../lib/versions";
 
 
 const PRIMARY = [
@@ -47,6 +48,10 @@ export default function Dashboard({
   const [legacyMessage, setLegacyMessage] = useState("");
   const [accountAchievements, setAccountAchievements] = useState<AccountAchievementKind[]>([]);
   const [iconOverrides, setIconOverrides] = useState<BadgeIconOverrides>({});
+  const [myVersions, setMyVersions] = useState<{ addon: string | null; tray: string | null }>({
+    addon: null,
+    tray: null,
+  });
 
   useEffect(() => {
     async function load() {
@@ -95,10 +100,14 @@ export default function Dashboard({
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("legacy_points")
+        .select("legacy_points, addon_version, tray_version")
         .eq("id", userData.user.id)
         .single();
       setLegacy(Math.min(LEGACY_CAP, profile?.legacy_points ?? 0));
+      setMyVersions({
+        addon: profile?.addon_version ?? null,
+        tray: profile?.tray_version ?? null,
+      });
 
       const { data: accountAchievementRows } = await supabase
         .from("account_achievements")
@@ -213,6 +222,13 @@ export default function Dashboard({
   }
   const perCharacter = characters.map((c) => ({ c, todos: whatsNext(c, legacy) }));
 
+  // Only fires once this account has actually synced at least once (an
+  // empty/never-synced profile has null versions, which isn't "outdated" -
+  // just "haven't heard from you yet"). Compared against whatever this
+  // deploy of the site itself considers current, from lib/versions.ts.
+  const addonOutdated = !!myVersions.addon && myVersions.addon !== LATEST_VERSIONS.addon;
+  const trayOutdated = !!myVersions.tray && myVersions.tray !== LATEST_VERSIONS.tray;
+
   return (
     <main className="mx-auto max-w-[1500px] p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -221,6 +237,29 @@ export default function Dashboard({
           Downloads
         </Link>
       </div>
+
+      {(addonOutdated || trayOutdated) && (
+        <div className="mt-4 rounded-lg border border-purple-700 bg-purple-950/40 p-3 text-sm text-purple-200">
+          {addonOutdated && (
+            <p>
+              A new version of the WoWForeverTracker addon ({LATEST_VERSIONS.addon}) is out -{" "}
+              <Link href="/download" className="font-semibold underline">
+                download it
+              </Link>{" "}
+              and replace the addon folder in WoW.
+            </p>
+          )}
+          {trayOutdated && (
+            <p className={addonOutdated ? "mt-1" : undefined}>
+              A new version of the background sync app ({LATEST_VERSIONS.tray}) is out -{" "}
+              <Link href="/download" className="font-semibold underline">
+                download it
+              </Link>{" "}
+              and reinstall over the old folder.
+            </p>
+          )}
+        </div>
+      )}
 
        <AccountSyncSetup />
 

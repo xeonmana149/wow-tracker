@@ -3,7 +3,7 @@ import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 import { applyImport, type ParsedExport } from "../../../lib/importLogic";
 
 export async function POST(req: NextRequest) {
-  let body: { token?: string; data?: ParsedExport };
+  let body: { token?: string; data?: ParsedExport; trayVersion?: string };
   try {
     body = await req.json();
   } catch (e) {
@@ -144,12 +144,32 @@ export async function POST(req: NextRequest) {
 
   const { data: character, error: charError } = await supabaseAdmin
     .from("characters")
-    .select("id, active_spec")
+    .select("id, active_spec, user_id")
     .eq("id", characterId)
     .single();
 
   if (charError || !character) {
     return NextResponse.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  // Best-effort: record whatever addon/tray version this sync reports on
+  // the account's profile, so the website itself can show an "update
+  // available" banner instead of the desktop app nagging about it. Never
+  // blocks the actual sync if this fails for any reason.
+  try {
+    const versionUpdate: Record<string, string> = {};
+    const addonVersion = (parsed as { meta?: { addonVersion?: string } }).meta?.addonVersion;
+    if (typeof addonVersion === "string" && addonVersion) {
+      versionUpdate.addon_version = addonVersion;
+    }
+    if (typeof body.trayVersion === "string" && body.trayVersion) {
+      versionUpdate.tray_version = body.trayVersion;
+    }
+    if (Object.keys(versionUpdate).length > 0) {
+      await supabaseAdmin.from("profiles").update(versionUpdate).eq("id", character.user_id);
+    }
+  } catch {
+    // ignored on purpose
   }
 
   const { data: professions } = await supabaseAdmin
