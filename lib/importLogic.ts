@@ -59,7 +59,13 @@ export type ParsedExport = {
       shadow?: number;
     };
   };
-  professions?: { name: string; skill: number; maxSkill?: number }[];
+  // recipes is only ever present for a profession whose trade skill window
+  // has actually been opened at least once since the addon started
+  // tracking this - there's no API that can list known recipes without
+  // that window being open, on either the old or new profession UI. When
+  // it's missing, whatever recipes are already recorded from an earlier
+  // sync are left untouched rather than being cleared.
+  professions?: { name: string; skill: number; maxSkill?: number; recipes?: string[] }[];
   gear?: Record<string, { link: string; name: string; color?: string; icon?: number; tooltip?: string[] }>;
   traits?: {
     experimental?: boolean;
@@ -311,8 +317,14 @@ export async function applyImport(
       (x) => x.profession.toLowerCase() === p.name.toLowerCase()
     );
     if (existing) {
-      if (existing.skill !== skill) {
-        await supabase.from("character_professions").update({ skill }).eq("id", existing.id);
+      const profUpdate: Record<string, number | string[]> = {};
+      if (existing.skill !== skill) profUpdate.skill = skill;
+      // Only touch recipes when the addon actually sent some for this sync
+      // (meaning the trade skill window was opened) - otherwise leave
+      // whatever's already recorded from an earlier visit alone.
+      if (p.recipes && p.recipes.length > 0) profUpdate.recipes = p.recipes;
+      if (Object.keys(profUpdate).length > 0) {
+        await supabase.from("character_professions").update(profUpdate).eq("id", existing.id);
       }
       const tracked = updatedProfessions.find((x) => x.id === existing.id);
       if (tracked) tracked.skill = skill;
@@ -339,6 +351,7 @@ export async function applyImport(
         character_id: characterId,
         profession: p.name,
         skill,
+        ...(p.recipes && p.recipes.length > 0 ? { recipes: p.recipes } : {}),
       });
       updatedProfessions.push({ id: "", profession: p.name, skill });
 
