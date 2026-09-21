@@ -35,6 +35,11 @@ export type ParsedExport = {
     honor?: number;
     deaths?: number;
     pvpKills?: number;
+    // XP within the character's CURRENT level (not toward the level cap) -
+    // xpMax comes back 0 at the level cap, since there's no more bar left
+    // to fill; the site treats that as "no live XP bar" rather than 0%.
+    xp?: number;
+    xpMax?: number;
   };
   stats?: {
     maxHealth?: number;
@@ -267,6 +272,10 @@ export async function applyImport(
   // last reported, never something to hand-edit.
   if (typeof parsed.basic?.deaths === "number") charUpdate.deaths = parsed.basic.deaths;
   if (typeof parsed.basic?.pvpKills === "number") charUpdate.pvp_kills = parsed.basic.pvpKills;
+  // Live XP within the current level - see the ParsedExport type above for
+  // why xpMax can legitimately be 0 (level cap, no bar left to fill).
+  if (typeof parsed.basic?.xp === "number") charUpdate.xp = parsed.basic.xp;
+  if (typeof parsed.basic?.xpMax === "number") charUpdate.xp_max = parsed.basic.xpMax;
 
   if (Object.keys(charUpdate).length > 0) {
     const { error } = await supabase.from("characters").update(charUpdate).eq("id", characterId);

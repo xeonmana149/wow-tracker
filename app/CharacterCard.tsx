@@ -110,6 +110,11 @@ export type CardCharacter = {
   money_copper?: number;
   pvp_rank?: number;
   honor_points?: number;
+  // XP within the CURRENT level (not toward the level cap) - null/undefined
+  // on a character that hasn't synced since addon v1.5.0, and xp_max is
+  // legitimately 0 at the level cap (no bar left to fill).
+  xp?: number | null;
+  xp_max?: number | null;
   needs_setup?: boolean;
   created_at?: string | null;
   achievements?: CardAchievement[];
@@ -167,7 +172,7 @@ const CHARACTER_TYPE_STYLES: Record<string, { pill: string; border: string }> = 
 };
 const DEFAULT_TYPE_STYLE = { pill: "bg-neutral-600 text-white", border: "transparent" };
 
-function characterTypeStyle(type: string) {
+export function characterTypeStyle(type: string) {
   return CHARACTER_TYPE_STYLES[type.toLowerCase()] ?? DEFAULT_TYPE_STYLE;
 }
 

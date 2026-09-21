@@ -7,7 +7,8 @@ import { LEGACY_CAP } from "../lib/legacy";
 import { PROFESSION_ICONS, classIcon } from "../lib/icons";
 import { SUPPLIED_BY } from "../lib/professions";
 import { missingProfessions, whatsNext, type Todo } from "../lib/progress";
-import CharacterCard, { type CardCharacter, type AchievementKind, type GoldTier } from "./CharacterCard";
+import type { CardCharacter, AchievementKind, GoldTier } from "./CharacterCard";
+import CharacterRow from "./CharacterRow";
 import GameIcon from "./GameIcon";
 import NextList from "./NextList";
 import { MoneyDisplay } from "./MoneyIcons";
@@ -566,15 +567,9 @@ export default function Dashboard({
                   <h3 className={`mb-2 text-xs font-semibold uppercase tracking-wide ${headingClass}`}>
                     {label}
                   </h3>
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-2">
                     {list.map((c) => (
-                      <CharacterCard
-                        key={c.id}
-                        c={c}
-                        treeNames={treeNames[c.class]}
-                        specIcons={specIcons}
-                        iconOverrides={iconOverrides}
-                      />
+                      <CharacterRow key={c.id} c={c} iconOverrides={iconOverrides} />
                     ))}
                   </div>
                 </div>
