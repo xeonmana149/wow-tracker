@@ -49,6 +49,13 @@ type Board = {
   label: string;
   keys: NumKey[];
   show: (c: Character) => React.ReactNode;
+  // Plain-language explanation of what this board actually ranks by, shown
+  // under the tabs - every board scores the same way (1 point per character
+  // it beats, ties broken by later keys), so what varies between
+  // categories isn't the "value" of a point, it's how much room there is
+  // to separate from everyone else. This is what tells someone whether
+  // grinding a category is actually worth it.
+  description: string;
 };
 
 const boards: Record<string, Board> = {
@@ -56,26 +63,31 @@ const boards: Record<string, Board> = {
     label: "Level",
     keys: ["level"],
     show: (c) => c.level.toLocaleString(),
+    description: "Ranked by character level - every level higher than another character earns you a point over them. Once everyone's at the cap, this board flattens out and stops being worth chasing.",
   },
   pvp: {
     label: "PvP",
     keys: ["pvp_rank", "honor_points"],
     show: (c) => `Rank ${c.pvp_rank} · ${c.honor_points.toLocaleString()} honor`,
+    description: "Ranked by PvP rank first, then by Honor points to break a tie between characters at the same rank.",
   },
   gold: {
     label: "Gold",
     keys: ["money_copper"],
     show: (c) => <MoneyDisplay copper={c.money_copper} />,
+    description: "Ranked by how much gold you're currently holding.",
   },
   professions: {
     label: "Professions",
     keys: ["professions_maxed"],
     show: (c) => `${c.professions_maxed}/${MAX_PROFESSIONS} maxed`,
+    description: `Ranked by how many professions you've maxed out, out of ${MAX_PROFESSIONS} possible (2 primary + 3 secondary). Most people can eventually max most of these, so this board narrows fast - it's easy points early, not so much once everyone catches up.`,
   },
   legacy: {
     label: "Legacy",
     keys: ["legacy_points_spent"],
     show: (c) => `${c.legacy_points_spent.toLocaleString()} spent`,
+    description: "Ranked by how many Legacy points you've spent.",
   },
 };
 
@@ -200,13 +212,22 @@ export default async function Leaderboards({
         </Link>
       </div>
 
-      {key === "total" && (
-        <p className="mt-4 max-w-xl text-sm text-gray-400">
-          Each board gives a character one point for every character it beats.
-          Total adds them all up.
-          {mainsOnly && " Only characters marked as a Main are being compared."}
-        </p>
-      )}
+      <p className="mt-4 max-w-xl text-sm text-gray-400">
+        {key === "total" ? (
+          <>
+            Each board gives a character one point for every character it beats. Total adds them
+            all up - a point is worth exactly the same no matter which board it came from, so what
+            makes one category more worth grinding than another is how much room there still is to
+            pull ahead of everyone else in it, not the category itself.
+          </>
+        ) : (
+          <>
+            {boards[key].description} Beating another character here is worth 1 point toward their
+            Total score.
+          </>
+        )}
+        {mainsOnly && " Only characters marked as a Main are being compared."}
+      </p>
 
       {error && (
         <p className="mt-4 text-red-400">Could not load characters: {error.message}</p>
