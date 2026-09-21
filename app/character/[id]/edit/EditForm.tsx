@@ -58,7 +58,6 @@ export default function EditForm({ character }: { character: Character }) {
   const [ruleset, setRuleset] = useState(character.ruleset ?? "");
   const [characterType, setCharacterType] = useState(character.character_type);
   const [pvpRank, setPvpRank] = useState(character.pvp_rank);
-  const [honorPoints, setHonorPoints] = useState(character.honor_points);
   const [legacyPointsSpent, setLegacyPointsSpent] = useState(character.legacy_points_spent);
   const [message, setMessage] = useState("");
 
@@ -111,7 +110,6 @@ export default function EditForm({ character }: { character: Character }) {
         off_spec: offSpec || null,
         off_role: offSpec ? offRole : null,
         pvp_rank: pvpRank,
-        honor_points: honorPoints,
         legacy_points_spent: legacyPointsSpent,
       })
       .eq("id", character.id);
@@ -173,9 +171,9 @@ export default function EditForm({ character }: { character: Character }) {
           From your last sync
         </h2>
         <p className="mt-1 text-xs text-gray-500">
-          Level, guild and gold come from the addon and update automatically every time you log
-          out or /reload - editing them here would just get overwritten, so they're not editable
-          on this page.
+          Level, guild, gold and honor come from the addon and update automatically every time
+          you log out or /reload - editing them here would just get overwritten, so they're not
+          editable on this page.
         </p>
         <div className="mt-3 flex flex-wrap gap-4 text-sm">
           <div>
@@ -191,6 +189,10 @@ export default function EditForm({ character }: { character: Character }) {
             <div className="font-semibold text-white">
               {currentMoney.gold}g {currentMoney.silver}s {currentMoney.copper}c
             </div>
+          </div>
+          <div>
+            <div className="text-gray-500">Honor points</div>
+            <div className="font-semibold text-white">{character.honor_points}</div>
           </div>
         </div>
       </div>
@@ -355,17 +357,6 @@ export default function EditForm({ character }: { character: Character }) {
             max={14}
             value={pvpRank}
             onChange={(e) => setPvpRank(Number(e.target.value))}
-            className="rounded bg-white p-2 text-black"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1">
-          Honor points
-          <input
-            type="number"
-            min={0}
-            value={honorPoints}
-            onChange={(e) => setHonorPoints(Number(e.target.value))}
             className="rounded bg-white p-2 text-black"
           />
         </label>

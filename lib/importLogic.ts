@@ -30,6 +30,7 @@ export type ParsedExport = {
     level?: number;
     money?: number;
     guild?: string | null;
+    honor?: number;
   };
   stats?: {
     maxHealth?: number;
@@ -208,6 +209,10 @@ export async function applyImport(
   if (typeof parsed.basic?.level === "number") charUpdate.level = parsed.basic.level;
   if (typeof parsed.basic?.money === "number") charUpdate.money_copper = parsed.basic.money;
   if (parsed.basic?.guild) charUpdate.guild = parsed.basic.guild;
+  // Confirmed via /wft probe that this server's client exposes the older
+  // honor-as-a-resource-bar API (UnitHonor), so this is a real live value
+  // from the addon now, not a manual field anymore.
+  if (typeof parsed.basic?.honor === "number") charUpdate.honor_points = parsed.basic.honor;
 
   if (Object.keys(charUpdate).length > 0) {
     const { error } = await supabase.from("characters").update(charUpdate).eq("id", characterId);

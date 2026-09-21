@@ -154,6 +154,10 @@ local function collectBasic()
     data.guild = safeGet("GetGuildInfo", "player")
     data.money = safeGet("GetMoney")
     data.realm = safeGet("GetRealmName")
+    -- Confirmed via /wft probe: this client has the older honor-as-a-
+    -- resource-bar API (UnitHonor/UnitHonorMax), not the newer currency-
+    -- based one - so this is a real current value, not a guess.
+    data.honor = safeGet("UnitHonor", "player")
     return data
 end
 
@@ -800,6 +804,15 @@ local PROBE_LIST = {
     "GetCritChance", "GetDodgeChance", "GetParryChance", "GetBlockChance",
     "GetResistance", "UnitResistance", "GetProfessions", "GetProfessionInfo", "GetInventoryItemLink",
     "C_Traits", "C_ClassTalents", "C_CurrencyInfo", "ToggleLegacySystemUI", "C_PaperDollInfo",
+    -- Added to check whether main spec / honor / PvP rank / Legacy points
+    -- are readable at all on this server's client build, before writing
+    -- any real collector code against them (see the chat discussion this
+    -- was added for - these are guesses about what MIGHT exist, not
+    -- confirmed to work here).
+    "GetSpecialization", "GetSpecializationInfo", "GetNumSpecializations",
+    "UnitHonor", "UnitHonorMax", "GetHonorCurrency", "UnitPVPRank", "GetPVPRankInfo",
+    "GetPVPLifetimeStats", "GetPVPThisWeekStats",
+    "WFTLegacyPoints", "GetLegacyPoints", "C_LegacySystem",
 }
 
 local function cmdProbe()
@@ -1175,6 +1188,52 @@ local function cmdProfDump()
     end
 end
 
+-- Diagnostic-only, for figuring out if PvP rank is readable at all on this
+-- server's client build - GetPVPLifetimeStats existed on the /wft probe
+-- list but its return values are unknown without printing them, and
+-- UnitPVPRank/GetPVPRankInfo (the normal rank-number APIs) came back
+-- missing. Never feeds into the real export.
+local function cmdPvpDump()
+    print("|cffffcc00WFT pvpdump - raw PvP-related return values:|r")
+    local r1, r2, r3, r4, r5, r6 = safeGet("GetPVPLifetimeStats")
+    print(("  GetPVPLifetimeStats(): %s, %s, %s, %s, %s, %s"):format(
+        tostring(r1), tostring(r2), tostring(r3), tostring(r4), tostring(r5), tostring(r6)
+    ))
+    local weekR1, weekR2, weekR3 = safeGet("GetPVPThisWeekStats")
+    print(("  GetPVPThisWeekStats(): %s, %s, %s"):format(tostring(weekR1), tostring(weekR2), tostring(weekR3)))
+end
+
+-- Diagnostic-only, for figuring out whether specs moved to the newer
+-- C_SpecializationInfo namespace on this client (GetSpecialization and
+-- GetSpecializationInfo came back missing from /wft probe, but
+-- GetNumSpecializations didn't - suggesting a partial/renamed API rather
+-- than specs being unavailable entirely). Never feeds into the real export.
+local function cmdSpecProbe()
+    print("|cffffcc00WFT specprobe - looking for a spec API on this client:|r")
+    local numSpecs = safeGet("GetNumSpecializations")
+    print(("  GetNumSpecializations(): %s"):format(tostring(numSpecs)))
+
+    local CSpec = _G.C_SpecializationInfo
+    if type(CSpec) ~= "table" then
+        print("  C_SpecializationInfo: MISSING")
+    else
+        print("  C_SpecializationInfo: table")
+        for _, fn in ipairs({ "GetSpecialization", "GetSpecializationInfo", "GetNumSpecializations" }) do
+            print(("    C_SpecializationInfo.%s: %s"):format(fn, type(CSpec[fn])))
+        end
+        if type(CSpec.GetSpecialization) == "function" then
+            local ok, specIndex = pcall(CSpec.GetSpecialization)
+            print(("  C_SpecializationInfo.GetSpecialization() -> ok=%s, value=%s"):format(tostring(ok), tostring(specIndex)))
+            if ok and specIndex and type(CSpec.GetSpecializationInfo) == "function" then
+                local okInfo, id, name = pcall(CSpec.GetSpecializationInfo, specIndex)
+                print(("  C_SpecializationInfo.GetSpecializationInfo(%s) -> ok=%s, id=%s, name=%s"):format(
+                    tostring(specIndex), tostring(okInfo), tostring(id), tostring(name)
+                ))
+            end
+        end
+    end
+end
+
 SLASH_WFT1 = "/wft"
 SlashCmdList["WFT"] = function(msg)
     msg = (msg or ""):lower():match("^%s*(.-)%s*$")
@@ -1194,6 +1253,10 @@ SlashCmdList["WFT"] = function(msg)
         cmdSaveTest()
     elseif msg == "profdump" then
         cmdProfDump()
+    elseif msg == "pvpdump" then
+        cmdPvpDump()
+    elseif msg == "specprobe" then
+        cmdSpecProbe()
     elseif msg == "scan" then
         cmdProbe()
         cmdTraits()
@@ -1208,6 +1271,8 @@ SlashCmdList["WFT"] = function(msg)
         print("  /wft spellprobe - test ways of resolving a talent's real name (diagnostic, for me to look at)")
         print("  /wft savetest - test whether this client saves data to disk across a full logout/login")
         print("  /wft profdump - dump raw GetProfessions() values (diagnostic, for me to look at)")
+        print("  /wft pvpdump - dump raw PvP stat values (diagnostic, for me to look at)")
+        print("  /wft specprobe - check for a spec API on this client (diagnostic, for me to look at)")
         print("  /wft scan - run probe, traits and export together")
     end
 end
