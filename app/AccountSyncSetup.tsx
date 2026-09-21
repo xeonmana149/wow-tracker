@@ -103,7 +103,7 @@ export default function AccountSyncSetup({ openSignal }: { openSignal?: number }
         <h2 className="font-bold">Account Auto-Sync Setup</h2>
         <button
           onClick={() => setOpen(!open)}
-          className="rounded bg-[#c9a566] px-3 py-1 text-sm font-semibold text-[#2b1c0b] hover:bg-[#d9b877]"
+          className="rounded bg-red-700 px-3 py-1 text-sm"
         >
           {open ? "Hide" : "Set up"}
         </button>
@@ -126,7 +126,7 @@ export default function AccountSyncSetup({ openSignal }: { openSignal?: number }
                 <code className="break-all text-sm text-amber-300">{token}</code>
                 <button
                   onClick={openSyncApp}
-                  className="rounded bg-[#c9a566] px-3 py-1 text-xs font-semibold text-[#2b1c0b] hover:bg-[#d9b877]"
+                  className="rounded bg-red-700 px-3 py-1 text-xs"
                 >
                   Open Sync App
                 </button>
@@ -150,7 +150,7 @@ export default function AccountSyncSetup({ openSignal }: { openSignal?: number }
           <button
             onClick={generateToken}
             disabled={loading}
-            className="mt-3 rounded bg-[#c9a566] px-4 py-2 text-sm font-semibold text-[#2b1c0b] hover:bg-[#d9b877] disabled:opacity-50"
+            className="mt-3 rounded bg-red-700 px-4 py-2 text-sm disabled:opacity-50"
           >
             {loading ? "Generating..." : token ? "Generate new token" : "Generate token"}
           </button>

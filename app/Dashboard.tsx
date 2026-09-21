@@ -428,7 +428,7 @@ export default function Dashboard({
           </div>
           <Link
             href="/download"
-            className="shrink-0 rounded bg-[#c9a566] px-3 py-1.5 text-xs font-semibold text-[#2b1c0b] hover:bg-[#d9b877]"
+            className="shrink-0 rounded bg-red-700 px-3 py-1.5 text-xs"
           >
             View Instructions →
           </Link>
@@ -533,7 +533,7 @@ export default function Dashboard({
 
           <button
             onClick={() => setSyncOpenSignal((n) => n + 1)}
-            className="ml-auto shrink-0 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-amber-400"
+            className="ml-auto shrink-0 rounded-lg bg-red-700 px-4 py-2 text-sm"
           >
             ⚙ Set Up Auto-Sync
           </button>
@@ -567,7 +567,7 @@ export default function Dashboard({
             </h2>
             <Link
               href="/create"
-              className="rounded bg-amber-500 px-3 py-1.5 text-sm font-semibold text-neutral-950 hover:bg-amber-400"
+              className="rounded bg-red-700 px-3 py-1.5 text-sm"
             >
               + Create Character
             </Link>
@@ -642,7 +642,7 @@ export default function Dashboard({
                   onClick={() => setNextFilter(key)}
                   className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
                     nextFilter === key
-                      ? "bg-amber-500 text-black"
+                      ? "bg-[#c9a566] text-[#2b1c0b]"
                       : "bg-neutral-700 text-gray-300 hover:bg-neutral-600"
                   }`}
                 >
@@ -789,7 +789,7 @@ export default function Dashboard({
           </p>
           <Link
             href="/download"
-            className="mt-3 inline-block rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-amber-400"
+            className="mt-3 inline-block rounded bg-red-700 px-4 py-2 text-sm"
           >
             View Downloads & Guides →
           </Link>
