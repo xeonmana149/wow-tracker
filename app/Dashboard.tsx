@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
 import { LEGACY_CAP } from "../lib/legacy";
@@ -18,7 +18,6 @@ import type { AccountAchievementKind } from "../lib/accountAchievements";
 import { loadBadgeIconOverrides, type BadgeIconOverrides } from "../lib/badgeIconOverrides";
 import { LATEST_VERSIONS } from "../lib/versions";
 
-
 const PRIMARY = [
   "Alchemy",
   "Blacksmithing",
@@ -31,6 +30,84 @@ const PRIMARY = [
   "Tailoring",
 ];
 
+type ActivityEvent = {
+  id: string;
+  character_id: string | null;
+  kind: string;
+  message: string;
+  created_at: string;
+};
+
+// Small stroke-only icon set for the Account Overview strip, matching the
+// nav bar's icon style (a plain svg wrapper, a handful of line paths) so
+// this stat row and the top nav read as one visual language.
+function StatIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="shrink-0 text-amber-400"
+    >
+      {children}
+    </svg>
+  );
+}
+const ICON_PERSON = (
+  <StatIcon>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 20a8 8 0 0 1 16 0" />
+  </StatIcon>
+);
+const ICON_CHART = (
+  <StatIcon>
+    <path d="M4 20V10" />
+    <path d="M11 20V4" />
+    <path d="M18 20v-7" />
+  </StatIcon>
+);
+const ICON_HAMMER = (
+  <StatIcon>
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z" />
+  </StatIcon>
+);
+const ICON_BOOK = (
+  <StatIcon>
+    <path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z" />
+    <path d="M19 17H6a2 2 0 0 0-2 2" />
+  </StatIcon>
+);
+const ICON_STAR = (
+  <StatIcon>
+    <path d="M12 3l2.6 5.7 6.2.6-4.7 4.2 1.4 6.2L12 16.9l-5.5 2.8 1.4-6.2-4.7-4.2 6.2-.6z" />
+  </StatIcon>
+);
+const ICON_INFO = (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5" />
+    <path d="M12 8v.01" />
+  </svg>
+);
+
+// A minute-scale "2 hours ago" / "3 days ago" label for the Recent Activity
+// list - coarse on purpose, this is a glance-at list, not a precise clock.
+function timeAgo(iso: string): string {
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
 export default function Dashboard({
   specIcons,
   treeNames,
@@ -42,12 +119,15 @@ export default function Dashboard({
   const [characters, setCharacters] = useState<CardCharacter[]>([]);
   const [error, setError] = useState("");
   const [userId, setUserId] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [legacy, setLegacy] = useState(0);
   const [editingLegacy, setEditingLegacy] = useState(false);
   const [legacyDraft, setLegacyDraft] = useState("0");
   const [legacyMessage, setLegacyMessage] = useState("");
   const [accountAchievements, setAccountAchievements] = useState<AccountAchievementKind[]>([]);
   const [iconOverrides, setIconOverrides] = useState<BadgeIconOverrides>({});
+  const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([]);
+  const [syncOpenSignal, setSyncOpenSignal] = useState(0);
   const [myVersions, setMyVersions] = useState<{ addon: string | null; tray: string | null }>({
     addon: null,
     tray: null,
@@ -63,19 +143,20 @@ export default function Dashboard({
       }
       setUserId(userData.user.id);
 
-      // None of these five requests depend on each other's results - they
+      // None of these six requests depend on each other's results - they
       // all just need the user id we already have - so they're fired off
       // together with Promise.all instead of one at a time. Sequentially,
       // each await sits and waits on its own round-trip before the next one
-      // even starts; five round-trips stacked up before this page could
+      // even starts; six round-trips stacked up before this page could
       // even render is the main reason every click into the dashboard felt
       // slow. Run together, the wait is roughly whichever single request is
-      // slowest, not the sum of all five.
+      // slowest, not the sum of all six.
       const [
         { data, error },
         { data: achievementRows },
         { data: profile },
         { data: accountAchievementRows },
+        { data: activityRows },
         overrides,
       ] = await Promise.all([
         supabase
@@ -91,13 +172,23 @@ export default function Dashboard({
         supabase.from("achievements").select("kind, tier, character_id"),
         supabase
           .from("profiles")
-          .select("legacy_points, addon_version, tray_version")
+          .select("display_name, legacy_points, addon_version, tray_version")
           .eq("id", userData.user.id)
           .single(),
         supabase
           .from("account_achievements")
           .select("kind")
           .eq("user_id", userData.user.id),
+        // Recent Activity panel - the same activity_events rows the sync
+        // route and this page's own Legacy save already write to, just
+        // read back here instead of only ever appearing in the floating
+        // activity sidebar.
+        supabase
+          .from("activity_events")
+          .select("id, character_id, kind, message, created_at")
+          .eq("user_id", userData.user.id)
+          .order("created_at", { ascending: false })
+          .limit(6),
         loadBadgeIconOverrides(supabase),
       ]);
 
@@ -122,6 +213,7 @@ export default function Dashboard({
         setCharacters(withAchievements as CardCharacter[]);
       }
 
+      setDisplayName(profile?.display_name ?? "");
       setLegacy(Math.min(LEGACY_CAP, profile?.legacy_points ?? 0));
       setMyVersions({
         addon: profile?.addon_version ?? null,
@@ -131,6 +223,8 @@ export default function Dashboard({
       setAccountAchievements(
         (accountAchievementRows ?? []).map((r) => r.kind as AccountAchievementKind)
       );
+
+      setRecentActivity((activityRows ?? []) as ActivityEvent[]);
 
       setIconOverrides(overrides);
 
@@ -250,6 +344,7 @@ export default function Dashboard({
     accountTodos.push({ kind: "profession", text: `No ${names}${more} on your account` });
   }
   const perCharacter = characters.map((c) => ({ c, todos: whatsNext(c, legacy) }));
+  const charById = new Map<string, CardCharacter>(characters.map((c) => [c.id, c]));
 
   // Only fires once this account has actually synced at least once (an
   // empty/never-synced profile has null versions, which isn't "outdated" -
@@ -260,129 +355,156 @@ export default function Dashboard({
 
   return (
     <main className="mx-auto max-w-[1500px] p-4 md:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-4xl font-bold">My Characters</h1>
-        <Link href="/download" className="rounded bg-blue-600 px-4 py-2 text-white">
-          Downloads
-        </Link>
+      {/* Hero - who's looking at this, and a reminder of what the site's
+          for. Doesn't need to do anything, just set the tone before the
+          data-dense sections below. */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-4xl font-bold">
+            Welcome back{displayName ? `, ${displayName}` : ""}
+          </h1>
+          <p className="mt-1 text-gray-400">Track your progress. Plan your next steps. Play together.</p>
+        </div>
+        <p className="max-w-xs text-right text-sm italic text-gray-500">
+          "A great adventure is better with friends."
+        </p>
       </div>
 
       {(addonOutdated || trayOutdated) && (
-        <div className="mt-4 rounded-lg border border-purple-700 bg-purple-950/40 p-3 text-sm text-purple-200">
-          {addonOutdated && (
-            <p>
-              A new version of the WoWForeverTracker addon ({LATEST_VERSIONS.addon}, you have{" "}
-              {myVersions.addon}) is out -{" "}
-              <Link href="/download" className="font-semibold underline">
-                download it
-              </Link>{" "}
-              and replace the addon folder in WoW.
-            </p>
-          )}
-          {trayOutdated && (
-            <p className={addonOutdated ? "mt-1" : undefined}>
-              A new version of the background sync app ({LATEST_VERSIONS.tray}, you have{" "}
-              {myVersions.tray}) is out -{" "}
-              <Link href="/download" className="font-semibold underline">
-                download it
-              </Link>{" "}
-              and reinstall over the old folder.
-            </p>
-          )}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-purple-700 bg-purple-950/40 p-3 text-sm text-purple-200">
+          <div className="flex items-start gap-2">
+            {ICON_INFO}
+            <div>
+              {addonOutdated && (
+                <p>
+                  A new version of the WoWForeverTracker addon ({LATEST_VERSIONS.addon}) is out.
+                  You have {myVersions.addon} installed. Download it and replace the addon folder in
+                  WoW.
+                </p>
+              )}
+              {trayOutdated && (
+                <p className={addonOutdated ? "mt-1" : undefined}>
+                  A new version of the background sync app ({LATEST_VERSIONS.tray}) is out. You
+                  have {myVersions.tray} installed. Download it and reinstall over the old folder.
+                </p>
+              )}
+            </div>
+          </div>
+          <Link
+            href="/download"
+            className="shrink-0 rounded bg-purple-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-600"
+          >
+            View Instructions →
+          </Link>
         </div>
       )}
 
-       <AccountSyncSetup />
-
-      <section className="mt-6 rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
-          Account statistics
-        </h2>
-
-        {/* Plain number-over-label tiles, not individually boxed - these are
-            ordinary at-a-glance stats, not interactive or important enough
-            to earn their own gold-outlined panel. A subtle divider between
-            them (rather than a box around each) keeps them from reading as
-            visually equal to the buttons and cards that actually matter. */}
-        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-4">
-        <div className="min-w-[8.5rem] flex-1 border-l border-neutral-700 pl-6 first:border-l-0 first:pl-0">
-          <div className="text-2xl font-bold">{characters.length}</div>
-          <div className="text-sm text-gray-400">Characters</div>
-        </div>
-        <div className="min-w-[8.5rem] flex-1 border-l border-neutral-700 pl-6 first:border-l-0 first:pl-0">
-          <div className="text-2xl font-bold">{highestLevel}</div>
-          <div className="text-sm text-gray-400">Highest level</div>
-        </div>
-        <div className="min-w-[8.5rem] flex-1 border-l border-neutral-700 pl-6 first:border-l-0 first:pl-0">
-          <div className="text-2xl font-bold">
-            {coveredCount}/{PRIMARY.length}
-          </div>
-          <div className="text-sm text-gray-400">Professions</div>
-        </div>
-        <div className="min-w-[8.5rem] flex-1 border-l border-neutral-700 pl-6 first:border-l-0 first:pl-0">
-          <div className="text-2xl font-bold">{totalRecipesKnown}</div>
-          <div className="text-sm text-gray-400">Recipes known</div>
-        </div>
-        <div className="min-w-[8.5rem] flex-1 border-l border-neutral-700 pl-6 first:border-l-0 first:pl-0">
-          <div className="text-2xl font-bold"><MoneyDisplay copper={totalCopper} /></div>
-          <div className="text-sm text-gray-400">Total gold</div>
-        </div>
-        <div className="min-w-[8.5rem] flex-1 border-l border-neutral-700 pl-6 first:border-l-0 first:pl-0">
-          {editingLegacy ? (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={0}
-                  max={LEGACY_CAP}
-                  value={legacyDraft}
-                  onChange={(e) => setLegacyDraft(e.target.value)}
-                  aria-label="Legacy points"
-                  className="w-16 rounded bg-white p-1 text-black"
-                />
-                <span className="text-sm text-gray-400">/ {LEGACY_CAP}</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={saveLegacy}
-                  className="rounded bg-blue-600 px-3 py-1 text-sm text-white"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={() => {
-                    setEditingLegacy(false);
-                    setLegacyMessage("");
-                  }}
-                  className="rounded bg-neutral-700 px-3 py-1 text-sm text-white"
-                >
-                  Cancel
-                </button>
-              </div>
-              {legacyMessage && <p className="text-xs text-red-400">{legacyMessage}</p>}
+      {/* Account Overview - one glanceable strip instead of a boxed grid,
+          with Auto-Sync setup folded into a button here rather than its
+          own always-visible section; the panel it opens still renders
+          right below, it just starts collapsed until asked for. */}
+      <section className="mt-4 rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
+          <div className="flex items-center gap-2">
+            {ICON_PERSON}
+            <div>
+              <div className="text-xl font-bold leading-tight">{characters.length}</div>
+              <div className="text-xs text-gray-400">Characters</div>
             </div>
-          ) : (
-            <>
-              <div className="text-2xl font-bold">
-                {legacy}/{LEGACY_CAP}
+          </div>
+          <div className="flex items-center gap-2">
+            {ICON_CHART}
+            <div>
+              <div className="text-xl font-bold leading-tight">{highestLevel}</div>
+              <div className="text-xs text-gray-400">Highest level</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {ICON_HAMMER}
+            <div>
+              <div className="text-xl font-bold leading-tight">
+                {coveredCount}/{PRIMARY.length}
               </div>
-              <div className="text-sm text-gray-400">
-                Legacy points{" "}
-                <button
-                  onClick={() => {
-                    setLegacyDraft(String(legacy));
-                    setEditingLegacy(true);
-                  }}
-                  className="text-blue-400 underline"
-                >
-                  edit
-                </button>
+              <div className="text-xs text-gray-400">Professions</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {ICON_BOOK}
+            <div>
+              <div className="text-xl font-bold leading-tight">{totalRecipesKnown}</div>
+              <div className="text-xs text-gray-400">Recipes known</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="text-xl font-bold leading-tight"><MoneyDisplay copper={totalCopper} /></div>
+            <div className="text-xs text-gray-400">Total gold</div>
+          </div>
+          <div className="flex items-center gap-2">
+            {ICON_STAR}
+            {editingLegacy ? (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={LEGACY_CAP}
+                    value={legacyDraft}
+                    onChange={(e) => setLegacyDraft(e.target.value)}
+                    aria-label="Legacy points"
+                    className="w-16 rounded bg-white p-1 text-black"
+                  />
+                  <span className="text-xs text-gray-400">/ {LEGACY_CAP}</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={saveLegacy}
+                    className="rounded bg-blue-600 px-3 py-1 text-xs text-white"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingLegacy(false);
+                      setLegacyMessage("");
+                    }}
+                    className="rounded bg-neutral-700 px-3 py-1 text-xs text-white"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {legacyMessage && <p className="text-xs text-red-400">{legacyMessage}</p>}
               </div>
-            </>
-          )}
-        </div>
+            ) : (
+              <div>
+                <div className="text-xl font-bold leading-tight">
+                  {legacy}/{LEGACY_CAP}
+                </div>
+                <div className="text-xs text-gray-400">
+                  Legacy points{" "}
+                  <button
+                    onClick={() => {
+                      setLegacyDraft(String(legacy));
+                      setEditingLegacy(true);
+                    }}
+                    className="text-blue-400 underline"
+                  >
+                    edit
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() => setSyncOpenSignal((n) => n + 1)}
+            className="ml-auto shrink-0 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-amber-400"
+          >
+            ⚙ Set Up Auto-Sync
+          </button>
         </div>
       </section>
+
+      <AccountSyncSetup openSignal={syncOpenSignal} />
 
       {accountAchievements.length > 0 && (
         <section className="mt-4 rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
@@ -403,9 +525,17 @@ export default function Dashboard({
 
       <div className="mt-6 grid gap-4 xl:grid-cols-3">
         <section className="rounded-lg border border-neutral-700 bg-neutral-900/40 p-4 xl:col-span-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
-            Character list
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+              My Characters
+            </h2>
+            <Link
+              href="/create"
+              className="rounded bg-amber-500 px-3 py-1.5 text-sm font-semibold text-neutral-950 hover:bg-amber-400"
+            >
+              + Create Character
+            </Link>
+          </div>
 
           {characters.length === 0 && !error && (
             <p className="mt-3 text-gray-400">You have no characters yet.</p>
@@ -458,13 +588,6 @@ export default function Dashboard({
               </div>
             );
           })()}
-
-          <Link
-            href="/create"
-            className="mt-6 inline-block rounded bg-blue-600 px-4 py-2 text-white"
-          >
-            Create Character
-          </Link>
         </section>
 
         <div className="flex flex-col gap-4">
@@ -555,6 +678,88 @@ export default function Dashboard({
             </ul>
           </section>
         </div>
+      </div>
+
+      {/* Recent Activity / Quick Actions / Need Help - a bottom row so the
+          page doesn't just end after Profession Coverage; Recent Activity
+          reads the same activity_events rows the floating sidebar and the
+          sync route already write to, Quick Actions are just shortcuts to
+          pages that already exist elsewhere in the nav. */}
+      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+        <section className="rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+            Recent Activity
+          </h2>
+          {recentActivity.length === 0 ? (
+            <p className="mt-3 text-sm text-gray-500">Nothing yet - sync a character to get started.</p>
+          ) : (
+            <ul className="mt-3 flex flex-col gap-3">
+              {recentActivity.map((a) => {
+                const c = a.character_id ? charById.get(a.character_id) : undefined;
+                return (
+                  <li key={a.id} className="flex items-start gap-2">
+                    {c ? (
+                      <GameIcon name={classIcon(c.class)} label={c.class} size={22} round />
+                    ) : (
+                      <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full border border-amber-900/70 bg-neutral-900 text-amber-200">
+                        {ICON_PERSON}
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1 text-sm text-gray-300">{a.message}</span>
+                    <span className="shrink-0 text-xs text-gray-500">{timeAgo(a.created_at)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        <section className="rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+            Quick Actions
+          </h2>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <Link
+              href="/friends"
+              className="rounded border border-neutral-700 bg-neutral-800 p-3 text-sm hover:bg-neutral-700"
+            >
+              View Friends
+            </Link>
+            <Link
+              href="/crafting"
+              className="rounded border border-neutral-700 bg-neutral-800 p-3 text-sm hover:bg-neutral-700"
+            >
+              Open Crafting Directory
+            </Link>
+            <Link
+              href="/leaderboards"
+              className="rounded border border-neutral-700 bg-neutral-800 p-3 text-sm hover:bg-neutral-700"
+            >
+              Check Leaderboards
+            </Link>
+            <Link
+              href="/news"
+              className="rounded border border-neutral-700 bg-neutral-800 p-3 text-sm hover:bg-neutral-700"
+            >
+              Read Latest News
+            </Link>
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+            Need Help?
+          </h2>
+          <p className="mt-2 text-sm text-gray-400">
+            Setup guides, addon instructions and more.
+          </p>
+          <Link
+            href="/download"
+            className="mt-3 inline-block rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-amber-400"
+          >
+            View Downloads & Guides →
+          </Link>
+        </section>
       </div>
     </main>
   );

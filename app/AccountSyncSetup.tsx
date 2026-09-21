@@ -13,9 +13,19 @@ import { supabase } from "../lib/supabase";
 // here rather than needing the two to agree on it some other way.
 const SYNC_APP_PORT = 47891;
 
-export default function AccountSyncSetup() {
+export default function AccountSyncSetup({ openSignal }: { openSignal?: number } = {}) {
   const [userId, setUserId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+
+  // Lets a button elsewhere on the page (the Dashboard's "Set Up Auto-Sync"
+  // stat-strip button) force this open without this component needing to
+  // hand over full control of its own open/closed state - every increment
+  // of openSignal just means "someone wants this open now". Left undefined,
+  // nothing changes: the section behaves exactly as before, opened only by
+  // its own header button.
+  useEffect(() => {
+    if (openSignal !== undefined && openSignal > 0) setOpen(true);
+  }, [openSignal]);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");

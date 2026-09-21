@@ -1,8 +1,21 @@
 import { supabase } from "../../lib/supabase";
 import type { CardCharacter } from "../CharacterCard";
-import CraftingDirectory from "./Craftingdirectory";
+import CraftingDirectory from "./CraftingDirectory";
 
-export const dynamic = "force-dynamic";
+// This used to be a tab inside the Friends page, so switching to it was
+// instant - just toggling what was already loaded, no new request. Now
+// it's its own route, every click has to wait on a fresh trip to Supabase
+// for every character's every profession's full recipe list (icons,
+// reagents, tooltip text and all), which is a fair bit of data for not
+// much benefit if it's re-fetched on every single click. `revalidate`
+// caches the rendered page for this many seconds - repeat visits inside
+// that window are instant (served from cache, no database round trip at
+// all), and it naturally refreshes again afterwards. 30s means a newly
+// scanned recipe can take up to that long to show up here, which is a
+// fine trade for a directory people browse, not something needing to be
+// second-by-second live. (loading.tsx covers the perceived speed for
+// visits that do miss the cache.)
+export const revalidate = 30;
 
 // The crafting directory only ever needs each character's professions
 // (with recipes) and who owns it - none of the talent/gear/achievement
