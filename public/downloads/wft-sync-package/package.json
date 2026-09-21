@@ -1,0 +1,11 @@
+{
+  "name": "wow-forever-tracker-tray",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Background tray app for WoW Forever Tracker auto-sync",
+  "main": "sync.js",
+  "dependencies": {
+    "systray2": "^2.0.0",
+    "node-notifier": "^10.0.1"
+  }
+}
