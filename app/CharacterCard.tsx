@@ -97,15 +97,24 @@ export type CardCharacter = {
     profession: string;
     skill: number;
     // A recipe entry is a bare string on an old addon build, or a richer
-    // object on newer ones - reagents/tooltip were added after icon/id.
+    // object on newer ones - reagents/tooltip/color were added after icon/id.
+    // color is a bare "rrggbb" hex string read off the item's rendered
+    // tooltip color in-game (no reliable quality field on this server).
     recipes?: (
       | string
       | {
           name: string;
           icon?: number | string | null;
           id?: number;
-          reagents?: { itemID: number; name: string; icon?: number | string | null; quantity: number }[];
+          reagents?: {
+            itemID: number;
+            name: string;
+            icon?: number | string | null;
+            quantity: number;
+            color?: string | null;
+          }[];
           tooltip?: string[];
+          color?: string | null;
         }
     )[];
   }[];

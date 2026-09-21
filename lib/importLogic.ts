@@ -68,9 +68,14 @@ export type ParsedExport = {
   //
   // A recipe entry is a bare string on an addon build from before 1.3.0 (no
   // icon capture yet), a { name, icon, id } object on 1.3.0, or the fuller
-  // shape below (reagents + tooltip text) from the version after that -
-  // all normalized to one consistent object shape before being stored, so
-  // the site never has to care which addon version a given sync came from.
+  // shape below (reagents + tooltip text + quality color) from the version
+  // after that - all normalized to one consistent object shape before
+  // being stored, so the site never has to care which addon version a
+  // given sync came from. `color` is a bare "rrggbb" hex string (no '#'),
+  // read straight off the item's own rendered tooltip color in-game (same
+  // trick already used for gear - see importLogic's gear color handling
+  // below), since this server's items don't reliably carry quality any
+  // other way.
   professions?: {
     name: string;
     skill: number;
@@ -81,8 +86,15 @@ export type ParsedExport = {
           name: string;
           icon?: number | string | null;
           id?: number;
-          reagents?: { itemID: number; name: string; icon?: number | string | null; quantity: number }[];
+          reagents?: {
+            itemID: number;
+            name: string;
+            icon?: number | string | null;
+            quantity: number;
+            color?: string | null;
+          }[];
           tooltip?: string[];
+          color?: string | null;
         }
     )[];
   }[];
@@ -340,7 +352,14 @@ export async function applyImport(
     const recipes = p.recipes?.map((r) =>
       typeof r === "string"
         ? { name: r }
-        : { name: r.name, icon: r.icon ?? null, id: r.id, reagents: r.reagents, tooltip: r.tooltip }
+        : {
+            name: r.name,
+            icon: r.icon ?? null,
+            id: r.id,
+            reagents: r.reagents,
+            tooltip: r.tooltip,
+            color: r.color ?? null,
+          }
     );
     const existing = professions.find(
       (x) => x.profession.toLowerCase() === p.name.toLowerCase()

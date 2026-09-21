@@ -7,7 +7,16 @@ import { MAX_SKILL, SECONDARY_PROFESSIONS, SUPPLIED_BY } from "../../lib/profess
 import GameIcon from "../GameIcon";
 import type { FriendPlayer } from "./FriendsBrowser";
 
-type Reagent = { itemID: number; name: string; icon?: number | string | null; quantity: number };
+type Reagent = {
+  itemID: number;
+  name: string;
+  icon?: number | string | null;
+  quantity: number;
+  // Bare "rrggbb" hex (no '#'), read off the reagent's own rendered
+  // tooltip color in-game - this server's items don't reliably carry
+  // quality any other way.
+  color?: string | null;
+};
 type Recipe = {
   name: string;
   icon?: number | string | null;
@@ -15,9 +24,63 @@ type Recipe = {
   // Raw tooltip text lines scraped from the crafted item, e.g. "Use:
   // Constructs a sharpening wheel..." / "Requires a Campfire nearby" -
   // line 1 is always just the item's own name, so it's skipped wherever
-  // this is displayed. No color info survives the scrape, just the words.
+  // this is displayed. Coin values on a Sell Price line come through as
+  // literal {gold}/{silver}/{copper} tokens (see renderTooltipLine below)
+  // rather than real numbers - everything else is plain white/gray text,
+  // same as the rest of the site's item tooltips.
   tooltip?: string[];
+  // The crafted item's own quality color, same "rrggbb" hex convention.
+  color?: string | null;
 };
+
+const COIN_COLORS: Record<string, string> = {
+  gold: "#ffd700",
+  silver: "#c0c0c0",
+  copper: "#b87333",
+};
+
+// A tooltip line can contain {gold}/{silver}/{copper} tokens in place of
+// WoW's inline coin icons (see the addon's stripMarkup) - swapped here for
+// small colored dots since the real icon images aren't available client-side.
+function renderTooltipLine(line: string) {
+  const parts = line.split(/(\{gold\}|\{silver\}|\{copper\})/g);
+  return parts.map((part, i) => {
+    const m = /^\{(gold|silver|copper)\}$/.exec(part);
+    if (!m) return <span key={i}>{part}</span>;
+    return (
+      <span
+        key={i}
+        title={m[1]}
+        className="mx-0.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full align-middle"
+        style={{ backgroundColor: COIN_COLORS[m[1]] }}
+      />
+    );
+  });
+}
+
+// A game icon with a colored ring around it matching the item's quality
+// (green/blue/purple/etc, same as the in-game border) - falls back to
+// GameIcon's own default border when no color was captured.
+function QualityIcon({
+  src,
+  label,
+  size,
+  color,
+}: {
+  src?: string | null;
+  label: string;
+  size: number;
+  color?: string | null;
+}) {
+  return (
+    <span
+      className="inline-block shrink-0 rounded"
+      style={color ? { boxShadow: `0 0 0 2px #${color}` } : undefined}
+    >
+      <GameIcon src={src} label={label} size={size} />
+    </span>
+  );
+}
 type Entry = { id: string; name: string; cls: string; owner: string; skill: number; recipes: Recipe[] };
 
 // A recipe entry is a bare string on an addon build from before 1.3.0 (no
@@ -93,10 +156,10 @@ function RecipeDetails({ r }: { r: Recipe }) {
   }
 
   return (
-    <div className="mt-2 w-72 max-w-full rounded-lg border border-amber-700/60 bg-neutral-950 p-3">
+    <div className="w-72 max-w-full rounded-lg border border-amber-700/60 bg-neutral-950 p-3">
       {lines.map((line, i) => (
         <p key={i} className="text-xs leading-snug text-gray-300">
-          {line}
+          {renderTooltipLine(line)}
         </p>
       ))}
       {reagents.length > 0 && (
@@ -104,9 +167,9 @@ function RecipeDetails({ r }: { r: Recipe }) {
           <p className="text-xs font-bold text-amber-400">Reagents</p>
           <ul className="mt-1 flex flex-col gap-1">
             {reagents.map((rg) => (
-              <li key={rg.itemID} className="flex items-center gap-1.5 text-xs text-gray-300">
-                <GameIcon src={iconUrlForFileId(rg.icon)} label={rg.name} size={20} />
-                <span>
+              <li key={rg.itemID} className="flex items-center gap-1.5 text-xs">
+                <QualityIcon src={iconUrlForFileId(rg.icon)} label={rg.name} size={20} color={rg.color} />
+                <span style={rg.color ? { color: `#${rg.color}` } : undefined} className="text-gray-300">
                   {rg.quantity}x {rg.name}
                 </span>
               </li>
@@ -118,23 +181,34 @@ function RecipeDetails({ r }: { r: Recipe }) {
   );
 }
 
-// A single recipe pill - click to expand its tooltip text and reagent
-// list below it, using data already fetched with everything else (no
-// extra request when clicked).
+// A single recipe pill - hovering shows its tooltip text and reagent list
+// in a floating panel below it, just like hovering the recipe in-game.
+// Also toggles on click/tap, since hover doesn't exist on touch devices.
+// Uses data already fetched with everything else - no extra request.
 function RecipeChip({ r }: { r: Recipe }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div>
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1 rounded border border-neutral-700 bg-neutral-900 py-0.5 pl-0.5 pr-1.5 text-xs text-gray-300 hover:border-amber-500 hover:text-white"
+        className="flex items-center gap-1 rounded border border-neutral-700 bg-neutral-900 py-0.5 pl-0.5 pr-1.5 text-xs hover:border-amber-500"
       >
-        <GameIcon src={iconUrlForFileId(r.icon)} label={r.name} size={18} />
-        {r.name}
+        <QualityIcon src={iconUrlForFileId(r.icon)} label={r.name} size={18} color={r.color} />
+        <span style={r.color ? { color: `#${r.color}` } : undefined} className="text-gray-300">
+          {r.name}
+        </span>
       </button>
-      {open && <RecipeDetails r={r} />}
+      {open && (
+        <div className="absolute left-0 top-full z-30 mt-1">
+          <RecipeDetails r={r} />
+        </div>
+      )}
     </div>
   );
 }
@@ -221,9 +295,9 @@ function ProfessionPanel({ profession, list }: { profession: string; list: Entry
   );
 }
 
-// One matched recipe within the search results - its name/icon toggles the
-// same tooltip+reagents panel a RecipeChip does, above the list of everyone
-// who knows it.
+// One matched recipe within the search results - hovering its name/icon
+// shows the same floating tooltip+reagents panel a RecipeChip does, above
+// the list of everyone who knows it.
 function SearchResultItem({
   profession,
   recipe,
@@ -237,12 +311,27 @@ function SearchResultItem({
 
   return (
     <li className="rounded bg-neutral-800 p-3">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-2 text-left">
-        <GameIcon src={iconUrlForFileId(recipe.icon)} label={recipe.name} size={28} />
-        <span className="font-bold text-white hover:underline">{recipe.name}</span>
-        <span className="text-xs text-gray-500">({profession})</span>
-      </button>
-      {open && <RecipeDetails r={recipe} />}
+      <div
+        className="relative inline-block"
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+      >
+        <button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-2 text-left">
+          <QualityIcon src={iconUrlForFileId(recipe.icon)} label={recipe.name} size={28} color={recipe.color} />
+          <span
+            style={recipe.color ? { color: `#${recipe.color}` } : undefined}
+            className="font-bold text-white"
+          >
+            {recipe.name}
+          </span>
+          <span className="text-xs text-gray-500">({profession})</span>
+        </button>
+        {open && (
+          <div className="absolute left-0 top-full z-30 mt-1">
+            <RecipeDetails r={recipe} />
+          </div>
+        )}
+      </div>
       <ul className="mt-2 flex flex-col gap-1 pl-8">
         {es.map((e) => (
           <li key={e.id}>
@@ -309,10 +398,13 @@ export default function CraftingDirectory({ players }: { players: FriendPlayer[]
           if (!r.name.toLowerCase().includes(q)) continue;
           const key = `${profession}::${r.name}`;
           if (!byRecipe[key]) byRecipe[key] = { profession, recipe: r, crafters: [] };
-          // Prefer whichever copy of this recipe has an icon, in case one
-          // crafter's sync recorded it before icon capture existed and
-          // another's recorded it after.
-          if (!byRecipe[key].recipe.icon && r.icon) byRecipe[key].recipe = r;
+          // Prefer whichever copy of this recipe has the most captured
+          // (icon/color/reagents/tooltip), in case one crafter's sync
+          // recorded it before a given addon update and another's after.
+          const cur = byRecipe[key].recipe;
+          if ((!cur.icon && r.icon) || (!cur.color && r.color) || (!cur.reagents && r.reagents)) {
+            byRecipe[key].recipe = { ...r, icon: r.icon ?? cur.icon, color: r.color ?? cur.color };
+          }
           byRecipe[key].crafters.push(e);
         }
       }
