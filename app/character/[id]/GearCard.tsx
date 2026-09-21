@@ -148,6 +148,41 @@ const SLOT_ICONS: Record<string, ReactNode> = {
   ),
 };
 
+const COIN_COLORS: Record<string, string> = {
+  gold: "#ffd700",
+  silver: "#c0c0c0",
+  copper: "#b87333",
+};
+
+// The addon's stripMarkup swaps the Sell Price line's inline coin icons for
+// {gold}/{silver}/{copper} tokens (curly braces) - same convention the
+// Crafting Directory's recipe tooltips use - but replaced here defensively
+// for [gold]/[silver]/[copper] too, in case a line comes through with
+// square brackets instead. Either way they become small colored coin dots
+// rather than sitting on the page as literal text.
+function renderTooltipLine(line: string) {
+  const parts = line.split(/([{[](?:gold|silver|copper)[}\]])/g);
+  return parts.map((part, i) => {
+    const m = /^[{[](gold|silver|copper)[}\]]$/.exec(part);
+    if (!m) return <span key={i}>{part}</span>;
+    return (
+      <span
+        key={i}
+        title={m[1]}
+        className="mx-0.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full align-middle"
+        style={{ backgroundColor: COIN_COLORS[m[1]] }}
+      />
+    );
+  });
+}
+
+// The "<Made by X>" line the addon adds to anything crafted by a tracked
+// player - green in-game (Blizzard's own crafted-by color, #1eff00), not
+// the plain gray/white the rest of the tooltip uses.
+function isCraftedByLine(line: string) {
+  return /^<.*made by.*>$/i.test(line.trim());
+}
+
 function ItemTooltip({ entry }: { entry: Item }) {
   const color = entry.item_quality ? `#${entry.item_quality}` : "#ffffff";
   const lines = entry.tooltip ?? [];
@@ -166,8 +201,8 @@ function ItemTooltip({ entry }: { entry: Item }) {
       {lines
         .filter((line) => line !== entry.item_name)
         .map((line, i) => (
-          <div key={i} className="text-gray-300">
-            {line}
+          <div key={i} className={isCraftedByLine(line) ? "text-[#1eff00]" : "text-gray-300"}>
+            {renderTooltipLine(line)}
           </div>
         ))}
     </div>
