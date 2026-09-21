@@ -65,7 +65,17 @@ export type ParsedExport = {
   // that window being open, on either the old or new profession UI. When
   // it's missing, whatever recipes are already recorded from an earlier
   // sync are left untouched rather than being cleared.
-  professions?: { name: string; skill: number; maxSkill?: number; recipes?: string[] }[];
+  //
+  // A recipe entry is a bare string on an addon build from before 1.3.0
+  // (no icon capture yet) or a { name, icon, id } object on 1.3.0+ - both
+  // are normalized to the object shape below before being stored, so the
+  // site never has to care which addon version a given sync came from.
+  professions?: {
+    name: string;
+    skill: number;
+    maxSkill?: number;
+    recipes?: (string | { name: string; icon?: number | string | null; id?: number })[];
+  }[];
   gear?: Record<string, { link: string; name: string; color?: string; icon?: number; tooltip?: string[] }>;
   traits?: {
     experimental?: boolean;
@@ -313,16 +323,23 @@ export async function applyImport(
   const updatedProfessions = professions.map((p) => ({ ...p }));
   for (const p of parsed.professions ?? []) {
     const skill = Math.min(MAX_SKILL, Math.max(1, p.skill || 1));
+    // Bare-string recipe entries (pre-1.3.0 addon builds, or old data
+    // already in the DB from before icons existed) are normalized to the
+    // same { name, icon, id } shape everything else uses, so the site never
+    // needs to branch on which addon version a sync came from.
+    const recipes = p.recipes?.map((r) =>
+      typeof r === "string" ? { name: r } : { name: r.name, icon: r.icon ?? null, id: r.id }
+    );
     const existing = professions.find(
       (x) => x.profession.toLowerCase() === p.name.toLowerCase()
     );
     if (existing) {
-      const profUpdate: Record<string, number | string[]> = {};
+      const profUpdate: Record<string, number | typeof recipes> = {};
       if (existing.skill !== skill) profUpdate.skill = skill;
       // Only touch recipes when the addon actually sent some for this sync
       // (meaning the trade skill window was opened) - otherwise leave
       // whatever's already recorded from an earlier visit alone.
-      if (p.recipes && p.recipes.length > 0) profUpdate.recipes = p.recipes;
+      if (recipes && recipes.length > 0) profUpdate.recipes = recipes;
       if (Object.keys(profUpdate).length > 0) {
         await supabase.from("character_professions").update(profUpdate).eq("id", existing.id);
       }
@@ -351,7 +368,7 @@ export async function applyImport(
         character_id: characterId,
         profession: p.name,
         skill,
-        ...(p.recipes && p.recipes.length > 0 ? { recipes: p.recipes } : {}),
+        ...(recipes && recipes.length > 0 ? { recipes } : {}),
       });
       updatedProfessions.push({ id: "", profession: p.name, skill });
 

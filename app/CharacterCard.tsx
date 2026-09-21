@@ -93,7 +93,13 @@ export type CardCharacter = {
   created_at?: string | null;
   achievements?: CardAchievement[];
   profiles?: { display_name?: string; legacy_points?: number } | null;
-  character_professions: { profession: string; skill: number; recipes?: string[] }[];
+  character_professions: {
+    profession: string;
+    skill: number;
+    // A recipe entry is a bare string from an addon build before 1.3.0
+    // (no icons yet), or a { name, icon, id } object from 1.3.0+.
+    recipes?: (string | { name: string; icon?: number | string | null; id?: number })[];
+  }[];
   character_talents: { slot: number; tree: string; rank: number }[];
   character_legacy?: { rank: number }[];
   // The card only ever shows the first couple still-wanted items, with a

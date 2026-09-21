@@ -2,12 +2,21 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { PRIMARY_PROFESSIONS, PROFESSION_ICONS, classIcon } from "../../lib/icons";
+import { PRIMARY_PROFESSIONS, PROFESSION_ICONS, classIcon, iconUrlForFileId } from "../../lib/icons";
 import { MAX_SKILL, SECONDARY_PROFESSIONS, SUPPLIED_BY } from "../../lib/professions";
 import GameIcon from "../GameIcon";
 import type { FriendPlayer } from "./FriendsBrowser";
 
-type Entry = { id: string; name: string; cls: string; owner: string; skill: number; recipes: string[] };
+type Recipe = { name: string; icon?: number | string | null };
+type Entry = { id: string; name: string; cls: string; owner: string; skill: number; recipes: Recipe[] };
+
+// A recipe entry is a bare string from an addon build before 1.3.0 (no
+// icons captured yet), or a { name, icon, id } object from 1.3.0+ - this
+// makes every entry look like the latter regardless of which addon
+// version actually produced it.
+function normalizeRecipe(r: string | Recipe): Recipe {
+  return typeof r === "string" ? { name: r } : r;
+}
 
 // Herbalism/Mining/Skinning are "primary" professions in the sense that they
 // take up one of your two primary profession slots, but they don't actually
@@ -32,7 +41,7 @@ function crafters(players: FriendPlayer[], profession: string): Entry[] {
             cls: c.class,
             owner: p.name,
             skill: pr.skill,
-            recipes: pr.recipes ?? [],
+            recipes: (pr.recipes ?? []).map(normalizeRecipe),
           });
         }
       }
@@ -85,15 +94,18 @@ function CrafterRow({ e }: { e: Entry }) {
       </div>
       <SkillBar skill={e.skill} />
       {open && hasRecipes && (
-        <div className="mb-2 mt-1 flex flex-wrap gap-1 pl-8">
-          {[...e.recipes].sort((a, b) => a.localeCompare(b)).map((r) => (
-            <span
-              key={r}
-              className="rounded border border-neutral-700 bg-neutral-900 px-1.5 py-0.5 text-xs text-gray-300"
-            >
-              {r}
-            </span>
-          ))}
+        <div className="mb-2 mt-1 flex flex-wrap gap-1.5 pl-8">
+          {[...e.recipes]
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((r) => (
+              <span
+                key={r.name}
+                className="flex items-center gap-1 rounded border border-neutral-700 bg-neutral-900 py-0.5 pl-0.5 pr-1.5 text-xs text-gray-300"
+              >
+                <GameIcon src={iconUrlForFileId(r.icon)} label={r.name} size={18} />
+                {r.name}
+              </span>
+            ))}
         </div>
       )}
     </li>
@@ -143,7 +155,7 @@ function ProfessionPanel({ profession, list }: { profession: string; list: Entry
 function SearchResults({
   results,
 }: {
-  results: { profession: string; recipe: string; crafters: Entry[] }[];
+  results: { profession: string; recipe: Recipe; crafters: Entry[] }[];
 }) {
   if (results.length === 0) {
     return <p className="mt-4 text-sm text-gray-400">No known recipe matches that.</p>;
@@ -152,10 +164,10 @@ function SearchResults({
   return (
     <ul className="mt-4 flex flex-col gap-3">
       {results.map(({ profession, recipe, crafters: es }) => (
-        <li key={`${profession}-${recipe}`} className="rounded bg-neutral-800 p-3">
+        <li key={`${profession}-${recipe.name}`} className="rounded bg-neutral-800 p-3">
           <div className="flex items-center gap-2">
-            <GameIcon name={PROFESSION_ICONS[profession]} label={profession} size={24} />
-            <span className="font-bold text-white">{recipe}</span>
+            <GameIcon src={iconUrlForFileId(recipe.icon)} label={recipe.name} size={28} />
+            <span className="font-bold text-white">{recipe.name}</span>
             <span className="text-xs text-gray-500">({profession})</span>
           </div>
           <ul className="mt-2 flex flex-col gap-1 pl-8">
@@ -198,20 +210,24 @@ export default function CraftingDirectory({ players }: { players: FriendPlayer[]
   const searchResults = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return null;
-    const byRecipe: Record<string, { profession: string; recipe: string; crafters: Entry[] }> = {};
+    const byRecipe: Record<string, { profession: string; recipe: Recipe; crafters: Entry[] }> = {};
     for (const profession of ALL_PROFESSIONS) {
       for (const e of lists[profession]) {
         for (const r of e.recipes) {
-          if (!r.toLowerCase().includes(q)) continue;
-          const key = `${profession}::${r}`;
+          if (!r.name.toLowerCase().includes(q)) continue;
+          const key = `${profession}::${r.name}`;
           if (!byRecipe[key]) byRecipe[key] = { profession, recipe: r, crafters: [] };
+          // Prefer whichever copy of this recipe has an icon, in case one
+          // crafter's sync recorded it before icon capture existed and
+          // another's recorded it after.
+          if (!byRecipe[key].recipe.icon && r.icon) byRecipe[key].recipe = r;
           byRecipe[key].crafters.push(e);
         }
       }
     }
     return Object.values(byRecipe)
       .map((m) => ({ ...m, crafters: [...m.crafters].sort((a, b) => b.skill - a.skill) }))
-      .sort((a, b) => a.recipe.localeCompare(b.recipe));
+      .sort((a, b) => a.recipe.name.localeCompare(b.recipe.name));
   }, [query, lists]);
 
   const TabButton = ({ p }: { p: string }) => (
