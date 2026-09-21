@@ -281,16 +281,21 @@ export default async function Leaderboards({
                   </div>
 
                   {key === "total" && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {Object.entries(boards).map(([boardKey, b]) => (
-                        <span
-                          key={boardKey}
-                          className="rounded bg-neutral-700 px-1.5 py-0.5 text-xs text-gray-300"
-                          title={`${b.label} points`}
-                        >
-                          {b.label} <span className="font-bold text-amber-400">{points[boardKey][c.id]}</span>
-                        </span>
-                      ))}
+                    <div className="mt-2">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                        Score breakdown
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {Object.entries(boards).map(([boardKey, b]) => (
+                          <span
+                            key={boardKey}
+                            className="rounded bg-neutral-700 px-1.5 py-0.5 text-xs text-gray-300"
+                            title={`${b.label} points`}
+                          >
+                            {b.label} <span className="font-bold text-amber-400">{points[boardKey][c.id]}</span>
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
