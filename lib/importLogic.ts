@@ -5,8 +5,10 @@ import {
   awardAchievement,
   awardEpicTier,
   awardGoldTier,
+  awardRecipeTier,
   epicTierMessage,
   goldTierMessage,
+  recipeTierMessage,
   isWithinFoundingWindow,
 } from "./achievements";
 import { checkAccountAchievements } from "./accountAchievements";
@@ -439,6 +441,31 @@ export async function applyImport(
         user_id: before.user_id,
         kind: "achievement_earned",
         message: ACHIEVEMENT_MESSAGE.renaissance(before.name),
+      });
+    }
+  }
+
+  // Recipes known - summed across every profession the character has, not
+  // just the one(s) touched this sync, since the badge reflects the whole
+  // shared library. Queried fresh from the DB (rather than from
+  // `updatedProfessions`, which only tracks skill in memory) so it reflects
+  // whatever was just written above.
+  const { data: allProfessionRecipes } = await supabase
+    .from("character_professions")
+    .select("recipes")
+    .eq("character_id", characterId);
+  const totalRecipes = (allProfessionRecipes ?? []).reduce(
+    (n, p) => n + (Array.isArray(p.recipes) ? p.recipes.length : 0),
+    0
+  );
+  if (totalRecipes > 0) {
+    const tier = await awardRecipeTier(supabase, characterId, totalRecipes);
+    if (tier) {
+      events.push({
+        character_id: characterId,
+        user_id: before.user_id,
+        kind: "achievement_earned",
+        message: recipeTierMessage(before.name, tier),
       });
     }
   }

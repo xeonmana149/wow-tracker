@@ -553,6 +553,25 @@ input[type="checkbox"] {
   text-shadow: 0 0 12px rgba(242, 198, 90, 0.5), 0 1px 0 rgba(0, 0, 0, 0.6);
 }
 
+/* ---------- Character cards (Dashboard + Friends) ---------- */
+
+/* Same "lift toward the light" treatment as .lb-row - brighten, glow the
+   frame gold, lift slightly - so hovering a character card on the
+   Dashboard or Friends list reads the same way hovering a leaderboard row
+   or a friend tab already does elsewhere on the site. Layered on top of
+   whatever background the card already has (its own bg-neutral-800 panel
+   styling, or the amber "needs attention" ring), not replacing it. */
+.character-card {
+  transition: outline-color 0.12s, transform 0.12s, box-shadow 0.12s, background 0.12s;
+}
+
+.character-card:hover {
+  background: linear-gradient(180deg, #2e2517, #1b1610);
+  outline-color: var(--gold-soft);
+  transform: translateY(-2px);
+  box-shadow: inset 0 1px 0 rgba(255, 224, 150, 0.1), 0 10px 22px rgba(0, 0, 0, 0.5);
+}
+
 /* ---------- Friends: player dropdowns ---------- */
 
 .player-card {

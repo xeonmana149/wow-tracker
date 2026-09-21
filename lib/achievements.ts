@@ -15,11 +15,12 @@ export type AchievementKind =
   | "top_pvp_rank"
   | "founding_member";
 
-// The two achievements that upgrade through Bronze/Silver/Gold instead of
-// being a flat yes/no: "gold" (account gold on this character) and
-// "epic_gear" (how many distinct Epic items this character has equipped
-// over time - a running count, not a snapshot of what's worn right now).
-export type TieredAchievementKind = "gold" | "epic_gear";
+// The tiered achievements that upgrade through Bronze/Silver/Gold instead
+// of being a flat yes/no: "gold" (account gold on this character), "epic_gear"
+// (how many distinct Epic items this character has equipped over time - a
+// running count, not a snapshot of what's worn right now), and "recipes"
+// (total known recipes across every profession, as of the last sync).
+export type TieredAchievementKind = "gold" | "epic_gear" | "recipes";
 
 export type GoldTier = "Bronze" | "Silver" | "Gold";
 
@@ -45,6 +46,17 @@ const EPIC_TIER_THRESHOLDS: { tier: GoldTier; count: number }[] = [
   { tier: "Bronze", count: 1 },
 ];
 
+// How many recipes known ACROSS EVERY PROFESSION (not per-profession) each
+// tier needs. Snapshot-based like gold, not cumulative like epic_gear - the
+// addon reports a character's full known-recipe list each time a profession
+// window is scanned, so the current total is always known outright rather
+// than needing to be tracked incrementally.
+const RECIPE_TIER_THRESHOLDS: { tier: GoldTier; count: number }[] = [
+  { tier: "Gold", count: 500 },
+  { tier: "Silver", count: 250 },
+  { tier: "Bronze", count: 50 },
+];
+
 export const ACHIEVEMENT_MESSAGE: Record<AchievementKind, (name: string) => string> = {
   max_level: (name) => `${name} reached the level cap!`,
   legendary_item: (name) => `${name} obtained a Legendary item!`,
@@ -63,6 +75,11 @@ export function goldTierMessage(name: string, tier: GoldTier): string {
 export function epicTierMessage(name: string, tier: GoldTier): string {
   const count = EPIC_TIER_THRESHOLDS.find((t) => t.tier === tier)?.count ?? "?";
   return `${name} has equipped ${count}+ Epic items - ${tier} tier!`;
+}
+
+export function recipeTierMessage(name: string, tier: GoldTier): string {
+  const count = RECIPE_TIER_THRESHOLDS.find((t) => t.tier === tier)?.count ?? "?";
+  return `${name} knows ${count}+ recipes - ${tier} tier!`;
 }
 
 // Awards a plain (non-tiered) achievement to a character. Safe to call
@@ -111,6 +128,39 @@ export async function awardGoldTier(
     .from("achievements")
     .upsert(
       { character_id: characterId, kind: "gold", tier: reached.tier },
+      { onConflict: "character_id,kind" }
+    );
+  if (error) return null;
+  return reached.tier;
+}
+
+// The recipes-known achievement upgrades in place based on the character's
+// current total recipe count (summed across every profession), same
+// snapshot approach as awardGoldTier - returns the new tier if this call
+// improved on whatever tier (if any) the character already held, or null
+// otherwise.
+export async function awardRecipeTier(
+  supabase: SupabaseClient,
+  characterId: string,
+  totalRecipes: number
+): Promise<GoldTier | null> {
+  const reached = RECIPE_TIER_THRESHOLDS.find((t) => totalRecipes >= t.count);
+  if (!reached) return null;
+
+  const { data: existing } = await supabase
+    .from("achievements")
+    .select("tier")
+    .eq("character_id", characterId)
+    .eq("kind", "recipes")
+    .maybeSingle();
+
+  const existingRank = existing?.tier ? TIER_RANK[existing.tier as GoldTier] : -1;
+  if (TIER_RANK[reached.tier] <= existingRank) return null;
+
+  const { error } = await supabase
+    .from("achievements")
+    .upsert(
+      { character_id: characterId, kind: "recipes", tier: reached.tier },
       { onConflict: "character_id,kind" }
     );
   if (error) return null;

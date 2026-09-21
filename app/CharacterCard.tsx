@@ -62,13 +62,34 @@ export const EPIC_TIER_META: Record<GoldTier, { icon: string; ring: string; labe
   },
 };
 
+// Recipes-known tier uses a recipe/schematic-styled icon for all three
+// tiers (mirroring epic_gear's one-icon-plus-ring approach), so it reads as
+// a different achievement family from the coin icons used for wealth.
+export const RECIPE_TIER_BADGE: Record<GoldTier, { icon: string; ring: string; label: string }> = {
+  Bronze: {
+    icon: "inv_scroll_03",
+    ring: "ring-2 ring-amber-700",
+    label: "Knows 50+ recipes - Bronze tier",
+  },
+  Silver: {
+    icon: "inv_scroll_03",
+    ring: "ring-2 ring-gray-300",
+    label: "Knows 250+ recipes - Silver tier",
+  },
+  Gold: {
+    icon: "inv_scroll_03",
+    ring: "ring-2 ring-yellow-400",
+    label: "Knows 500+ recipes - Gold tier",
+  },
+};
+
 // The 📅 created-date badge isn't a real achievement, but gets the same
 // icon treatment for visual consistency with the ones that are.
 export const CREATED_DATE_ICON = "inv_misc_pocketwatch_01";
 export const CREATED_DATE_ICON_KEY = "created_date";
 
 type CardAchievement = {
-  kind: AchievementKind | "gold" | "epic_gear";
+  kind: AchievementKind | "gold" | "epic_gear" | "recipes";
   tier?: GoldTier | null;
 };
 
@@ -232,7 +253,7 @@ export default function CharacterCard({
 
   return (
     <div
-      className={`rounded border-l-4 bg-neutral-800 ${pad} ${
+      className={`character-card rounded border-l-4 bg-neutral-800 ${pad} ${
         c.needs_setup && showNeedsAttention ? "ring-2 ring-amber-400" : ""
       }`}
       style={{ borderLeftColor: typeStyle.border }}
@@ -285,6 +306,15 @@ export default function CharacterCard({
                     const icon = resolvedIcon(iconOverrides, "epic_gear", meta.icon);
                     return (
                       <span key="epic_gear" className={`inline-block rounded-full ${meta.ring}`}>
+                        <GameIcon src={wowIconUrl(icon)} label={meta.label} size={28} round />
+                      </span>
+                    );
+                  }
+                  if (a.kind === "recipes" && a.tier) {
+                    const meta = RECIPE_TIER_BADGE[a.tier];
+                    const icon = resolvedIcon(iconOverrides, `recipes:${a.tier}`, meta.icon);
+                    return (
+                      <span key="recipes" className={`inline-block rounded-full ${meta.ring}`}>
                         <GameIcon src={wowIconUrl(icon)} label={meta.label} size={28} round />
                       </span>
                     );
