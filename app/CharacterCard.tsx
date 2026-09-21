@@ -93,7 +93,7 @@ export type CardCharacter = {
   created_at?: string | null;
   achievements?: CardAchievement[];
   profiles?: { display_name?: string; legacy_points?: number } | null;
-  character_professions: { profession: string; skill: number }[];
+  character_professions: { profession: string; skill: number; recipes?: string[] }[];
   character_talents: { slot: number; tree: string; rank: number }[];
   character_legacy?: { rank: number }[];
   // The card only ever shows the first couple still-wanted items, with a

@@ -56,7 +56,7 @@ export default function FriendsBrowser({
         <span className="min-w-0 flex-1">
           <span className="block text-lg font-bold text-white">Crafting directory</span>
           <span className="block text-sm text-gray-400">
-            Who can make what across the whole group
+            Who can make what across the whole group - browse by profession or search by recipe
           </span>
         </span>
       </button>

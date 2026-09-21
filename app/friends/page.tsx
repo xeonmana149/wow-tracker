@@ -23,7 +23,7 @@ export default async function Friends() {
     supabase
       .from("characters")
       .select(
-        "*, profiles(display_name, legacy_points), character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained), achievements(kind, tier)"
+        "*, profiles(display_name, legacy_points), character_professions(profession, skill, recipes), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained), achievements(kind, tier)"
       )
       .order("level", { ascending: false }),
     loadCardData(),
