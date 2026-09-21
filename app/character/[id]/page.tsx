@@ -35,59 +35,47 @@ export default async function CharacterPage({
 }) {
   const { id } = await params;
 
-  // None of these seven queries depend on each other's results (they all
-  // just filter by the same id), so they're fired off together with
-  // Promise.all instead of one at a time. Sequentially, each await waits on
-  // its own round-trip to Supabase before the next one even starts - seven
-  // round-trips stacked up is where several extra seconds of load time were
-  // coming from. Run together, the total wait is roughly whichever single
-  // query is slowest, not the sum of all seven.
-  const [
-    { data: character },
-    { data: professions },
-    { data: gear },
-    { data: stats },
-    { data: talentRows },
-    { data: legacyRows },
-    { data: wishlist },
-  ] = await Promise.all([
-    supabase
-      .from("characters")
-      .select("*, profiles(display_name, legacy_points)")
-      .eq("id", id)
-      .single(),
-    supabase
-      .from("character_professions")
-      .select("id, profession, skill")
-      .eq("character_id", id),
-    supabase
-      .from("equipped_gear")
-      .select("slot, item_name, item_link, item_quality, item_icon, tooltip")
-      .eq("character_id", id),
-    supabase
-      .from("character_stats")
-      .select("stat, value")
-      .eq("character_id", id),
-    supabase
-      .from("character_talents")
-      .select("slot, tree, rank")
-      .eq("character_id", id),
-    supabase
-      .from("character_legacy")
-      .select("rank")
-      .eq("character_id", id),
-    supabase
-      .from("character_wishlist")
-      .select("id, item_name, note, priority, obtained")
-      .eq("character_id", id)
-      .order("created_at", { ascending: true }),
-  ]);
+  const { data: character } = await supabase
+    .from("characters")
+    .select("*, profiles(display_name, legacy_points)")
+    .eq("id", id)
+    .single();
 
   if (!character) {
     notFound();
   }
 
+  const { data: professions } = await supabase
+    .from("character_professions")
+    .select("id, profession, skill, recipes")
+    .eq("character_id", id);
+
+  const { data: gear } = await supabase
+    .from("equipped_gear")
+    .select("slot, item_name, item_link, item_quality, item_icon, tooltip")
+    .eq("character_id", id);
+
+  const { data: stats } = await supabase
+    .from("character_stats")
+    .select("stat, value")
+    .eq("character_id", id);
+
+  const { data: talentRows } = await supabase
+    .from("character_talents")
+    .select("slot, tree, rank")
+    .eq("character_id", id);
+
+  const { data: legacyRows } = await supabase
+    .from("character_legacy")
+    .select("rank")
+    .eq("character_id", id);
   const legacySpent = (legacyRows ?? []).reduce((n, r) => n + r.rank, 0);
+
+  const { data: wishlist } = await supabase
+    .from("character_wishlist")
+    .select("id, item_name, note, priority, obtained")
+    .eq("character_id", id)
+    .order("created_at", { ascending: true });
 
   const faction = RACE_FACTION[character.race];
 
@@ -153,11 +141,6 @@ export default async function CharacterPage({
               {character.ruleset && <span className="chip">{character.ruleset}</span>}
               <span className="chip">{character.character_type}</span>
               {character.guild && <span className="chip">{`<${character.guild}>`}</span>}
-              {typeof character.honor_points === "number" && character.honor_points > 0 && (
-                <span className="chip" title="Honor points">
-                  Honor: {character.honor_points.toLocaleString()}
-                </span>
-              )}
               <span className="chip">
                 Owned by {character.profiles?.display_name ?? "Unknown"}
               </span>

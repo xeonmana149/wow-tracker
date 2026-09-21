@@ -81,7 +81,7 @@ export default function Dashboard({
         supabase
           .from("characters")
           .select(
-            "*, character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained)"
+            "*, character_professions(profession, skill, recipes), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained)"
           )
           .eq("user_id", userData.user.id)
           .order("level", { ascending: false }),
@@ -227,6 +227,20 @@ export default function Dashboard({
 
   const coveredCount = PRIMARY.filter((p) => best[p]).length;
 
+  // Every recipe known by every character on the account, added together -
+  // not deduped, so two characters both knowing First Aid still count as 2.
+  // It's meant as "how much of the shared library did I personally build up",
+  // not "how many distinct recipes".
+  const totalRecipesKnown = characters.reduce(
+    (sum, c) =>
+      sum +
+      (c.character_professions ?? []).reduce(
+        (n, p) => n + (Array.isArray(p.recipes) ? p.recipes.length : 0),
+        0
+      ),
+    0
+  );
+
   // What's next: account-wide, then character by character
   const missing = missingProfessions(characters);
   const accountTodos: Todo[] = [];
@@ -304,6 +318,10 @@ export default function Dashboard({
             {coveredCount}/{PRIMARY.length}
           </div>
           <div className="text-sm text-gray-400">Professions</div>
+        </div>
+        <div className="min-w-[8.5rem] flex-1 border-l border-neutral-700 pl-6 first:border-l-0 first:pl-0">
+          <div className="text-2xl font-bold">{totalRecipesKnown}</div>
+          <div className="text-sm text-gray-400">Recipes known</div>
         </div>
         <div className="min-w-[8.5rem] flex-1 border-l border-neutral-700 pl-6 first:border-l-0 first:pl-0">
           <div className="text-2xl font-bold"><MoneyDisplay copper={totalCopper} /></div>

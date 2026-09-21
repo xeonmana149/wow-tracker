@@ -21,7 +21,16 @@ const SECONDARY = ["Cooking", "First Aid", "Fishing"];
 const MAX_SKILL = 300;
 const MAX_PRIMARY = 2;
 
-type Profession = { id: string; profession: string; skill: number };
+// Only the count matters here - a recipe entry is a bare string on an
+// older addon build, or a richer object (icon/reagents/tooltip/etc.) on
+// newer ones, same as everywhere else recipes are read from. This card
+// doesn't need any of those extra fields, just how many there are.
+type Profession = {
+  id: string;
+  profession: string;
+  skill: number;
+  recipes?: (string | { name: string })[] | null;
+};
 
 export default function ProfessionsCard({
   characterId,
@@ -111,53 +120,61 @@ export default function ProfessionsCard({
       )}
 
       <ul className="mt-3 flex flex-col gap-3">
-        {sorted.map((p) => (
-          <li key={p.id}>
-            <div className="flex items-center justify-between gap-3">
-              <span className="flex items-center gap-2">
-                <GameIcon name={PROFESSION_ICONS[p.profession]} label={p.profession} size={28} />
-                <span>
-                  {p.profession}
-                  {PRIMARY.includes(p.profession) ? "" : " (secondary)"}
-                </span>
-              </span>
-
-              {isOwner ? (
+        {sorted.map((p) => {
+          const recipeCount = Array.isArray(p.recipes) ? p.recipes.length : 0;
+          return (
+            <li key={p.id}>
+              <div className="flex items-center justify-between gap-3">
                 <span className="flex items-center gap-2">
-                  <input
-                    key={`${p.id}-${p.skill}`}
-                    type="number"
-                    min={1}
-                    max={MAX_SKILL}
-                    defaultValue={p.skill}
-                    onBlur={(e) => handleSkillChange(p, Number(e.target.value))}
-                    className="w-20 rounded bg-white p-1 text-black"
-                  />
-                  <span className="text-sm text-gray-400">/ {MAX_SKILL}</span>
-                  <button
-                    onClick={() => handleRemove(p.id)}
-                    className="rounded bg-red-700 px-2 py-1 text-sm text-white"
-                  >
-                    Remove
-                  </button>
+                  <GameIcon name={PROFESSION_ICONS[p.profession]} label={p.profession} size={28} />
+                  <span>
+                    {p.profession}
+                    {PRIMARY.includes(p.profession) ? "" : " (secondary)"}
+                    {recipeCount > 0 && (
+                      <span className="ml-1.5 text-xs text-gray-500">
+                        · {recipeCount} recipe{recipeCount === 1 ? "" : "s"} known
+                      </span>
+                    )}
+                  </span>
                 </span>
-              ) : (
-                <span className="text-sm text-gray-400">
-                  {p.skill} / {MAX_SKILL}
-                </span>
-              )}
-            </div>
 
-            <div className="mt-1 h-2 rounded bg-neutral-700">
-              <div
-                className={`h-2 rounded ${
-                  p.skill >= MAX_SKILL ? "bg-yellow-500" : "bg-blue-500"
-                }`}
-                style={{ width: `${(p.skill / MAX_SKILL) * 100}%` }}
-              />
-            </div>
-          </li>
-        ))}
+                {isOwner ? (
+                  <span className="flex items-center gap-2">
+                    <input
+                      key={`${p.id}-${p.skill}`}
+                      type="number"
+                      min={1}
+                      max={MAX_SKILL}
+                      defaultValue={p.skill}
+                      onBlur={(e) => handleSkillChange(p, Number(e.target.value))}
+                      className="w-20 rounded bg-white p-1 text-black"
+                    />
+                    <span className="text-sm text-gray-400">/ {MAX_SKILL}</span>
+                    <button
+                      onClick={() => handleRemove(p.id)}
+                      className="rounded bg-red-700 px-2 py-1 text-sm text-white"
+                    >
+                      Remove
+                    </button>
+                  </span>
+                ) : (
+                  <span className="text-sm text-gray-400">
+                    {p.skill} / {MAX_SKILL}
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-1 h-2 rounded bg-neutral-700">
+                <div
+                  className={`h-2 rounded ${
+                    p.skill >= MAX_SKILL ? "bg-yellow-500" : "bg-blue-500"
+                  }`}
+                  style={{ width: `${(p.skill / MAX_SKILL) * 100}%` }}
+                />
+              </div>
+            </li>
+          );
+        })}
       </ul>
 
       {isOwner && available.length > 0 && (
