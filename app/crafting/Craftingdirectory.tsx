@@ -5,7 +5,7 @@ import Link from "next/link";
 import { PRIMARY_PROFESSIONS, PROFESSION_ICONS, classIcon, iconUrlForFileId } from "../../lib/icons";
 import { MAX_SKILL, SECONDARY_PROFESSIONS, SUPPLIED_BY } from "../../lib/professions";
 import GameIcon from "../GameIcon";
-import type { FriendPlayer } from "./FriendsBrowser";
+import type { CraftingPlayer } from "./page";
 
 type Reagent = {
   itemID: number;
@@ -102,7 +102,7 @@ const GATHERING_LIST = PRIMARY_PROFESSIONS.filter((p) => GATHERING_PROFESSIONS.h
 const ALL_PROFESSIONS = [...PRIMARY_PROFESSIONS, ...SECONDARY_PROFESSIONS];
 
 // Everyone in the group who has this profession, best first
-function crafters(players: FriendPlayer[], profession: string): Entry[] {
+function crafters(players: CraftingPlayer[], profession: string): Entry[] {
   const out: Entry[] = [];
   for (const p of players) {
     for (const c of p.characters) {
@@ -376,7 +376,7 @@ function SearchResults({
   );
 }
 
-export default function CraftingDirectory({ players }: { players: FriendPlayer[] }) {
+export default function CraftingDirectory({ players }: { players: CraftingPlayer[] }) {
   const [tab, setTab] = useState<string>(PRIMARY_PROFESSIONS[0]);
   const [query, setQuery] = useState("");
 
@@ -434,7 +434,6 @@ export default function CraftingDirectory({ players }: { players: FriendPlayer[]
   return (
     <div>
       <div className="mb-4">
-        <h2 className="text-xl font-bold">Crafting directory</h2>
         <p className="mt-1 text-sm text-gray-400">
           Who can make what across the whole group, best skill first. Search by recipe name to
           find it regardless of profession.

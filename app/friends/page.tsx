@@ -23,7 +23,7 @@ export default async function Friends() {
     supabase
       .from("characters")
       .select(
-        "*, profiles(display_name, legacy_points), character_professions(profession, skill, recipes), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained), achievements(kind, tier)"
+        "*, profiles(display_name, legacy_points), character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained), achievements(kind, tier)"
       )
       .order("level", { ascending: false }),
     loadCardData(),
@@ -61,8 +61,8 @@ export default async function Friends() {
     <main className="mx-auto max-w-[1500px] p-4 md:p-6">
       <h1 className="text-3xl font-bold">Friends</h1>
       <p className="mt-3 text-gray-400">
-        Pick a friend to see their characters, or open the crafting directory to see who can make
-        what. The numbers by each spec are talent points in each tree.
+        Pick a friend to see their characters. The numbers by each spec are talent points in each
+        tree.
       </p>
 
       {error && (

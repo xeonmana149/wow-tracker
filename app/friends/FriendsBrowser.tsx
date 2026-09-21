@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { classIcon, wowIconUrl } from "../../lib/icons";
+import { classIcon } from "../../lib/icons";
 import CharacterCard, { type CardCharacter } from "../CharacterCard";
 import GameIcon from "../GameIcon";
 import AccountBadges from "../AccountBadges";
 import type { AccountAchievementKind } from "../../lib/accountAchievements";
 import type { BadgeIconOverrides } from "../../lib/badgeIconOverrides";
-import CraftingDirectory from "./CraftingDirectory";
 
 export type FriendPlayer = {
   id: string;
@@ -40,27 +39,6 @@ export default function FriendsBrowser({
 
   return (
     <div className="mt-6 flex flex-col gap-4">
-      {/* Its own area, separate from the player tabs below - not just
-          one more name in that list. */}
-      <button
-        type="button"
-        onClick={() => setSelected("crafting")}
-        aria-pressed={selected === "crafting"}
-        className={`flex w-full items-center gap-3 rounded-lg border p-4 text-left transition-colors ${
-          selected === "crafting"
-            ? "border-amber-400 bg-amber-500/10"
-            : "border-neutral-700 bg-neutral-800 hover:bg-neutral-700"
-        }`}
-      >
-        <GameIcon src={wowIconUrl("trade_alchemy")} label="Crafting directory" size={44} round />
-        <span className="min-w-0 flex-1">
-          <span className="block text-lg font-bold text-white">Crafting directory</span>
-          <span className="block text-sm text-gray-400">
-            Who can make what across the whole group - browse by profession or search by recipe
-          </span>
-        </span>
-      </button>
-
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
       {/* The list of friends. It never moves, only what's on the right changes. */}
       <aside className="lg:sticky lg:top-4 lg:w-72 lg:shrink-0">
@@ -146,41 +124,35 @@ export default function FriendsBrowser({
       </aside>
 
       <section className="min-w-0 flex-1">
-        {selected === "crafting" ? (
-          <CraftingDirectory players={players} />
-        ) : (
-          <>
-            <div className="mb-3 flex flex-wrap items-baseline gap-x-3">
-              <h2 className="text-xl font-bold">{current ? current.name : "Everyone"}</h2>
-              {current && (
-                <AccountBadges
-                  kinds={current.accountAchievements ?? []}
-                  size="md"
-                  iconOverrides={iconOverrides}
-                />
-              )}
-              <p className="text-sm text-gray-400">
-                {shown.length} {shown.length === 1 ? "character" : "characters"}
-                {!current && " · highest level first"}
-              </p>
-            </div>
+        <div className="mb-3 flex flex-wrap items-baseline gap-x-3">
+          <h2 className="text-xl font-bold">{current ? current.name : "Everyone"}</h2>
+          {current && (
+            <AccountBadges
+              kinds={current.accountAchievements ?? []}
+              size="md"
+              iconOverrides={iconOverrides}
+            />
+          )}
+          <p className="text-sm text-gray-400">
+            {shown.length} {shown.length === 1 ? "character" : "characters"}
+            {!current && " · highest level first"}
+          </p>
+        </div>
 
-            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-              {shown.map(({ c, owner }) => (
-                <div key={c.id}>
-                  {!current && <div className="mb-1 pl-1 text-xs text-gray-500">{owner}</div>}
-                  <CharacterCard
-                    c={c}
-                    treeNames={treeNames[c.class]}
-                    specIcons={specIcons}
-                    iconOverrides={iconOverrides}
-                    showNeedsAttention={false}
-                  />
-                </div>
-              ))}
+        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+          {shown.map(({ c, owner }) => (
+            <div key={c.id}>
+              {!current && <div className="mb-1 pl-1 text-xs text-gray-500">{owner}</div>}
+              <CharacterCard
+                c={c}
+                treeNames={treeNames[c.class]}
+                specIcons={specIcons}
+                iconOverrides={iconOverrides}
+                showNeedsAttention={false}
+              />
             </div>
-          </>
-        )}
+          ))}
+        </div>
       </section>
       </div>
     </div>
