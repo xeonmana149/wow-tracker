@@ -29,16 +29,11 @@ const shield = (
   </Icon>
 );
 
-// A simple anvil, for the new Crafting Directory tab - kept to the same
-// few-path, stroke-only line style as the other nav icons rather than a
-// filled/detailed glyph.
-const anvil = (
+// A wrench, for the Crafting Directory tab - a single clean path in the
+// same stroke-only line style as the other nav icons.
+const wrench = (
   <Icon>
-    <path d="M9 11V8h6v3" />
-    <path d="M6 16v-3c0-1 .5-2 2-2h8c1.5 0 2 1 2 2v3" />
-    <path d="M4 16h16" />
-    <path d="M12 16v4" />
-    <path d="M9 20h6" />
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z" />
   </Icon>
 );
 
@@ -72,7 +67,7 @@ const news = (
 
 const links = [
   { href: "/", label: "Dashboard", icon: shield },
-  { href: "/crafting", label: "Crafting", icon: anvil },
+  { href: "/crafting", label: "Crafting", icon: wrench },
   { href: "/friends", label: "Friends", icon: people },
   { href: "/leaderboards", label: "Leaderboards", icon: trophy },
   { href: "/news", label: "News", icon: news },
