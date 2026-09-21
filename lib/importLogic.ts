@@ -31,6 +31,8 @@ export type ParsedExport = {
     money?: number;
     guild?: string | null;
     honor?: number;
+    deaths?: number;
+    pvpKills?: number;
   };
   stats?: {
     maxHealth?: number;
@@ -219,6 +221,12 @@ export async function applyImport(
   // corrects itself on the next sync.
   if (parsed.basic?.race) charUpdate.race = parsed.basic.race;
   if (parsed.basic?.class) charUpdate.class = parsed.basic.class;
+  // Deaths and PvP kills are counters the addon keeps itself (nothing on
+  // this server tracks them for us) - they only ever count up, so like
+  // level/gold/honor it's always safe to overwrite with whatever the addon
+  // last reported, never something to hand-edit.
+  if (typeof parsed.basic?.deaths === "number") charUpdate.deaths = parsed.basic.deaths;
+  if (typeof parsed.basic?.pvpKills === "number") charUpdate.pvp_kills = parsed.basic.pvpKills;
 
   if (Object.keys(charUpdate).length > 0) {
     const { error } = await supabase.from("characters").update(charUpdate).eq("id", characterId);

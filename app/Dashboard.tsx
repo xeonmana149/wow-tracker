@@ -285,26 +285,31 @@ export default function Dashboard({
           Account statistics
         </h2>
 
-        <div className="mt-3 flex flex-wrap gap-4">
-        <div className="min-w-[8.5rem] flex-1 rounded bg-neutral-800 p-4">
+        {/* Plain number-over-label tiles, not individually boxed - these are
+            ordinary at-a-glance stats, not interactive or important enough
+            to earn their own gold-outlined panel. A subtle divider between
+            them (rather than a box around each) keeps them from reading as
+            visually equal to the buttons and cards that actually matter. */}
+        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-4">
+        <div className="min-w-[8.5rem] flex-1 border-l border-neutral-700 pl-6 first:border-l-0 first:pl-0">
           <div className="text-2xl font-bold">{characters.length}</div>
           <div className="text-sm text-gray-400">Characters</div>
         </div>
-        <div className="min-w-[8.5rem] flex-1 rounded bg-neutral-800 p-4">
+        <div className="min-w-[8.5rem] flex-1 border-l border-neutral-700 pl-6 first:border-l-0 first:pl-0">
           <div className="text-2xl font-bold">{highestLevel}</div>
           <div className="text-sm text-gray-400">Highest level</div>
         </div>
-        <div className="min-w-[8.5rem] flex-1 rounded bg-neutral-800 p-4">
+        <div className="min-w-[8.5rem] flex-1 border-l border-neutral-700 pl-6 first:border-l-0 first:pl-0">
           <div className="text-2xl font-bold">
             {coveredCount}/{PRIMARY.length}
           </div>
           <div className="text-sm text-gray-400">Professions</div>
         </div>
-        <div className="min-w-[8.5rem] flex-1 rounded bg-neutral-800 p-4">
+        <div className="min-w-[8.5rem] flex-1 border-l border-neutral-700 pl-6 first:border-l-0 first:pl-0">
           <div className="text-2xl font-bold"><MoneyDisplay copper={totalCopper} /></div>
           <div className="text-sm text-gray-400">Total gold</div>
         </div>
-        <div className="min-w-[8.5rem] flex-1 rounded bg-neutral-800 p-4">
+        <div className="min-w-[8.5rem] flex-1 border-l border-neutral-700 pl-6 first:border-l-0 first:pl-0">
           {editingLegacy ? (
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
