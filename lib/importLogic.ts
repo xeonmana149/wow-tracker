@@ -66,15 +66,25 @@ export type ParsedExport = {
   // it's missing, whatever recipes are already recorded from an earlier
   // sync are left untouched rather than being cleared.
   //
-  // A recipe entry is a bare string on an addon build from before 1.3.0
-  // (no icon capture yet) or a { name, icon, id } object on 1.3.0+ - both
-  // are normalized to the object shape below before being stored, so the
-  // site never has to care which addon version a given sync came from.
+  // A recipe entry is a bare string on an addon build from before 1.3.0 (no
+  // icon capture yet), a { name, icon, id } object on 1.3.0, or the fuller
+  // shape below (reagents + tooltip text) from the version after that -
+  // all normalized to one consistent object shape before being stored, so
+  // the site never has to care which addon version a given sync came from.
   professions?: {
     name: string;
     skill: number;
     maxSkill?: number;
-    recipes?: (string | { name: string; icon?: number | string | null; id?: number })[];
+    recipes?: (
+      | string
+      | {
+          name: string;
+          icon?: number | string | null;
+          id?: number;
+          reagents?: { itemID: number; name: string; icon?: number | string | null; quantity: number }[];
+          tooltip?: string[];
+        }
+    )[];
   }[];
   gear?: Record<string, { link: string; name: string; color?: string; icon?: number; tooltip?: string[] }>;
   traits?: {
@@ -323,12 +333,14 @@ export async function applyImport(
   const updatedProfessions = professions.map((p) => ({ ...p }));
   for (const p of parsed.professions ?? []) {
     const skill = Math.min(MAX_SKILL, Math.max(1, p.skill || 1));
-    // Bare-string recipe entries (pre-1.3.0 addon builds, or old data
-    // already in the DB from before icons existed) are normalized to the
-    // same { name, icon, id } shape everything else uses, so the site never
-    // needs to branch on which addon version a sync came from.
+    // Recipe entries from an older addon build (bare string, or missing
+    // reagents/tooltip) are normalized to the one full shape everything
+    // else uses, so the site never needs to branch on which addon version
+    // a sync came from.
     const recipes = p.recipes?.map((r) =>
-      typeof r === "string" ? { name: r } : { name: r.name, icon: r.icon ?? null, id: r.id }
+      typeof r === "string"
+        ? { name: r }
+        : { name: r.name, icon: r.icon ?? null, id: r.id, reagents: r.reagents, tooltip: r.tooltip }
     );
     const existing = professions.find(
       (x) => x.profession.toLowerCase() === p.name.toLowerCase()

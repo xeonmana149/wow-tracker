@@ -96,9 +96,18 @@ export type CardCharacter = {
   character_professions: {
     profession: string;
     skill: number;
-    // A recipe entry is a bare string from an addon build before 1.3.0
-    // (no icons yet), or a { name, icon, id } object from 1.3.0+.
-    recipes?: (string | { name: string; icon?: number | string | null; id?: number })[];
+    // A recipe entry is a bare string on an old addon build, or a richer
+    // object on newer ones - reagents/tooltip were added after icon/id.
+    recipes?: (
+      | string
+      | {
+          name: string;
+          icon?: number | string | null;
+          id?: number;
+          reagents?: { itemID: number; name: string; icon?: number | string | null; quantity: number }[];
+          tooltip?: string[];
+        }
+    )[];
   }[];
   character_talents: { slot: number; tree: string; rank: number }[];
   character_legacy?: { rank: number }[];

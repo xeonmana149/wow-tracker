@@ -7,13 +7,23 @@ import { MAX_SKILL, SECONDARY_PROFESSIONS, SUPPLIED_BY } from "../../lib/profess
 import GameIcon from "../GameIcon";
 import type { FriendPlayer } from "./FriendsBrowser";
 
-type Recipe = { name: string; icon?: number | string | null };
+type Reagent = { itemID: number; name: string; icon?: number | string | null; quantity: number };
+type Recipe = {
+  name: string;
+  icon?: number | string | null;
+  reagents?: Reagent[];
+  // Raw tooltip text lines scraped from the crafted item, e.g. "Use:
+  // Constructs a sharpening wheel..." / "Requires a Campfire nearby" -
+  // line 1 is always just the item's own name, so it's skipped wherever
+  // this is displayed. No color info survives the scrape, just the words.
+  tooltip?: string[];
+};
 type Entry = { id: string; name: string; cls: string; owner: string; skill: number; recipes: Recipe[] };
 
-// A recipe entry is a bare string from an addon build before 1.3.0 (no
-// icons captured yet), or a { name, icon, id } object from 1.3.0+ - this
-// makes every entry look like the latter regardless of which addon
-// version actually produced it.
+// A recipe entry is a bare string on an addon build from before 1.3.0 (no
+// icon capture yet), or a progressively richer object on newer ones
+// (icon+id at 1.3.0, reagents+tooltip after that) - this makes every entry
+// look the same regardless of which addon version actually produced it.
 function normalizeRecipe(r: string | Recipe): Recipe {
   return typeof r === "string" ? { name: r } : r;
 }
@@ -61,6 +71,74 @@ function SkillBar({ skill }: { skill: number }) {
   );
 }
 
+// A recipe's "Use: ..." description and reagent list, shown when a
+// RecipeChip is expanded - styled loosely like the real in-game tooltip
+// (dark box, gold border) even though the colors on individual lines
+// couldn't be preserved, only the text.
+function RecipeDetails({ r }: { r: Recipe }) {
+  // Line 1 of a scraped tooltip is always just the item's own name, which
+  // is already shown as the chip's label - skip it here to avoid repeating.
+  const lines = (r.tooltip ?? []).slice(1);
+  const reagents = r.reagents ?? [];
+
+  if (lines.length === 0 && reagents.length === 0) {
+    return (
+      <div className="mt-2 rounded-lg border border-amber-700/60 bg-neutral-950 p-3">
+        <p className="text-xs text-gray-500">
+          No extra details captured for this recipe yet - run /wft recipescan again in-game to
+          pick them up.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 w-72 max-w-full rounded-lg border border-amber-700/60 bg-neutral-950 p-3">
+      {lines.map((line, i) => (
+        <p key={i} className="text-xs leading-snug text-gray-300">
+          {line}
+        </p>
+      ))}
+      {reagents.length > 0 && (
+        <div className={lines.length > 0 ? "mt-2 border-t border-neutral-800 pt-2" : ""}>
+          <p className="text-xs font-bold text-amber-400">Reagents</p>
+          <ul className="mt-1 flex flex-col gap-1">
+            {reagents.map((rg) => (
+              <li key={rg.itemID} className="flex items-center gap-1.5 text-xs text-gray-300">
+                <GameIcon src={iconUrlForFileId(rg.icon)} label={rg.name} size={20} />
+                <span>
+                  {rg.quantity}x {rg.name}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A single recipe pill - click to expand its tooltip text and reagent
+// list below it, using data already fetched with everything else (no
+// extra request when clicked).
+function RecipeChip({ r }: { r: Recipe }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 rounded border border-neutral-700 bg-neutral-900 py-0.5 pl-0.5 pr-1.5 text-xs text-gray-300 hover:border-amber-500 hover:text-white"
+      >
+        <GameIcon src={iconUrlForFileId(r.icon)} label={r.name} size={18} />
+        {r.name}
+      </button>
+      {open && <RecipeDetails r={r} />}
+    </div>
+  );
+}
+
 // One crafter's row within a profession tab. Their known-recipe list is
 // only ever fetched from data already on hand (character_professions.recipes,
 // pulled in on the same query as everything else) - expanding just toggles
@@ -98,13 +176,7 @@ function CrafterRow({ e }: { e: Entry }) {
           {[...e.recipes]
             .sort((a, b) => a.name.localeCompare(b.name))
             .map((r) => (
-              <span
-                key={r.name}
-                className="flex items-center gap-1 rounded border border-neutral-700 bg-neutral-900 py-0.5 pl-0.5 pr-1.5 text-xs text-gray-300"
-              >
-                <GameIcon src={iconUrlForFileId(r.icon)} label={r.name} size={18} />
-                {r.name}
-              </span>
+              <RecipeChip key={r.name} r={r} />
             ))}
         </div>
       )}
@@ -149,6 +221,51 @@ function ProfessionPanel({ profession, list }: { profession: string; list: Entry
   );
 }
 
+// One matched recipe within the search results - its name/icon toggles the
+// same tooltip+reagents panel a RecipeChip does, above the list of everyone
+// who knows it.
+function SearchResultItem({
+  profession,
+  recipe,
+  crafters: es,
+}: {
+  profession: string;
+  recipe: Recipe;
+  crafters: Entry[];
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <li className="rounded bg-neutral-800 p-3">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-2 text-left">
+        <GameIcon src={iconUrlForFileId(recipe.icon)} label={recipe.name} size={28} />
+        <span className="font-bold text-white hover:underline">{recipe.name}</span>
+        <span className="text-xs text-gray-500">({profession})</span>
+      </button>
+      {open && <RecipeDetails r={recipe} />}
+      <ul className="mt-2 flex flex-col gap-1 pl-8">
+        {es.map((e) => (
+          <li key={e.id}>
+            <Link
+              href={`/character/${e.id}`}
+              className="flex items-center gap-2 rounded px-1 py-0.5 hover:bg-neutral-900"
+            >
+              <GameIcon name={classIcon(e.cls)} label={e.cls} size={20} round />
+              <span className="min-w-0 flex-1 truncate">
+                <span className="font-bold text-white">{e.name}</span>{" "}
+                <span className="text-xs text-gray-500">{e.owner}</span>
+              </span>
+              <span className={e.skill >= MAX_SKILL ? "font-bold text-yellow-300" : "text-gray-300"}>
+                {e.skill}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </li>
+  );
+}
+
 // Recipe search hits every profession's recipe lists at once, regardless of
 // which tab is selected - the whole point is not having to know which
 // profession makes something before you can look it up.
@@ -164,32 +281,7 @@ function SearchResults({
   return (
     <ul className="mt-4 flex flex-col gap-3">
       {results.map(({ profession, recipe, crafters: es }) => (
-        <li key={`${profession}-${recipe.name}`} className="rounded bg-neutral-800 p-3">
-          <div className="flex items-center gap-2">
-            <GameIcon src={iconUrlForFileId(recipe.icon)} label={recipe.name} size={28} />
-            <span className="font-bold text-white">{recipe.name}</span>
-            <span className="text-xs text-gray-500">({profession})</span>
-          </div>
-          <ul className="mt-2 flex flex-col gap-1 pl-8">
-            {es.map((e) => (
-              <li key={e.id}>
-                <Link
-                  href={`/character/${e.id}`}
-                  className="flex items-center gap-2 rounded px-1 py-0.5 hover:bg-neutral-900"
-                >
-                  <GameIcon name={classIcon(e.cls)} label={e.cls} size={20} round />
-                  <span className="min-w-0 flex-1 truncate">
-                    <span className="font-bold text-white">{e.name}</span>{" "}
-                    <span className="text-xs text-gray-500">{e.owner}</span>
-                  </span>
-                  <span className={e.skill >= MAX_SKILL ? "font-bold text-yellow-300" : "text-gray-300"}>
-                    {e.skill}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </li>
+        <SearchResultItem key={`${profession}-${recipe.name}`} profession={profession} recipe={recipe} crafters={es} />
       ))}
     </ul>
   );
