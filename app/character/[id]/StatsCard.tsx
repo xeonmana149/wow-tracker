@@ -128,12 +128,7 @@ export default function StatsCard({
   function renderGroup(group: Group) {
     return (
       <div key={group.title} className="flex flex-col gap-1">
-        <h3
-          className="rounded-lg border border-amber-900/70 py-1.5 text-center text-sm font-bold text-amber-50"
-          style={{ background: "linear-gradient(180deg, #4a3b22, #241b0f)" }}
-        >
-          {group.title}
-        </h3>
+        <h3 className="stat-group-header py-1.5 text-center text-sm font-bold">{group.title}</h3>
         {group.stats.map(renderRow)}
       </div>
     );
