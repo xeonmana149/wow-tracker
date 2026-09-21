@@ -300,18 +300,50 @@ export default async function Leaderboards({
                   )}
                 </div>
 
-                <div
-                  className={`score ${key === "total" ? "cursor-help border-b border-dotted border-gray-500" : ""}`}
-                  title={
-                    key === "total"
-                      ? Object.entries(boards)
-                          .map(([boardKey, b]) => `${b.label}: ${points[boardKey][c.id]}`)
-                          .join("\n")
-                      : undefined
-                  }
-                >
-                  {key === "total" ? `${totals[c.id]} pts` : boards[key].show(c)}
-                </div>
+                {key === "total" ? (
+                  <div className="group/tt relative inline-flex cursor-help items-center gap-1">
+                    <div className="score">{totals[c.id]} pts</div>
+                    <svg
+                      viewBox="0 0 20 20"
+                      width="14"
+                      height="14"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      className="shrink-0 text-gray-500 group-hover/tt:text-amber-400"
+                      aria-hidden="true"
+                    >
+                      <circle cx="10" cy="10" r="8.25" />
+                      <path d="M10 9v5" strokeLinecap="round" />
+                      <circle cx="10" cy="6.3" r="0.9" fill="currentColor" stroke="none" />
+                    </svg>
+
+                    {/* Pure-CSS tooltip (no client JS needed) - hidden until
+                        the group above is hovered. Positioned above and
+                        right-aligned so it never runs off the row's right
+                        edge, which is where the score sits. */}
+                    <div
+                      className="pointer-events-none absolute bottom-full right-0 z-10 mb-2 hidden w-48 rounded-lg border border-neutral-700 bg-neutral-900 p-3 text-left shadow-lg group-hover/tt:block"
+                    >
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                        Score breakdown
+                      </div>
+                      <div className="mt-1.5 flex flex-col gap-1">
+                        {Object.entries(boards).map(([boardKey, b]) => (
+                          <div key={boardKey} className="flex items-center justify-between gap-3 text-sm">
+                            <span className="text-gray-300">{b.label}</span>
+                            <span className="font-bold text-amber-400">{points[boardKey][c.id]}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Little downward-pointing arrow so the box visibly
+                          connects to the score it belongs to. */}
+                      <div className="absolute -bottom-1 right-3 h-2 w-2 rotate-45 border-b border-r border-neutral-700 bg-neutral-900" />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="score">{boards[key].show(c)}</div>
+                )}
               </Link>
             </li>
           );
