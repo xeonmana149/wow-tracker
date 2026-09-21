@@ -5,15 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { copperToParts } from "../../../../lib/money";
 import { awardAchievement, ACHIEVEMENT_MESSAGE } from "../../../../lib/achievements";
-import {
-  RACES,
-  CLASSES,
-  CHARACTER_TYPES,
-  ROLES,
-  RULESETS,
-  RACE_FACTION,
-  SPECS,
-} from "../../../../lib/options";
+import { CHARACTER_TYPES, ROLES, RULESETS, RACE_FACTION, SPECS } from "../../../../lib/options";
 
 type Character = {
   id: string;
@@ -42,15 +34,13 @@ function validSpec(cls: string, spec: string | null) {
 export default function EditForm({ character }: { character: Character }) {
   const router = useRouter();
 
-  // The full name is stored as "First Last", so split it for the two boxes
-  const [startFirst, ...startRest] = character.name.split(" ");
+  // Name isn't editable at all here - it can't actually be changed in-game,
+  // and even if you typed a different value in here, sync matches
+  // characters by this exact name, so changing it would just make the next
+  // sync fail to find this row and create a duplicate instead of updating
+  // it.
+  const displayName = character.name;
 
-  const [firstName, setFirstName] = useState(startFirst);
-  const [lastName, setLastName] = useState(startRest.join(" "));
-  const [race, setRace] = useState(RACES.includes(character.race) ? character.race : "");
-  const [charClass, setCharClass] = useState(
-    CLASSES.includes(character.class) ? character.class : ""
-  );
   const [mainSpec, setMainSpec] = useState(validSpec(character.class, character.main_spec));
   const [mainRole, setMainRole] = useState(character.main_role);
   const [offSpec, setOffSpec] = useState(validSpec(character.class, character.off_spec));
@@ -61,21 +51,14 @@ export default function EditForm({ character }: { character: Character }) {
   const [legacyPointsSpent, setLegacyPointsSpent] = useState(character.legacy_points_spent);
   const [message, setMessage] = useState("");
 
-  // Level, guild and gold aren't edited here at all - the addon overwrites
-  // all three on every sync (see importLogic.ts's charUpdate), so a manual
-  // edit here would just get silently reverted the next time you log out
-  // or /reload in-game. They're shown read-only below for context instead.
+  // Name, race, class, level, guild, gold and honor aren't edited here at
+  // all - the addon overwrites (or, for name/race/class, simply always
+  // matches) these on every sync, so a manual edit here would either do
+  // nothing useful or get silently reverted. They're shown read-only below
+  // for context instead.
   const currentMoney = copperToParts(character.money_copper);
 
-  const specs = SPECS[charClass] ?? [];
-
-  function handleClassChange(newClass: string) {
-    setCharClass(newClass);
-    setMainSpec("");
-    setMainRole("");
-    setOffSpec("");
-    setOffRole("");
-  }
+  const specs = SPECS[character.class] ?? [];
 
   function handleMainSpecChange(name: string) {
     setMainSpec(name);
@@ -100,9 +83,6 @@ export default function EditForm({ character }: { character: Character }) {
     const { error } = await supabase
       .from("characters")
       .update({
-        name: `${firstName.trim()} ${lastName.trim()}`,
-        race,
-        class: charClass,
         character_type: characterType,
         ruleset,
         main_spec: mainSpec,
@@ -135,7 +115,7 @@ export default function EditForm({ character }: { character: Character }) {
             character_id: character.id,
             user_id: uid,
             kind: "pvp_rank_up",
-            message: `${firstName.trim()} reached PvP rank ${pvpRank}`,
+            message: `${displayName} reached PvP rank ${pvpRank}`,
           });
         }
 
@@ -147,7 +127,7 @@ export default function EditForm({ character }: { character: Character }) {
               character_id: character.id,
               user_id: uid,
               kind: "achievement_earned",
-              message: ACHIEVEMENT_MESSAGE.top_pvp_rank(firstName.trim()),
+              message: ACHIEVEMENT_MESSAGE.top_pvp_rank(displayName),
             });
           }
         }
@@ -171,11 +151,31 @@ export default function EditForm({ character }: { character: Character }) {
           From your last sync
         </h2>
         <p className="mt-1 text-xs text-gray-500">
-          Level, guild, gold and honor come from the addon and update automatically every time
-          you log out or /reload - editing them here would just get overwritten, so they're not
-          editable on this page.
+          Name, race, class, level, guild, gold and honor come from the addon and update
+          automatically every time you log out or /reload - editing them here would just get
+          overwritten (or, for name, isn&apos;t possible to change in the first place), so
+          they&apos;re not editable on this page.
         </p>
         <div className="mt-3 flex flex-wrap gap-4 text-sm">
+          <div>
+            <div className="text-gray-500">Name</div>
+            <div className="font-semibold text-white">{displayName}</div>
+          </div>
+          <div>
+            <div className="text-gray-500">Race</div>
+            <div className="font-semibold text-white">
+              {character.race}
+              {RACE_FACTION[character.race] && (
+                <span className="ml-1 font-normal text-gray-400">
+                  ({RACE_FACTION[character.race]})
+                </span>
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="text-gray-500">Class</div>
+            <div className="font-semibold text-white">{character.class}</div>
+          </div>
           <div>
             <div className="text-gray-500">Level</div>
             <div className="font-semibold text-white">{character.level}</div>
@@ -198,63 +198,6 @@ export default function EditForm({ character }: { character: Character }) {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="flex flex-col gap-1">
-          First name
-          <input
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-            pattern="\S+"
-            title="One word, no spaces"
-            className="rounded bg-white p-2 text-black"
-            required
-          />
-        </label>
-
-        <label className="flex flex-col gap-1">
-          Last name
-          <input
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-            pattern="\S+"
-            title="One word, no spaces"
-            className="rounded bg-white p-2 text-black"
-            required
-          />
-        </label>
-
-        <label className="flex flex-col gap-1">
-          Race
-          <select
-            value={race}
-            onChange={(e) => setRace(e.target.value)}
-            className="rounded bg-white p-2 text-black"
-            required
-          >
-            <option value="">Choose a race</option>
-            {RACES.map((r) => (
-              <option key={r}>{r}</option>
-            ))}
-          </select>
-          {race && (
-            <span className="text-sm text-gray-400">Faction: {RACE_FACTION[race]}</span>
-          )}
-        </label>
-
-        <label className="flex flex-col gap-1">
-          Class
-          <select
-            value={charClass}
-            onChange={(e) => handleClassChange(e.target.value)}
-            className="rounded bg-white p-2 text-black"
-            required
-          >
-            <option value="">Choose a class</option>
-            {CLASSES.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-        </label>
-
         <label className="flex flex-col gap-1">
           Character type
           <select
@@ -288,13 +231,10 @@ export default function EditForm({ character }: { character: Character }) {
           <select
             value={mainSpec}
             onChange={(e) => handleMainSpecChange(e.target.value)}
-            disabled={!charClass}
-            className="rounded bg-white p-2 text-black disabled:opacity-50"
+            className="rounded bg-white p-2 text-black"
             required
           >
-            <option value="">
-              {charClass ? "Choose a spec" : "Choose a class first"}
-            </option>
+            <option value="">Choose a spec</option>
             {specs.map((s) => (
               <option key={s.name}>{s.name}</option>
             ))}
@@ -321,8 +261,7 @@ export default function EditForm({ character }: { character: Character }) {
           <select
             value={offSpec}
             onChange={(e) => handleOffSpecChange(e.target.value)}
-            disabled={!charClass}
-            className="rounded bg-white p-2 text-black disabled:opacity-50"
+            className="rounded bg-white p-2 text-black"
           >
             <option value="">None</option>
             {specs

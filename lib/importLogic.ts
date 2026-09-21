@@ -213,6 +213,12 @@ export async function applyImport(
   // honor-as-a-resource-bar API (UnitHonor), so this is a real live value
   // from the addon now, not a manual field anymore.
   if (typeof parsed.basic?.honor === "number") charUpdate.honor_points = parsed.basic.honor;
+  // Race and class don't realistically change once a character exists, but
+  // keeping them synced from the addon (rather than only ever set once at
+  // creation) means a wrong value never has to be hand-fixed - it just
+  // corrects itself on the next sync.
+  if (parsed.basic?.race) charUpdate.race = parsed.basic.race;
+  if (parsed.basic?.class) charUpdate.class = parsed.basic.class;
 
   if (Object.keys(charUpdate).length > 0) {
     const { error } = await supabase.from("characters").update(charUpdate).eq("id", characterId);
