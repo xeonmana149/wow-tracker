@@ -10,7 +10,7 @@ import { missingProfessions, whatsNext, type Todo } from "../lib/progress";
 import type { CardCharacter, AchievementKind, GoldTier } from "./CharacterCard";
 import CharacterRow from "./CharacterRow";
 import GameIcon from "./GameIcon";
-import NextList from "./NextList";
+import NextList, { type NextListItem } from "./NextList";
 import { MoneyDisplay } from "./MoneyIcons";
 import AccountSyncSetup from "./AccountSyncSetup";
 import AccountBadges from "./AccountBadges";
@@ -38,6 +38,20 @@ type ActivityEvent = {
   message: string;
   created_at: string;
 };
+
+// What's Next's filter tabs. Talent todos fold into "Leveling" (talent
+// points come from leveling up, and there's no separate tab for them in
+// the mockup this is based on) rather than getting a tab of their own; a
+// "setup" todo (only ever pushed by the character's own page, never by
+// whatsNext() here) has no tab and is simply never shown on the Dashboard.
+type NextCategory = "all" | "leveling" | "professions" | "legacy";
+
+function categoryOf(kind: Todo["kind"]): NextCategory | null {
+  if (kind === "level" || kind === "talent") return "leveling";
+  if (kind === "profession") return "professions";
+  if (kind === "legacy") return "legacy";
+  return null;
+}
 
 // Small stroke-only icon set for the Account Overview strip, matching the
 // nav bar's icon style (a plain svg wrapper, a handful of line paths) so
@@ -129,6 +143,7 @@ export default function Dashboard({
   const [iconOverrides, setIconOverrides] = useState<BadgeIconOverrides>({});
   const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([]);
   const [syncOpenSignal, setSyncOpenSignal] = useState(0);
+  const [nextFilter, setNextFilter] = useState<NextCategory>("all");
   const [myVersions, setMyVersions] = useState<{ addon: string | null; tray: string | null }>({
     addon: null,
     tray: null,
@@ -346,6 +361,26 @@ export default function Dashboard({
   }
   const perCharacter = characters.map((c) => ({ c, todos: whatsNext(c, legacy) }));
   const charById = new Map<string, CardCharacter>(characters.map((c) => [c.id, c]));
+
+  // One flat list instead of a per-character grouping - account-wide todos
+  // first, then every character's, each tagged with its own character so
+  // NextList can show "(name)" after the text. Filtering by category (the
+  // tabs below) is just filtering this one array, since every todo already
+  // knows its own kind.
+  const allTodos: NextListItem[] = [
+    ...accountTodos.map((t) => ({ ...t, character: null })),
+    ...perCharacter.flatMap(({ c, todos }) =>
+      todos.map((t) => ({ ...t, character: { id: c.id, name: c.name } }))
+    ),
+  ];
+  const nextCounts: Record<NextCategory, number> = {
+    all: allTodos.length,
+    leveling: allTodos.filter((t) => categoryOf(t.kind) === "leveling").length,
+    professions: allTodos.filter((t) => categoryOf(t.kind) === "professions").length,
+    legacy: allTodos.filter((t) => categoryOf(t.kind) === "legacy").length,
+  };
+  const filteredTodos =
+    nextFilter === "all" ? allTodos : allTodos.filter((t) => categoryOf(t.kind) === nextFilter);
 
   // Only fires once this account has actually synced at least once (an
   // empty/never-synced profile has null versions, which isn't "outdated" -
@@ -592,31 +627,35 @@ export default function Dashboard({
               Worked out from your Pre-BiS lists, talents, Legacy and professions.
             </p>
 
-            {accountTodos.length > 0 && (
-              <div className="mt-3">
-                <h3 className="text-sm">Account</h3>
-                <div className="mt-1.5">
-                  <NextList todos={accountTodos} />
-                </div>
-              </div>
-            )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(
+                [
+                  ["all", "All"],
+                  ["leveling", "Leveling"],
+                  ["professions", "Professions"],
+                  ["legacy", "Legacy"],
+                ] as [NextCategory, string][]
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setNextFilter(key)}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                    nextFilter === key
+                      ? "bg-amber-500 text-black"
+                      : "bg-neutral-700 text-gray-300 hover:bg-neutral-600"
+                  }`}
+                >
+                  {label} ({nextCounts[key]})
+                </button>
+              ))}
+            </div>
 
             {characters.length === 0 ? (
               <p className="mt-3 text-sm text-gray-500">Create a character to get started.</p>
             ) : (
-              <div className="mt-4 flex flex-col gap-4">
-                {perCharacter.map(({ c, todos }) => (
-                  <div key={c.id}>
-                    <Link href={`/character/${c.id}`} className="flex items-center gap-2">
-                      <GameIcon name={classIcon(c.class)} label={c.class} size={26} round />
-                      <span className="font-bold text-white">{c.name}</span>
-                      <span className="text-xs text-gray-500">Level {c.level}</span>
-                    </Link>
-                    <div className="mt-1.5 pl-9">
-                      <NextList todos={todos} limit={4} empty="All caught up." />
-                    </div>
-                  </div>
-                ))}
+              <div className="mt-4">
+                <NextList todos={filteredTodos} limit={6} empty="All caught up." />
               </div>
             )}
           </section>

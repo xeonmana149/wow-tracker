@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { PRIMARY_PROFESSIONS, PROFESSION_ICONS, RACE_ICONS, classIcon, wowIconUrl } from "../lib/icons";
-import { characterBars } from "../lib/progress";
 import { resolvedIcon, type BadgeIconOverrides } from "../lib/badgeIconOverrides";
 import GameIcon from "./GameIcon";
 import {
@@ -66,29 +65,15 @@ export default function CharacterRow({
   const typeStyle = characterTypeStyle(c.character_type);
 
   // Live XP within the CURRENT level, from the addon (v1.5.0+) via
-  // UnitXP/UnitXPMax - real progress toward the next level, not just how
-  // close the character is to the level cap. xp_max comes back 0 at the
-  // level cap (no bar left to fill) and on anything that hasn't synced
-  // since this was added, so those fall back to the same level-out-of-60
-  // bar the expanded CharacterCard shows elsewhere.
+  // UnitXP/UnitXPMax. xp_max comes back 0 at the level cap (no bar left to
+  // fill) and on anything that hasn't synced since this was added - rather
+  // than fake a number for either case, the row just says so plainly.
   const hasLiveXp = typeof c.xp === "number" && typeof c.xp_max === "number" && c.xp_max > 0;
-
-  let percent: number;
-  let barCaption: string;
-  let barText: string;
-  if (hasLiveXp) {
-    const xp = c.xp as number;
-    const xpMax = c.xp_max as number;
-    percent = Math.min(100, Math.round((xp / xpMax) * 100));
-    const remaining = Math.max(0, xpMax - xp);
-    barCaption = "XP to next level";
-    barText = `${remaining.toLocaleString()} XP to go`;
-  } else {
-    const levelBar = characterBars(c).find((b) => b.key === "level")!;
-    percent = Math.min(100, Math.round((levelBar.value / levelBar.max) * 100));
-    barCaption = c.level >= levelBar.max ? "Max level" : "Level";
-    barText = levelBar.text;
-  }
+  const xp = c.xp ?? 0;
+  const xpMax = c.xp_max ?? 0;
+  const percent = hasLiveXp ? Math.min(100, Math.round((xp / xpMax) * 100)) : 0;
+  const remaining = hasLiveXp ? Math.max(0, xpMax - xp) : 0;
+  const barText = hasLiveXp ? `${remaining.toLocaleString()} XP to go` : "No XP data yet";
 
   const professions = (c.character_professions ?? [])
     .filter((p) => PRIMARY_PROFESSIONS.includes(p.profession))
@@ -168,14 +153,16 @@ export default function CharacterRow({
 
       <div className="hidden w-40 shrink-0 sm:block">
         <div className="flex items-center justify-between text-xs text-gray-400">
-          <span>{barCaption}</span>
-          <span>{percent}%</span>
+          <span>XP to next level</span>
+          <span>{hasLiveXp ? `${percent}%` : "—"}</span>
         </div>
         <div className="mt-1 h-2 rounded bg-neutral-700">
-          <div
-            className={`h-2 rounded ${percent >= 100 ? "bg-yellow-500" : "bg-blue-500"}`}
-            style={{ width: `${percent}%` }}
-          />
+          {hasLiveXp && (
+            <div
+              className={`h-2 rounded ${percent >= 100 ? "bg-yellow-500" : "bg-blue-500"}`}
+              style={{ width: `${percent}%` }}
+            />
+          )}
         </div>
         <div className="mt-0.5 text-xs text-gray-500">{barText}</div>
       </div>

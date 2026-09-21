@@ -19,6 +19,13 @@ export type Bar = { key: string; label: string; value: number; max: number; text
 export type Todo = {
   kind: "talent" | "legacy" | "profession" | "level" | "setup";
   text: string;
+  // Current/target numbers for todos that represent progress toward
+  // something (skill level, character level, points spent) - lets the UI
+  // draw a bar next to items that have one, and skip it for plain ones
+  // like "Learn a profession" that don't have a natural number. Optional
+  // so nothing that reads a Todo without knowing about these breaks.
+  value?: number;
+  max?: number;
 };
 
 function plural(n: number, one: string, many: string) {
@@ -82,19 +89,27 @@ export function characterBars(c: ProgressInput): Bar[] {
 export function whatsNext(c: ProgressInput, earned: number): Todo[] {
   const todos: Todo[] = [];
 
-  const talentsLeft = talentBudgetForLevel(c.level) - talentsSpent(c);
+  const talentBudget = talentBudgetForLevel(c.level);
+  const spentTalents = talentsSpent(c);
+  const talentsLeft = talentBudget - spentTalents;
   if (talentsLeft > 0) {
     todos.push({
       kind: "talent",
       text: `${talentsLeft} unspent talent ${plural(talentsLeft, "point", "points")}`,
+      value: spentTalents,
+      max: talentBudget,
     });
   }
 
-  const legacyLeft = Math.min(LEGACY_CAP, earned) - legacySpent(c);
+  const legacyTarget = Math.min(LEGACY_CAP, earned);
+  const spentLegacy = legacySpent(c);
+  const legacyLeft = legacyTarget - spentLegacy;
   if (legacyLeft > 0) {
     todos.push({
       kind: "legacy",
       text: `${legacyLeft} unspent Legacy ${plural(legacyLeft, "point", "points")}`,
+      value: spentLegacy,
+      max: legacyTarget,
     });
   }
 
@@ -110,11 +125,21 @@ export function whatsNext(c: ProgressInput, earned: number): Todo[] {
           Number(PRIMARY_PROFESSIONS.includes(a.profession)) || b.skill - a.skill
     );
   for (const p of unfinished.slice(0, 3)) {
-    todos.push({ kind: "profession", text: `${p.profession} ${p.skill} → ${MAX_SKILL}` });
+    todos.push({
+      kind: "profession",
+      text: `${p.profession} ${p.skill} → ${MAX_SKILL}`,
+      value: p.skill,
+      max: MAX_SKILL,
+    });
   }
 
   if (c.level < MAX_LEVEL) {
-    todos.push({ kind: "level", text: `Reach level ${MAX_LEVEL} (${MAX_LEVEL - c.level} to go)` });
+    todos.push({
+      kind: "level",
+      text: `Reach level ${MAX_LEVEL} (${MAX_LEVEL - c.level} to go)`,
+      value: c.level,
+      max: MAX_LEVEL,
+    });
   }
 
   return todos;
