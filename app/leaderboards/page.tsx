@@ -173,7 +173,10 @@ export default async function Leaderboards({
     sort && (sort === "total" || Object.keys(accountBoards).includes(sort))
       ? sort
       : "total";
-  const mainsOnly = view === "character" && mains === "1";
+  // Defaults to on - comparing mains against mains is the more useful view
+  // most of the time, so "off" is the thing you have to opt into now
+  // (mains=0) rather than the other way around.
+  const mainsOnly = view === "character" && mains !== "0";
 
   // These four requests don't depend on each other, so they're fired off
   // together with Promise.all rather than one at a time - the same fix as
@@ -313,6 +316,24 @@ export default async function Leaderboards({
     })
     .slice(0, 50);
 
+  // Lighthearted single-line bragging-rights stats, shown above the serious
+  // leaderboards below for a bit of personality - purely pulled from data
+  // already on this page, nothing new to fetch. Always computed from the
+  // full roster regardless of the Mains only toggle or which view is
+  // selected, since these are callouts, not rankings someone competes on.
+  const funStats =
+    rows.length > 0 && accounts.length > 0
+      ? {
+          richest: rows.reduce((a, b) => (b.money_copper > a.money_copper ? b : a)),
+          broke: rows.reduce((a, b) => (b.money_copper < a.money_copper ? b : a)),
+          highestLevel: rows.reduce((a, b) => (b.level > a.level ? b : a)),
+          professional: accounts.reduce((a, b) =>
+            b.total_profession_skill > a.total_profession_skill ? b : a
+          ),
+          altaholic: accounts.reduce((a, b) => (b.character_count > a.character_count ? b : a)),
+        }
+      : null;
+
   const tabs: [string, string][] = [
     ["total", "Total"],
     ...Object.entries(boards).map(([k, b]) => [k, b.label] as [string, string]),
@@ -326,6 +347,75 @@ export default async function Leaderboards({
       <main className="mx-auto max-w-[1500px] p-4 md:p-6">
       <AuthStatus />
       <h1 className="text-3xl font-bold">Leaderboards</h1>
+
+      {funStats && (
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <Link
+            href={`/character/${funStats.richest.id}`}
+            className="rounded bg-neutral-800 p-3 hover:bg-neutral-700"
+          >
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              💰 Richest
+            </div>
+            <div className="mt-1 truncate text-sm font-bold text-white">{funStats.richest.name}</div>
+            <div className="text-xs text-gray-400">
+              <MoneyDisplay copper={funStats.richest.money_copper} />
+            </div>
+          </Link>
+
+          <Link
+            href={`/character/${funStats.broke.id}`}
+            className="rounded bg-neutral-800 p-3 hover:bg-neutral-700"
+          >
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              🪙 Broke
+            </div>
+            <div className="mt-1 truncate text-sm font-bold text-white">{funStats.broke.name}</div>
+            <div className="text-xs text-gray-400">
+              <MoneyDisplay copper={funStats.broke.money_copper} />
+            </div>
+          </Link>
+
+          <Link
+            href={`/character/${funStats.highestLevel.id}`}
+            className="rounded bg-neutral-800 p-3 hover:bg-neutral-700"
+          >
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              ⬆ Highest level
+            </div>
+            <div className="mt-1 truncate text-sm font-bold text-white">
+              {funStats.highestLevel.name}
+            </div>
+            <div className="text-xs text-gray-400">Level {funStats.highestLevel.level}</div>
+          </Link>
+
+          <div className="rounded bg-neutral-800 p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              🛠 Professional
+            </div>
+            <div className="mt-1 truncate text-sm font-bold text-white">
+              {funStats.professional.display_name}
+            </div>
+            <div className="text-xs text-gray-400">
+              {funStats.professional.total_profession_skill.toLocaleString()} combined profession
+              levels
+            </div>
+          </div>
+
+          <div className="rounded bg-neutral-800 p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              🧬 Altaholic
+            </div>
+            <div className="mt-1 truncate text-sm font-bold text-white">
+              {funStats.altaholic.display_name}
+            </div>
+            <div className="text-xs text-gray-400">
+              {funStats.altaholic.character_count}{" "}
+              {funStats.altaholic.character_count === 1 ? "character" : "characters"}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Link
@@ -354,7 +444,7 @@ export default async function Leaderboards({
               {tabs.map(([k, label]) => (
                 <Link
                   key={k}
-                  href={`/leaderboards?view=character&sort=${k}${mainsOnly ? "&mains=1" : ""}`}
+                  href={`/leaderboards?view=character&sort=${k}&mains=${mainsOnly ? "1" : "0"}`}
                   className={`nav-btn ${k === key ? "nav-btn-active" : ""}`}
                 >
                   {label}
@@ -363,7 +453,7 @@ export default async function Leaderboards({
             </nav>
 
             <Link
-              href={`/leaderboards?view=character&sort=${key}${mainsOnly ? "" : "&mains=1"}`}
+              href={`/leaderboards?view=character&sort=${key}&mains=${mainsOnly ? "0" : "1"}`}
               aria-pressed={mainsOnly}
               className={`nav-btn ${mainsOnly ? "nav-btn-active" : ""}`}
             >

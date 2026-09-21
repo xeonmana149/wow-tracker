@@ -9,21 +9,31 @@ export const dynamic = "force-dynamic";
 type FriendCharacter = CardCharacter & { user_id: string | null };
 
 export default async function Friends() {
-  const { data, error } = await supabase
-    .from("characters")
-    .select(
-      "*, profiles(display_name, legacy_points), character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained), achievements(kind, tier)"
-    )
-    .order("level", { ascending: false });
+  // These four requests don't depend on each other, so they're fired off
+  // together with Promise.all rather than one at a time - same fix as the
+  // other pages. Sequentially, each await waits on its own round-trip
+  // before the next one starts; run together, the wait is roughly
+  // whichever single one is slowest, not the sum of all four.
+  const [
+    { data, error },
+    { specIcons, treeNames },
+    { data: accountAchievementRows },
+    iconOverrides,
+  ] = await Promise.all([
+    supabase
+      .from("characters")
+      .select(
+        "*, profiles(display_name, legacy_points), character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained), achievements(kind, tier)"
+      )
+      .order("level", { ascending: false }),
+    loadCardData(),
+    // Account-wide achievements live on the user, not any one character, so
+    // they're fetched separately and matched up by user_id below.
+    supabase.from("account_achievements").select("user_id, kind"),
+    loadBadgeIconOverrides(supabase),
+  ]);
 
   const characters = (data ?? []) as unknown as FriendCharacter[];
-  const { specIcons, treeNames } = await loadCardData();
-
-  // Account-wide achievements live on the user, not any one character, so
-  // they're fetched separately and matched up by user_id below.
-  const { data: accountAchievementRows } = await supabase
-    .from("account_achievements")
-    .select("user_id, kind");
   const accountAchievementsByUser: Record<string, string[]> = {};
   for (const row of (accountAchievementRows ?? []) as { user_id: string; kind: string }[]) {
     const list = accountAchievementsByUser[row.user_id] ?? [];
@@ -46,7 +56,6 @@ export default async function Friends() {
   }
 
   const players = Object.values(byPlayer).sort((a, b) => a.name.localeCompare(b.name));
-  const iconOverrides = await loadBadgeIconOverrides(supabase);
 
   return (
     <main className="mx-auto max-w-[1500px] p-4 md:p-6">
