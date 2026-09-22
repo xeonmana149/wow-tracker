@@ -2,6 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 import { applyImport, type ParsedExport } from "../../../lib/importLogic";
 
+// Plain "1.5.0" style dotted version strings, compared numerically part by
+// part (not string comparison, so "1.10.0" correctly beats "1.9.0"). Missing
+// parts count as 0. Anything unparseable, or no stored version yet, counts
+// as "newer" so the very first sync always gets recorded.
+function isVersionNewer(next: string, current: string | null): boolean {
+  if (!current) return true;
+  const a = next.split(".").map((n) => parseInt(n, 10) || 0);
+  const b = current.split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const diff = (a[i] ?? 0) - (b[i] ?? 0);
+    if (diff !== 0) return diff > 0;
+  }
+  return false;
+}
+
 export async function POST(req: NextRequest) {
   let body: { token?: string; data?: ParsedExport; trayVersion?: string };
   try {
@@ -156,17 +171,41 @@ export async function POST(req: NextRequest) {
   // the account's profile, so the website itself can show an "update
   // available" banner instead of the desktop app nagging about it. Never
   // blocks the actual sync if this fails for any reason.
+  //
+  // Only ever moves the stored version FORWARD. Every character syncs
+  // independently, each from its own SavedVariables file - if you've
+  // logged into one character with the new addon but haven't touched an
+  // alt since, that alt's export still carries the old version number.
+  // The tray app re-syncs every enabled character on its own schedule
+  // (e.g. after your PC wakes from sleep), so without this check that
+  // alt's next sync would silently overwrite the account back to the old
+  // version and the "update available" banner would reappear even though
+  // you're actually up to date on the character you're playing.
   try {
-    const versionUpdate: Record<string, string> = {};
     const addonVersion = (parsed as { meta?: { addonVersion?: string } }).meta?.addonVersion;
-    if (typeof addonVersion === "string" && addonVersion) {
-      versionUpdate.addon_version = addonVersion;
-    }
-    if (typeof body.trayVersion === "string" && body.trayVersion) {
-      versionUpdate.tray_version = body.trayVersion;
-    }
-    if (Object.keys(versionUpdate).length > 0) {
-      await supabaseAdmin.from("profiles").update(versionUpdate).eq("id", character.user_id);
+    const trayVersion = typeof body.trayVersion === "string" ? body.trayVersion : undefined;
+
+    if (addonVersion || trayVersion) {
+      const { data: currentProfile } = await supabaseAdmin
+        .from("profiles")
+        .select("addon_version, tray_version")
+        .eq("id", character.user_id)
+        .single();
+
+      const versionUpdate: Record<string, string> = {};
+      if (
+        typeof addonVersion === "string" &&
+        addonVersion &&
+        isVersionNewer(addonVersion, currentProfile?.addon_version ?? null)
+      ) {
+        versionUpdate.addon_version = addonVersion;
+      }
+      if (trayVersion && isVersionNewer(trayVersion, currentProfile?.tray_version ?? null)) {
+        versionUpdate.tray_version = trayVersion;
+      }
+      if (Object.keys(versionUpdate).length > 0) {
+        await supabaseAdmin.from("profiles").update(versionUpdate).eq("id", character.user_id);
+      }
     }
   } catch {
     // ignored on purpose
