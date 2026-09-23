@@ -508,10 +508,21 @@ export async function applyImport(
   const emptySlots: string[] = [];
   let newEpicCount = 0;
   let equippedNewLegendary = false;
+  // Whether the addon reported ANY gear at all this export. GetInventoryItemLink
+  // can come back nil for every slot if the export was captured before the
+  // client had finished loading inventory data from the server (most likely
+  // right at login, especially on a laggy connection) - collectGear() then
+  // sends back an empty {}, indistinguishable from "you unequipped
+  // everything" unless we check for it here. Actually unequipping every
+  // single slot at once essentially never happens, while a bad/early read
+  // is a real and observed failure mode, so an entirely empty report is
+  // treated as "gear wasn't captured this sync" and leaves whatever was
+  // already on file alone, rather than wiping it.
+  const gearReported = !!parsed.gear && Object.keys(parsed.gear).length > 0;
   for (const [addonSlot, siteSlot] of Object.entries(GEAR_SLOT_MAP)) {
     const item = parsed.gear?.[addonSlot];
     if (!item) {
-      emptySlots.push(siteSlot);
+      if (gearReported) emptySlots.push(siteSlot);
       continue;
     }
     gearRows.push({
