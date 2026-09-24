@@ -103,8 +103,14 @@ function ItemRow({
   const tooltipLines = hasRealTooltip
     ? genericizeTooltipLines(item.tooltip as string[])
     : buildFallbackTooltipLines(item);
-  const note = hasRealTooltip
-    ? undefined
+  // A verified row means a real player's addon actually scanned this item
+  // in Forever (applyLiveObservation, lib/items.ts) - that always overwrites
+  // and permanently outranks Blizzard's classic baseline (the bulk-seed and
+  // backfill scripts explicitly never touch a row that already exists,
+  // verified or not), so this says so plainly rather than just staying
+  // silent the way an unverified row's "Unconfirmed" badge does.
+  const note = item.verified
+    ? "Confirmed in Forever - seen on a real character"
     : tooltipLines.length > 0
       ? "Unconfirmed - based on Blizzard's classic database, may differ in Forever"
       : "No data captured yet - needs manual entry";
@@ -237,7 +243,9 @@ function ItemRow({
           <span className="truncate text-sm font-semibold" style={{ color }}>
             {item.name}
           </span>
-          {!item.verified && (
+          {item.verified ? (
+            <span className="whitespace-nowrap text-[10px] text-[#1eff00]">Confirmed in Forever</span>
+          ) : (
             <span className="whitespace-nowrap text-[10px] text-yellow-400">Unconfirmed</span>
           )}
         </div>
@@ -288,6 +296,7 @@ function ItemRow({
             qualityColor={item.quality_color}
             lines={tooltipLines}
             note={note}
+            noteClassName={item.verified ? "text-[#1eff00]" : "text-yellow-400"}
             lineColor={tooltipLineColor}
             characterNote={characterNote}
           />

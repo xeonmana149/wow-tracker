@@ -327,6 +327,7 @@ export function ItemTooltipBox({
   qualityColor,
   lines,
   note,
+  noteClassName = "text-yellow-400",
   characterNote,
   lineColor,
   className = "",
@@ -335,6 +336,10 @@ export function ItemTooltipBox({
   qualityColor: string | null;
   lines: string[];
   note?: ReactNode;
+  // Color for the note footer - defaults to the "Unconfirmed" yellow;
+  // callers pass the green "confirmed" color when the note is instead
+  // saying a real player's addon has actually scanned this item in Forever.
+  noteClassName?: string;
   // An optional per-line color override - used by the Items page to turn a
   // "Requires Level N" / weapon-or-armor-type / "Requires <Profession> (N)"
   // line red when a selected character doesn't meet it, the same way the
@@ -380,7 +385,7 @@ export function ItemTooltipBox({
           );
         })}
       {note && (
-        <div className="mt-2 border-t border-neutral-700 pt-1.5 text-xs text-yellow-400">
+        <div className={`mt-2 border-t border-neutral-700 pt-1.5 text-xs ${noteClassName}`}>
           {note}
         </div>
       )}
