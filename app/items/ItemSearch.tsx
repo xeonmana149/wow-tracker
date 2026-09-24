@@ -13,7 +13,7 @@ import {
   genericizeTooltipLines,
   renderTooltipLine,
 } from "../../lib/tooltip";
-import { iconUrlForFileId } from "../../lib/icons";
+import { iconUrlForFileId, wowIconUrl } from "../../lib/icons";
 import { supabase } from "../../lib/supabase";
 import {
   characterMeetsProfession,
@@ -38,6 +38,7 @@ type ItemResult = {
   stats: { type: string; value: number }[] | null;
   sell_price: number | null;
   icon: number | null;
+  icon_name: string | null;
   verified: boolean;
   tooltip: string[] | null;
 };
@@ -85,7 +86,11 @@ function ItemRow({
   allCharacters: CharacterSummary[];
 }) {
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
-  const iconSrc = iconUrlForFileId(item.icon);
+  // A live-scanned fileID (icon) is a direct, guaranteed-correct reference
+  // when there is one; icon_name (resolved from Blizzard's item-media
+  // endpoint) is the fallback for anything that's only ever come from the
+  // bulk-seeded baseline and never actually been equipped or scanned.
+  const iconSrc = iconUrlForFileId(item.icon) ?? (item.icon_name ? wowIconUrl(item.icon_name) : null);
   const color = item.quality_color ? `#${item.quality_color}` : "#ffffff";
   const hasRealTooltip = !!item.tooltip && item.tooltip.length > 0;
   const tooltipLines = hasRealTooltip

@@ -105,15 +105,24 @@ const INVENTORY_TYPE_LABELS: Record<string, string> = {
   RANGED: "Ranged",
   RANGEDRIGHT: "Ranged",
   THROWN: "Thrown",
+  // Most bulk-seeded baseline items (consumables, quest items, trade goods,
+  // reagents...) aren't equippable at all - Blizzard marks these
+  // NON_EQUIP, and the real game shows no slot line whatsoever for them, so
+  // this maps to an explicit "" rather than falling through to the generic
+  // fallback below, which used to turn it into the literal "Non_equip".
+  NON_EQUIP: "",
 };
 
 export function formatSlotLabel(inventoryType: string | null): string {
   if (!inventoryType) return "";
   const mapped = INVENTORY_TYPE_LABELS[inventoryType.toUpperCase()];
-  if (mapped) return mapped;
+  // Checked with `!== undefined` rather than truthiness - NON_EQUIP maps to
+  // "" on purpose, which a truthy check would skip straight past into the
+  // generic fallback below.
+  if (mapped !== undefined) return mapped;
   return inventoryType
     .toLowerCase()
-    .split(/\s+/)
+    .split(/[\s_]+/)
     .filter(Boolean)
     .map((w) => w[0].toUpperCase() + w.slice(1))
     .join(" ");

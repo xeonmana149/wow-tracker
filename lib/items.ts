@@ -43,6 +43,14 @@ export type ItemRow = {
   stats: unknown | null;
   sell_price: number | null;
   icon: number | null;
+  // A named icon (e.g. "inv_sword_04"), resolved from Blizzard's item-media
+  // endpoint - this is how a baseline/placeholder item (nobody's ever
+  // equipped or scanned it) still gets a real icon instead of a blank tile.
+  // `icon` (the numeric client fileID) is still preferred when a live
+  // export actually captured one, since that's a direct, guaranteed-correct
+  // reference; this is the fallback for everything that only ever came from
+  // Blizzard's API.
+  icon_name: string | null;
   source: ItemSource;
   raw: unknown | null;
   verified: boolean;
@@ -82,9 +90,60 @@ type BlizzardItemBody = {
       max_damage?: { value?: number };
     };
     weapon_attack_speed?: { value?: number };
-    stats?: { type?: { type?: string }; value?: number }[];
+    // Blizzard nests the stat's actual identity two levels down (type.type
+    // is a SCREAMING_CASE code like "STRENGTH"; type.name is its localized
+    // display name) - stored as-is here, then flattened to the plain
+    // {type: string, value} shape the rest of the site expects (same shape
+    // a live tooltip parses into) by rowFromBlizzard below. Storing the raw
+    // nested object directly used to be the bug behind stat lines rendering
+    // as "+3 [object Object]".
+    stats?: { type?: { type?: string; name?: { en_US?: string } }; value?: number }[];
   };
 };
+
+// Blizzard's stat type only sometimes includes a ready-made display name;
+// when it doesn't, this turns "DODGE_RATING" into "Dodge Rating" rather than
+// showing the raw enum code.
+function titleCaseStatType(raw: string): string {
+  return raw
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function normalizeStats(
+  stats: { type?: { type?: string; name?: { en_US?: string } }; value?: number }[] | undefined
+): { type: string; value: number }[] | null {
+  if (!stats || stats.length === 0) return null;
+  return stats
+    .filter((s) => s.value != null)
+    .map((s) => ({
+      type: s.type?.name?.en_US ?? (s.type?.type ? titleCaseStatType(s.type.type) : "Stat"),
+      value: s.value as number,
+    }));
+}
+
+// Fetches the icon Blizzard actually renders for an item (a named asset,
+// e.g. "inv_sword_04") via the item-media endpoint - a separate call from
+// the plain item lookup, since Blizzard doesn't include it there. Used for
+// anything that only ever came from Blizzard's API (never equipped/scanned
+// by an actual player, so there's no addon-captured fileID to use instead).
+export async function fetchItemIconName(id: number): Promise<string | null> {
+  try {
+    const res = await blizzardGet(ITEM_REGION, `/data/wow/media/item/${id}`, {
+      namespace: ITEM_NAMESPACE,
+    });
+    if (!res.ok) return null;
+    const body = res.body as { assets?: { key?: string; value?: string }[] };
+    const iconAsset = body.assets?.find((a) => a.key === "icon");
+    const match = iconAsset?.value ? /\/([^/]+)\.\w+$/.exec(iconAsset.value) : null;
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
 
 function rowFromBlizzard(id: number, body: BlizzardItemBody): ItemRow {
   const qualityType = body.quality?.type ?? null;
@@ -102,11 +161,14 @@ function rowFromBlizzard(id: number, body: BlizzardItemBody): ItemRow {
     damage_min: body.preview_item?.weapon_damage?.min_damage?.value ?? null,
     damage_max: body.preview_item?.weapon_damage?.max_damage?.value ?? null,
     weapon_speed: body.preview_item?.weapon_attack_speed?.value ?? null,
-    stats: body.preview_item?.stats ?? null,
+    stats: normalizeStats(body.preview_item?.stats),
     sell_price: body.sell_price ?? null,
     icon: null, // Blizzard doesn't give us the client-side fileID the rest
                 // of the site uses for icons - filled in from the export's
                 // own icon capture instead, when available (see below).
+    icon_name: null, // filled in by the caller via fetchItemIconName - kept
+                      // out of this function so a plain item-detail lookup
+                      // never implies a second network call happened.
     source: "classic_api",
     raw: body,
     verified: false, // unconfirmed - Forever may have rebalanced this item;
@@ -134,6 +196,7 @@ function placeholderRow(id: number, fallback: { name?: string; icon?: number | n
     stats: null,
     sell_price: null,
     icon: fallback.icon ?? null,
+    icon_name: null,
     source: "auto_new",
     raw: null,
     verified: false,
@@ -200,14 +263,19 @@ export async function ensureItemsExist(
       const result = await blizzardGet(ITEM_REGION, `/data/wow/item/${id}`, {
         namespace: ITEM_NAMESPACE,
       });
-      if (result.ok) {
-        const row = rowFromBlizzard(id, result.body as BlizzardItemBody);
-        row.icon = fallback.icon ?? row.icon;
-        return row;
+      const row = result.ok
+        ? rowFromBlizzard(id, result.body as BlizzardItemBody)
+        : // 404 (or any other non-ok status) - Blizzard doesn't have this
+          // item, so it's genuinely new. Placeholder now, fill in by hand later.
+          placeholderRow(id, fallback);
+      row.icon = fallback.icon ?? row.icon;
+      // Only bother asking Blizzard for a named icon when there's no
+      // addon-captured fileID already - that's a direct, guaranteed-correct
+      // reference, so a second lookup here would be pure waste.
+      if (row.icon == null) {
+        row.icon_name = await fetchItemIconName(id);
       }
-      // 404 (or any other non-ok status) - Blizzard doesn't have this
-      // item, so it's genuinely new. Placeholder now, fill in by hand later.
-      return placeholderRow(id, fallback);
+      return row;
     } catch {
       // Network/token error - don't fail the whole sync over an item
       // lookup; just skip it for now and try again on a future sync.
