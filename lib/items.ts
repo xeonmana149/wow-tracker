@@ -90,6 +90,19 @@ export type ItemRow = {
   inventory_type: string | null;
   level: number | null;
   required_level: number | null;
+  // True only when required_level came from an actual scanned tooltip's
+  // "Requires Level N" line (applyLiveObservation) - never set by Blizzard's
+  // baseline data (rowFromBlizzard/placeholderRow) or the backfill script,
+  // since Blizzard's frozen vanilla numbers aren't trustworthy for anything
+  // Forever has rebalanced (same caveat as quality/armor/stats/price - see
+  // the note up top). Anything that needs to know whether an item's real
+  // requirement is genuinely known (e.g. the What's Next gear-upgrade
+  // check) should gate on this rather than just checking required_level is
+  // non-null, since a non-null value can still be Blizzard's unverified
+  // guess. A missing/false flag isn't "no requirement" - it's "unknown",
+  // and a null required_level alongside required_level_scanned: true
+  // genuinely does mean "this item has no level requirement at all".
+  required_level_scanned: boolean;
   armor: number | null;
   damage_min: number | null;
   damage_max: number | null;
@@ -341,6 +354,7 @@ export function rowFromBlizzard(id: number, body: BlizzardItemBody): ItemRow {
     inventory_type: body.inventory_type?.type ?? null,
     level: body.level ?? null,
     required_level: body.required_level ?? null,
+    required_level_scanned: false,
     armor: details.armor,
     damage_min: details.damage_min,
     damage_max: details.damage_max,
@@ -391,6 +405,7 @@ function placeholderRow(id: number, fallback: { name?: string; icon?: number | n
     inventory_type: null,
     level: null,
     required_level: null,
+    required_level_scanned: false,
     armor: null,
     damage_min: null,
     damage_max: null,
@@ -603,7 +618,15 @@ export async function applyLiveObservation(
   if (parsed.damage_min != null) update.damage_min = parsed.damage_min;
   if (parsed.damage_max != null) update.damage_max = parsed.damage_max;
   if (parsed.weapon_speed != null) update.weapon_speed = parsed.weapon_speed;
-  if (parsed.required_level != null) update.required_level = parsed.required_level;
+  // Always written (not just when parsed.required_level is set) because a
+  // real tooltip was just scanned (the early return above guarantees that),
+  // so this is the moment we actually know the truth either way: either a
+  // real "Requires Level N" line was there, or the tooltip was fully read
+  // and genuinely had no such line - both are meaningful, unlike a row that
+  // simply hasn't been scanned yet at all. Overwrites any earlier value,
+  // including Blizzard's unverified baseline guess.
+  update.required_level = parsed.required_level ?? null;
+  update.required_level_scanned = true;
   if (parsed.sell_price != null) update.sell_price = parsed.sell_price;
   if (parsed.stats != null) update.stats = parsed.stats;
 
@@ -620,15 +643,17 @@ export async function applyLiveObservation(
   } else {
     // First time this item's ever been seen at all - a live tooltip only
     // tells us the Forever-specific stuff (quality/stats/armor/etc, already
-    // in `update` above), never structural fields like item level, item
-    // class or inventory slot. Without this, a brand-new item would sit
-    // with a permanently null `level`, invisible to anything that compares
-    // it against a character's level (e.g. the What's Next gear-upgrade
-    // check) - so grab Blizzard's baseline once, right now, the same way
-    // ensureItemsExist seeds items ahead of time. Best-effort only: if
-    // Blizzard's API is down or the id is Forever-only (404), fall through
-    // to inserting just the observed fields like before rather than losing
-    // the sync over it - a plain insert here is exactly the old behavior.
+    // in `update` above), never structural fields like item class or
+    // inventory slot, and `level`/`required_level` here are just Blizzard's
+    // unverified baseline guess (real required_level always comes from
+    // `update` above instead, which wins in the merge below either way) -
+    // grab it once, right now, the same way ensureItemsExist seeds items
+    // ahead of time, purely so item_class/item_subclass/inventory_type
+    // (used for the Items search category tabs) aren't permanently null.
+    // Best-effort only: if Blizzard's API is down or the id is Forever-only
+    // (404), fall through to inserting just the observed fields like before
+    // rather than losing the sync over it - a plain insert here is exactly
+    // the old behavior.
     let baseline: Partial<ItemRow> = {};
     try {
       const result = await blizzardGet(ITEM_REGION, `/data/wow/item/${itemId}`, {

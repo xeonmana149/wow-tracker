@@ -53,7 +53,7 @@ export default async function CharacterPage({
 
   const { data: gear } = await supabase
     .from("equipped_gear")
-    .select("slot, item_name, item_link, item_id, item_quality, item_icon, tooltip, items(level, required_level)")
+    .select("slot, item_name, item_link, item_id, item_quality, item_icon, tooltip, items(required_level, required_level_scanned)")
     .eq("character_id", id);
 
   const { data: stats } = await supabase

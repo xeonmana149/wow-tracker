@@ -158,8 +158,8 @@ export type CardCharacter = {
     slot: string;
     item_id: number | null;
     items?:
-      | { level: number | null; required_level: number | null }
-      | { level: number | null; required_level: number | null }[]
+      | { required_level: number | null; required_level_scanned: boolean | null }
+      | { required_level: number | null; required_level_scanned: boolean | null }[]
       | null;
   }[];
 };
