@@ -164,7 +164,7 @@ export default function Dashboard({
         supabase
           .from("characters")
           .select(
-            "*, character_professions(profession, skill, recipes), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained), equipped_gear(slot, item_id, items(level))"
+            "*, character_professions(profession, skill, recipes), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained), equipped_gear(slot, item_id, items(level, required_level))"
           )
           .eq("user_id", userData.user.id)
           .order("level", { ascending: false }),

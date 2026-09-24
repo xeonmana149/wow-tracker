@@ -157,7 +157,10 @@ export type CardCharacter = {
   equipped_gear?: {
     slot: string;
     item_id: number | null;
-    items?: { level: number | null } | { level: number | null }[] | null;
+    items?:
+      | { level: number | null; required_level: number | null }
+      | { level: number | null; required_level: number | null }[]
+      | null;
   }[];
 };
 

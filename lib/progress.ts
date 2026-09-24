@@ -22,22 +22,40 @@ export type ProgressInput = {
   character_talents?: { slot?: number; rank: number }[];
   character_legacy?: { rank: number }[];
   // Raw equipped_gear rows, exactly as a query that joins the shared items
-  // table for its level (`items(level)`) returns them - equipped_gear
-  // itself doesn't store item level. `items` comes back as an object or a
-  // one-element array depending on how Supabase infers the to-one
-  // relationship; gearItemLevel() below normalizes either shape rather than
-  // pushing that onto every caller. A row with no item_id link yet, or
-  // whose item has no known level, simply can't be compared either way and
-  // is skipped further down.
+  // table for level and required_level (`items(level, required_level)`)
+  // returns them - equipped_gear itself doesn't store either. `items` comes
+  // back as an object or a one-element array depending on how Supabase
+  // infers the to-one relationship; gearEffectiveLevel() below normalizes
+  // either shape rather than pushing that onto every caller. A row with no
+  // item_id link yet, or whose item has neither number known, simply can't
+  // be compared either way and is skipped further down.
   equipped_gear?: {
     slot: string;
-    items?: { level: number | null } | { level: number | null }[] | null;
+    items?:
+      | { level: number | null; required_level: number | null }
+      | { level: number | null; required_level: number | null }[]
+      | null;
   }[];
 };
 
-function gearItemLevel(g: { items?: { level: number | null } | { level: number | null }[] | null }) {
+// `required_level` ("Requires Level N") is scanned straight off a real
+// tooltip by applyLiveObservation - the same gospel-truth source this whole
+// project trusts for everything else an item does. `level` is Blizzard's
+// item level (ilvl), which only ever comes from Blizzard's own API and is
+// null for anything Forever added or reused with a different id than
+// vanilla shipped - i.e. exactly the items most worth flagging as outdated.
+// required_level is checked first for that reason, falling back to
+// Blizzard's level only for the rare case a scanned required_level isn't on
+// file yet (an item nobody's equipped, still sitting on an unverified
+// Blizzard baseline that happens to have an ilvl).
+function gearEffectiveLevel(g: {
+  items?:
+    | { level: number | null; required_level: number | null }
+    | { level: number | null; required_level: number | null }[]
+    | null;
+}) {
   const item = Array.isArray(g.items) ? g.items[0] : g.items;
-  return item?.level ?? null;
+  return item?.required_level ?? item?.level ?? null;
 }
 
 export type Bar = { key: string; label: string; value: number; max: number; text: string };
@@ -165,7 +183,7 @@ export function whatsNext(c: ProgressInput, earned: number): Todo[] {
   // a level for that id) can't be judged either way, so they're skipped
   // rather than assumed fine or assumed weak.
   const gearGaps = (c.equipped_gear ?? [])
-    .map((g) => ({ slot: g.slot, item_level: gearItemLevel(g) }))
+    .map((g) => ({ slot: g.slot, item_level: gearEffectiveLevel(g) }))
     .filter((g): g is { slot: string; item_level: number } => typeof g.item_level === "number")
     .map((g) => ({ ...g, gap: c.level - g.item_level }))
     .filter((g) => g.gap >= GEAR_LEVEL_GAP_THRESHOLD)
