@@ -66,6 +66,21 @@ const QUALITY_OPTIONS: { value: string; label: string; color: string }[] = [
   { value: "LEGENDARY", label: "Legendary", color: "#ff8000" },
 ];
 
+// Auction-House-style category tabs. Values match the keys
+// /api/items/search maps to Blizzard's own item_class text server-side.
+const CATEGORY_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "All" },
+  { value: "weapon", label: "Weapons" },
+  { value: "armor", label: "Armor" },
+  { value: "container", label: "Containers" },
+  { value: "consumable", label: "Consumables" },
+  { value: "tradegoods", label: "Trade Goods" },
+  { value: "ammo", label: "Ammo" },
+  { value: "recipe", label: "Recipes" },
+  { value: "quest", label: "Quest Items" },
+  { value: "misc", label: "Misc" },
+];
+
 // Sorting (including quality's rank order) now happens server-side in
 // /api/items/search, so it's correct across pages instead of only within
 // whatever single batch used to get fetched.
@@ -663,6 +678,9 @@ export default function ItemSearch() {
   const [query, setQuery] = useState("");
   const [quality, setQuality] = useState("");
   const [stat, setStat] = useState("");
+  const [category, setCategory] = useState("");
+  const [minLevel, setMinLevel] = useState("");
+  const [maxLevel, setMaxLevel] = useState("");
   const [sort, setSort] = useState<SortOption>("relevance");
   const [results, setResults] = useState<ItemResult[]>([]);
   const [total, setTotal] = useState(0);
@@ -715,16 +733,24 @@ export default function ItemSearch() {
 
   const selectedCharacter = characters.find((c) => c.id === selectedCharacterId) ?? null;
 
-  // Tracks the last query/quality/stat/sort combination a fetch went out
-  // for, so a change to any of them can jump back to page 1 (a new search
-  // shouldn't land you on whatever deep page the previous one left off on)
-  // without that reset fighting with `page` also being a dependency below.
+  // Tracks the last filter/sort combination a fetch went out for, so a
+  // change to any of them can jump back to page 1 (a new search shouldn't
+  // land you on whatever deep page the previous one left off on) without
+  // that reset fighting with `page` also being a dependency below.
   const lastFilterKey = useRef("");
 
   useEffect(() => {
     const trimmedQuery = query.trim();
     const trimmedStat = stat.trim();
-    const active = trimmedQuery.length >= 2 || quality.length > 0 || trimmedStat.length >= 2;
+    const trimmedMinLevel = minLevel.trim();
+    const trimmedMaxLevel = maxLevel.trim();
+    const active =
+      trimmedQuery.length >= 2 ||
+      quality.length > 0 ||
+      trimmedStat.length >= 2 ||
+      category.length > 0 ||
+      trimmedMinLevel.length > 0 ||
+      trimmedMaxLevel.length > 0;
 
     if (!active) {
       setResults([]);
@@ -734,7 +760,7 @@ export default function ItemSearch() {
       return;
     }
 
-    const filterKey = `${trimmedQuery}|${quality}|${trimmedStat}|${sort}`;
+    const filterKey = `${trimmedQuery}|${quality}|${trimmedStat}|${category}|${trimmedMinLevel}|${trimmedMaxLevel}|${sort}`;
     const filtersChanged = filterKey !== lastFilterKey.current;
     lastFilterKey.current = filterKey;
     const effectivePage = filtersChanged ? 1 : page;
@@ -748,6 +774,13 @@ export default function ItemSearch() {
         if (trimmedQuery.length >= 2) params.set("q", trimmedQuery);
         if (quality) params.set("quality", quality);
         if (trimmedStat.length >= 2) params.set("stat", trimmedStat);
+        if (category) params.set("category", category);
+        if (trimmedMinLevel && Number.isFinite(Number(trimmedMinLevel))) {
+          params.set("minLevel", trimmedMinLevel);
+        }
+        if (trimmedMaxLevel && Number.isFinite(Number(trimmedMaxLevel))) {
+          params.set("maxLevel", trimmedMaxLevel);
+        }
         if (sort !== "relevance") params.set("sort", sort);
         params.set("page", String(effectivePage));
 
@@ -776,7 +809,7 @@ export default function ItemSearch() {
     }, 250);
 
     return () => clearTimeout(handle);
-  }, [query, quality, stat, sort, page]);
+  }, [query, quality, stat, category, minLevel, maxLevel, sort, page]);
 
   // Clicking a card selects it for the details panel; if a new search makes
   // that item disappear from the results, the panel closes rather than
@@ -807,7 +840,13 @@ export default function ItemSearch() {
 
   const selectedItem = results.find((r) => r.id === selectedId) ?? null;
 
-  const active = query.trim().length >= 2 || quality.length > 0 || stat.trim().length >= 2;
+  const active =
+    query.trim().length >= 2 ||
+    quality.length > 0 ||
+    stat.trim().length >= 2 ||
+    category.length > 0 ||
+    minLevel.trim().length > 0 ||
+    maxLevel.trim().length > 0;
 
   return (
     <div>
@@ -831,6 +870,25 @@ export default function ItemSearch() {
             placeholder="Filter by stat (e.g. Strength)"
             className="w-full max-w-[220px] rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-gray-500"
           />
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min={0}
+              value={minLevel}
+              onChange={(e) => setMinLevel(e.target.value)}
+              placeholder="Min lvl"
+              className="w-[80px] rounded border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm text-white placeholder:text-gray-500"
+            />
+            <span className="text-gray-500">-</span>
+            <input
+              type="number"
+              min={0}
+              value={maxLevel}
+              onChange={(e) => setMaxLevel(e.target.value)}
+              placeholder="Max lvl"
+              className="w-[80px] rounded border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm text-white placeholder:text-gray-500"
+            />
+          </div>
           {characters.length > 0 && (
             <select
               id="compare-character"
@@ -861,6 +919,23 @@ export default function ItemSearch() {
                 borderColor: quality === opt.value ? opt.color : undefined,
                 opacity: quality === opt.value || quality === "" ? 1 : 0.5,
               }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Auction-House-style category tabs - "Quest Items" is the one
+            exception to the usual Quest-item exclusion (see the API route),
+            so picking it deliberately shows what's normally hidden. */}
+        <div className="flex flex-wrap gap-1.5">
+          {CATEGORY_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setCategory(opt.value)}
+              aria-pressed={category === opt.value}
+              className={`tab-btn px-2.5 py-1 text-xs ${category === opt.value ? "tab-btn-active" : ""}`}
             >
               {opt.label}
             </button>

@@ -54,7 +54,13 @@ const JUNK_NAME_PATTERNS = [
   /zzold/i,
   /\bunused\b/i,
 ];
-const JUNK_NAMES = new Set(["Fabled Steed", "Shard of the Defiler"]);
+const JUNK_NAMES = new Set([
+  "Fabled Steed",
+  "Shard of the Defiler",
+  // A bare "PH" (no brackets) doesn't match the \[ph\] pattern above, so
+  // this one-off needs listing by its exact name instead.
+  "Nax PH Crit Plate Shoulders",
+]);
 
 export function isLikelyJunkItemName(name: string): boolean {
   if (JUNK_NAMES.has(name)) return true;

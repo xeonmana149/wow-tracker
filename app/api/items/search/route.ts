@@ -15,6 +15,26 @@ const QUALITY_RANK: Record<string, number> = {
   LEGENDARY: 5,
 };
 
+// The AH-style category tabs, mapped to Blizzard's own item_class name
+// text (populated straight from the Game Data API - see rowFromBlizzard in
+// lib/items.ts). A couple of these are best guesses at the exact classic
+// spelling (Ammo in particular - Blizzard's own item class for
+// arrows/bullets has historically been called "Projectile" rather than
+// "Ammo"), so if a tab comes back oddly empty or misses obvious items,
+// check what item_class actually says for one of them in the items table
+// and this list is the only place that needs adjusting.
+const CATEGORY_CLASSES: Record<string, string[]> = {
+  weapon: ["Weapon"],
+  armor: ["Armor"],
+  container: ["Container"],
+  consumable: ["Consumable"],
+  tradegoods: ["Trade Goods"],
+  ammo: ["Projectile", "Ammo", "Quiver"],
+  recipe: ["Recipe"],
+  quest: ["Quest"],
+  misc: ["Miscellaneous", "Junk", "Reagent", "Key", "Item Enhancement", "Gem", "Glyph"],
+};
+
 // The results list now scrolls with the rest of the page instead of living
 // in its own scrollbox, with numbered pages underneath rather than an
 // ever-growing single batch - this is how many rows one page holds.
@@ -33,6 +53,10 @@ export async function GET(req: NextRequest) {
   const q = (searchParams.get("q") ?? "").trim();
   const quality = (searchParams.get("quality") ?? "").trim().toUpperCase();
   const stat = (searchParams.get("stat") ?? "").trim();
+  const categoryParam = (searchParams.get("category") ?? "").trim().toLowerCase();
+  const category = categoryParam in CATEGORY_CLASSES ? categoryParam : "";
+  const minLevel = Number(searchParams.get("minLevel"));
+  const maxLevel = Number(searchParams.get("maxLevel"));
   const sortParam = (searchParams.get("sort") ?? "relevance").trim();
   const sort = SORT_OPTIONS.has(sortParam) ? sortParam : "relevance";
   const page = Math.max(1, Math.trunc(Number(searchParams.get("page"))) || 1);
@@ -40,8 +64,11 @@ export async function GET(req: NextRequest) {
   const hasNameSearch = q.length >= 2;
   const hasQuality = VALID_QUALITIES.has(quality);
   const hasStat = stat.length >= 2;
+  const hasCategory = category.length > 0;
+  const hasMinLevel = Number.isFinite(minLevel) && minLevel > 0;
+  const hasMaxLevel = Number.isFinite(maxLevel) && maxLevel > 0;
 
-  if (!hasNameSearch && !hasQuality && !hasStat) {
+  if (!hasNameSearch && !hasQuality && !hasStat && !hasCategory && !hasMinLevel && !hasMaxLevel) {
     return NextResponse.json({ items: [], total: 0, page: 1, pageSize: PAGE_SIZE });
   }
 
@@ -52,18 +79,28 @@ export async function GET(req: NextRequest) {
         "id, name, quality, quality_color, item_class, item_subclass, inventory_type, level, required_level, armor, damage_min, damage_max, weapon_speed, weapon_dps, binding, durability, spell_lines, profession_requirement, reagents_text, classes_text, item_set_line, item_set_pieces, item_set_bonuses, stats, sell_price, icon, icon_name, verified, tooltip",
         withCount ? { count: "exact" } : undefined
       )
-      // Quest items aren't gear or anything you'd shop for in this database -
-      // they're just clutter here. Only an unverified/baseline row ever has
-      // item_class set (a live tooltip observation never writes it - see the
-      // gap noted in applyLiveObservation, lib/items.ts), so this can only
-      // ever exclude Blizzard's own baseline quest items, not a real scanned
-      // one; that's fine, `.or` lets a null item_class (any verified item)
-      // through untouched either way.
-      .or("item_class.is.null,item_class.neq.Quest")
       .eq("hidden", false);
+
+    if (hasCategory) {
+      // A specific category (including "Quest Items") says exactly which
+      // item_class values to show, replacing the default Quest-exclusion
+      // below entirely.
+      query = query.in("item_class", CATEGORY_CLASSES[category]);
+    } else {
+      // Quest items aren't gear or anything you'd shop for in a plain
+      // browse - they're just clutter here. Only an unverified/baseline row
+      // ever has item_class set (a live tooltip observation never writes it
+      // - see the gap noted in applyLiveObservation, lib/items.ts), so this
+      // can only ever exclude Blizzard's own baseline quest items, not a
+      // real scanned one; that's fine, `.or` lets a null item_class (any
+      // verified item) through untouched either way.
+      query = query.or("item_class.is.null,item_class.neq.Quest");
+    }
 
     if (hasNameSearch) query = query.ilike("name", `%${q}%`);
     if (hasQuality) query = query.eq("quality", quality);
+    if (hasMinLevel) query = query.gte("level", minLevel);
+    if (hasMaxLevel) query = query.lte("level", maxLevel);
     return query;
   }
 
