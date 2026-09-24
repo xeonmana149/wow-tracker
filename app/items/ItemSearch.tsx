@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import {
   ItemTooltipBox,
+  KNOWN_SLOT_LABELS,
   TwoColumnLine,
   buildFallbackTooltipLines,
   extractEffectLines,
@@ -13,6 +14,13 @@ import {
   renderTooltipLine,
 } from "../../lib/tooltip";
 import { iconUrlForFileId } from "../../lib/icons";
+import { supabase } from "../../lib/supabase";
+import {
+  characterMeetsProfession,
+  classCanUseSubclass,
+  extractProfessionRequirement,
+  type CharacterSummary,
+} from "../../lib/classRequirements";
 
 type ItemResult = {
   id: number;
@@ -67,7 +75,15 @@ function FollowTooltip({
   );
 }
 
-function ItemRow({ item }: { item: ItemResult }) {
+function ItemRow({
+  item,
+  character,
+  allCharacters,
+}: {
+  item: ItemResult;
+  character: CharacterSummary | null;
+  allCharacters: CharacterSummary[];
+}) {
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const iconSrc = iconUrlForFileId(item.icon);
   const color = item.quality_color ? `#${item.quality_color}` : "#ffffff";
@@ -88,6 +104,7 @@ function ItemRow({ item }: { item: ItemResult }) {
   // Unverified Blizzard-baseline rows DO have those columns, so they still
   // work as the fallback.
   const parsedSlot = hasRealTooltip ? extractSlotAndSubclass(item.tooltip as string[]) : null;
+  const subclassForCheck = parsedSlot?.subclass ?? item.item_subclass;
   const slotLine = parsedSlot?.slot
     ? [parsedSlot.slot, parsedSlot.subclass].filter(Boolean).join("  ")
     : [formatSlotLabel(item.inventory_type), item.item_subclass].filter(Boolean).join("  ");
@@ -105,6 +122,75 @@ function ItemRow({ item }: { item: ItemResult }) {
       : null;
 
   const effectLines = hasRealTooltip ? extractEffectLines(item.tooltip) : [];
+
+  // Auction-house-style "can my character actually use this" checks -
+  // only meaningful once a character is selected in the dropdown above.
+  const levelBad =
+    !!character && item.required_level != null && item.required_level > character.level;
+  const classBad = !!character && !classCanUseSubclass(character.class, subclassForCheck);
+  // A profession requirement (e.g. "Requires Alchemy (275)" on a recipe)
+  // only ever shows up as a real scanned tooltip line - there's nowhere
+  // else it's stored, so unverified/baseline items just can't be checked.
+  const profReq = hasRealTooltip ? extractProfessionRequirement(item.tooltip) : null;
+  const profBad = !!character && !!profReq && !characterMeetsProfession(character, profReq);
+  const suggestedCharacter =
+    profBad && profReq
+      ? allCharacters.find(
+          (c) => c.id !== character!.id && characterMeetsProfession(c, profReq)
+        )
+      : undefined;
+  const hasCharacterWarning = classBad || levelBad || profBad;
+
+  function tooltipLineColor(
+    line: string
+  ): { className?: string; leftClassName?: string; rightClassName?: string } | null {
+    if (!character) return null;
+    const trimmed = line.trim();
+    const levelMatch = /^Requires Level (\d+)$/i.exec(trimmed);
+    if (levelMatch && Number(levelMatch[1]) > character.level) return { className: "text-red-500" };
+    const lineProfReq = extractProfessionRequirement([trimmed]);
+    if (lineProfReq && !characterMeetsProfession(character, lineProfReq)) {
+      return { className: "text-red-500" };
+    }
+    for (const label of KNOWN_SLOT_LABELS) {
+      if (trimmed.startsWith(`${label}  `)) {
+        const subclass = trimmed.slice(label.length + 2).trim();
+        // Only the offending word turns red (e.g. "Axe"), same as the real
+        // tooltip/auction house - the slot itself ("Two-Hand") isn't wrong.
+        if (!classCanUseSubclass(character.class, subclass)) return { rightClassName: "text-red-500" };
+        break;
+      }
+    }
+    return null;
+  }
+
+  const characterNote: ReactNode = hasCharacterWarning ? (
+    <div className="flex flex-col gap-0.5">
+      {classBad && (
+        <div className="text-red-500">{character!.name} can&apos;t use this type of item.</div>
+      )}
+      {levelBad && (
+        <div className="text-red-500">
+          {character!.name} is too low level (needs {item.required_level}).
+        </div>
+      )}
+      {profBad && profReq && (
+        <div className="text-red-500">
+          Requires {profReq.profession} ({profReq.skill}) - {character!.name} doesn&apos;t have it.
+        </div>
+      )}
+      {suggestedCharacter && profReq && (
+        <div className="text-sky-400">
+          → {suggestedCharacter.name} can learn/craft this (
+          {profReq.profession}{" "}
+          {suggestedCharacter.professions.find(
+            (p) => p.profession.toLowerCase() === profReq.profession.toLowerCase()
+          )?.skill}
+          )
+        </div>
+      )}
+    </div>
+  ) : undefined;
 
   function handleMove(e: MouseEvent) {
     setHoverPos({ x: e.clientX, y: e.clientY });
@@ -133,7 +219,11 @@ function ItemRow({ item }: { item: ItemResult }) {
           )}
         </div>
         {slotLine && (
-          <TwoColumnLine text={slotLine} className="max-w-[220px] text-xs text-gray-400" />
+          <TwoColumnLine
+            text={slotLine}
+            className="max-w-[220px] text-xs text-gray-400"
+            rightClassName={classBad ? "text-red-500" : undefined}
+          />
         )}
         {armorOrDamage && (
           <TwoColumnLine text={armorOrDamage} className="max-w-[220px] text-xs text-gray-300" />
@@ -146,10 +236,22 @@ function ItemRow({ item }: { item: ItemResult }) {
             {line}
           </div>
         ))}
+        {profBad && profReq && (
+          <div className="truncate text-xs text-red-500">
+            Requires {profReq.profession} ({profReq.skill})
+          </div>
+        )}
+        {suggestedCharacter && (
+          <div className="truncate text-xs text-sky-400">
+            → {suggestedCharacter.name} can make this
+          </div>
+        )}
       </div>
 
-      <div className="flex-shrink-0 text-right text-xs text-gray-400">
-        {item.required_level != null && <div>Req. {item.required_level}</div>}
+      <div className="w-20 flex-shrink-0 text-right text-xs text-gray-400">
+        {item.required_level != null && (
+          <div className={levelBad ? "text-red-500" : undefined}>Req. {item.required_level}</div>
+        )}
         {item.sell_price != null && (
           <div>{renderTooltipLine(formatMoneyTokens(item.sell_price))}</div>
         )}
@@ -162,6 +264,8 @@ function ItemRow({ item }: { item: ItemResult }) {
             qualityColor={item.quality_color}
             lines={tooltipLines}
             note={note}
+            lineColor={tooltipLineColor}
+            characterNote={characterNote}
           />
         </FollowTooltip>
       )}
@@ -177,6 +281,47 @@ export default function ItemSearch() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestId = useRef(0);
+
+  const [characters, setCharacters] = useState<CharacterSummary[]>([]);
+  const [selectedCharacterId, setSelectedCharacterId] = useState("");
+
+  // Lets you compare an item against one of your own characters, auction-
+  // house style: red text for a level/weapon-skill/profession requirement
+  // they don't meet, and a pointer to another of your characters if one of
+  // them does. Only your own characters show up here (RLS scopes the
+  // `characters` table to its owner, same as everywhere else this table is
+  // queried from the browser).
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCharacters() {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+      const { data, error } = await supabase
+        .from("characters")
+        .select("id, name, class, level, character_professions(profession, skill)")
+        .eq("user_id", userData.user.id)
+        .order("level", { ascending: false });
+      if (cancelled || error || !data) return;
+      setCharacters(
+        data.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          class: c.class,
+          level: c.level,
+          professions: (c.character_professions ?? []).map((p: any) => ({
+            profession: p.profession,
+            skill: p.skill,
+          })),
+        }))
+      );
+    }
+    loadCharacters();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedCharacter = characters.find((c) => c.id === selectedCharacterId) ?? null;
 
   useEffect(() => {
     const trimmedQuery = query.trim();
@@ -244,6 +389,27 @@ export default function ItemSearch() {
         />
       </div>
 
+      {characters.length > 0 && (
+        <div className="mt-3 flex items-center gap-2">
+          <label className="text-sm text-gray-400" htmlFor="compare-character">
+            Compare against:
+          </label>
+          <select
+            id="compare-character"
+            value={selectedCharacterId}
+            onChange={(e) => setSelectedCharacterId(e.target.value)}
+            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-white"
+          >
+            <option value="">None</option>
+            {characters.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} (Lv. {c.level} {c.class})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="mt-3 flex flex-wrap gap-2">
         {QUALITY_OPTIONS.map((opt) => (
           <button
@@ -286,7 +452,12 @@ export default function ItemSearch() {
         >
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {results.map((item) => (
-              <ItemRow key={item.id} item={item} />
+              <ItemRow
+                key={item.id}
+                item={item}
+                character={selectedCharacter}
+                allCharacters={characters}
+              />
             ))}
           </div>
         </div>

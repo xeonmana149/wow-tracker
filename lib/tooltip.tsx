@@ -126,7 +126,7 @@ export function formatSlotLabel(inventoryType: string | null): string {
 // reads it straight from there instead of relying on a column that's
 // simply never populated for a verified item. Longest/most specific labels
 // aren't needed here since none of these happen to prefix one another.
-const KNOWN_SLOT_LABELS = [
+export const KNOWN_SLOT_LABELS = [
   "Main Hand",
   "Off Hand",
   "Two-Hand",
@@ -207,15 +207,29 @@ export function extractEffectLines(tooltip: string[] | null | undefined): string
 // structure just disappears and everything reads as one run-on line. This
 // splits on the first 2+-space gap and lays the two halves out with real
 // space between them, matching the real tooltip's look.
-export function TwoColumnLine({ text, className = "" }: { text: string; className?: string }) {
+export function TwoColumnLine({
+  text,
+  className = "",
+  leftClassName,
+  rightClassName,
+}: {
+  text: string;
+  className?: string;
+  // Override just one side's color (e.g. turning only "Axe" red while
+  // "Two-Hand" stays its normal color, matching how the real tooltip/
+  // auction house only reddens the specific thing you fail, not the whole
+  // line). Left unset, both sides inherit `className`'s color as normal.
+  leftClassName?: string;
+  rightClassName?: string;
+}) {
   const match = text.match(/^(.*?) {2,}(.*)$/);
   if (!match) {
     return <div className={className}>{renderTooltipLine(text)}</div>;
   }
   return (
     <div className={`flex justify-between gap-4 ${className}`}>
-      <span>{renderTooltipLine(match[1])}</span>
-      <span>{renderTooltipLine(match[2])}</span>
+      <span className={leftClassName}>{renderTooltipLine(match[1])}</span>
+      <span className={rightClassName}>{renderTooltipLine(match[2])}</span>
     </div>
   );
 }
@@ -271,12 +285,26 @@ export function ItemTooltipBox({
   qualityColor,
   lines,
   note,
+  characterNote,
+  lineColor,
   className = "",
 }: {
   name: string;
   qualityColor: string | null;
   lines: string[];
-  note?: string;
+  note?: ReactNode;
+  // An optional per-line color override - used by the Items page to turn a
+  // "Requires Level N" / weapon-or-armor-type / "Requires <Profession> (N)"
+  // line red when a selected character doesn't meet it, the same way the
+  // real tooltip and the auction house do. Returning null/undefined falls
+  // back to the default (green for crafted-by/Equip/Use, white otherwise).
+  lineColor?: (
+    line: string
+  ) => { className?: string; leftClassName?: string; rightClassName?: string } | null | undefined;
+  // A second footer, below the "Unconfirmed" note, for character-comparison
+  // messaging (e.g. a red "you don't meet this" or a suggestion to use a
+  // different character) - kept separate so it can have its own color.
+  characterNote?: ReactNode;
   className?: string;
 }) {
   const color = qualityColor ? `#${qualityColor}` : "#ffffff";
@@ -293,21 +321,29 @@ export function ItemTooltipBox({
       </div>
       {lines
         .filter((line) => line !== name)
-        .map((line, i) => (
-          <TwoColumnLine
-            key={i}
-            text={line}
-            className={
-              isCraftedByLine(line) || isEquipLine(line) || isUseLine(line)
-                ? "text-[#1eff00]"
-                : "text-white"
-            }
-          />
-        ))}
+        .map((line, i) => {
+          const override = lineColor?.(line);
+          const defaultClass =
+            isCraftedByLine(line) || isEquipLine(line) || isUseLine(line)
+              ? "text-[#1eff00]"
+              : "text-white";
+          return (
+            <TwoColumnLine
+              key={i}
+              text={line}
+              className={override?.className ?? defaultClass}
+              leftClassName={override?.leftClassName}
+              rightClassName={override?.rightClassName}
+            />
+          );
+        })}
       {note && (
         <div className="mt-2 border-t border-neutral-700 pt-1.5 text-xs text-yellow-400">
           {note}
         </div>
+      )}
+      {characterNote && (
+        <div className="mt-1.5 text-xs">{characterNote}</div>
       )}
     </div>
   );
