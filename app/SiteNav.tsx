@@ -65,9 +65,19 @@ const news = (
   </Icon>
 );
 
+// A magnifying glass over a small box, for the Items search/browse tab.
+const items = (
+  <Icon>
+    <rect x="4" y="4" width="10" height="10" rx="1.5" />
+    <circle cx="17" cy="17" r="3.2" />
+    <path d="M19.3 19.3L22 22" />
+  </Icon>
+);
+
 const links = [
   { href: "/", label: "Dashboard", icon: shield },
   { href: "/crafting", label: "Crafting", icon: wrench },
+  { href: "/items", label: "Items", icon: items },
   { href: "/friends", label: "Friends", icon: people },
   { href: "/leaderboards", label: "Leaderboards", icon: trophy },
   { href: "/news", label: "News", icon: news },
