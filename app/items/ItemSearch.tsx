@@ -66,15 +66,9 @@ const QUALITY_OPTIONS: { value: string; label: string; color: string }[] = [
   { value: "LEGENDARY", label: "Legendary", color: "#ff8000" },
 ];
 
-const QUALITY_RANK: Record<string, number> = {
-  POOR: 0,
-  COMMON: 1,
-  UNCOMMON: 2,
-  RARE: 3,
-  EPIC: 4,
-  LEGENDARY: 5,
-};
-
+// Sorting (including quality's rank order) now happens server-side in
+// /api/items/search, so it's correct across pages instead of only within
+// whatever single batch used to get fetched.
 type SortOption = "relevance" | "name" | "level" | "quality";
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "relevance", label: "Relevance" },
@@ -275,6 +269,67 @@ function FollowTooltip({
       style={{ left: x + 16, top: y + 16 }}
     >
       {children}
+    </div>
+  );
+}
+
+// Numbered page controls under the results grid, now that it grows down
+// the page instead of scrolling inside its own little box - up to 5 page
+// numbers around the current one, plus Prev/Next and jumps to the very
+// first/last page once there's enough pages that those aren't already
+// among the 5 shown.
+function Pagination({
+  page,
+  totalPages,
+  onChange,
+}: {
+  page: number;
+  totalPages: number;
+  onChange: (page: number) => void;
+}) {
+  const windowSize = 5;
+  let start = Math.max(1, page - Math.floor(windowSize / 2));
+  const end = Math.min(totalPages, start + windowSize - 1);
+  start = Math.max(1, end - windowSize + 1);
+  const pages = Array.from({ length: end - start + 1 }, (_, i) => start + i);
+
+  const btnClass = (active: boolean) =>
+    `tab-btn min-w-[2.25rem] justify-center px-2 py-1 text-xs ${active ? "tab-btn-active" : ""}`;
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 border-t border-neutral-700/60 pt-3">
+      <button type="button" disabled={page <= 1} onClick={() => onChange(page - 1)} className={btnClass(false)}>
+        ‹ Prev
+      </button>
+      {start > 1 && (
+        <>
+          <button type="button" onClick={() => onChange(1)} className={btnClass(false)}>
+            1
+          </button>
+          {start > 2 && <span className="px-1 text-gray-500">…</span>}
+        </>
+      )}
+      {pages.map((p) => (
+        <button key={p} type="button" onClick={() => onChange(p)} className={btnClass(p === page)}>
+          {p}
+        </button>
+      ))}
+      {end < totalPages && (
+        <>
+          {end < totalPages - 1 && <span className="px-1 text-gray-500">…</span>}
+          <button type="button" onClick={() => onChange(totalPages)} className={btnClass(false)}>
+            {totalPages}
+          </button>
+        </>
+      )}
+      <button
+        type="button"
+        disabled={page >= totalPages}
+        onClick={() => onChange(page + 1)}
+        className={btnClass(false)}
+      >
+        Next ›
+      </button>
     </div>
   );
 }
@@ -610,10 +665,14 @@ export default function ItemSearch() {
   const [stat, setStat] = useState("");
   const [sort, setSort] = useState<SortOption>("relevance");
   const [results, setResults] = useState<ItemResult[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(30);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const requestId = useRef(0);
+  const resultsTopRef = useRef<HTMLDivElement | null>(null);
 
   const [characters, setCharacters] = useState<CharacterSummary[]>([]);
   const [selectedCharacterId, setSelectedCharacterId] = useState("");
@@ -656,6 +715,12 @@ export default function ItemSearch() {
 
   const selectedCharacter = characters.find((c) => c.id === selectedCharacterId) ?? null;
 
+  // Tracks the last query/quality/stat/sort combination a fetch went out
+  // for, so a change to any of them can jump back to page 1 (a new search
+  // shouldn't land you on whatever deep page the previous one left off on)
+  // without that reset fighting with `page` also being a dependency below.
+  const lastFilterKey = useRef("");
+
   useEffect(() => {
     const trimmedQuery = query.trim();
     const trimmedStat = stat.trim();
@@ -663,10 +728,17 @@ export default function ItemSearch() {
 
     if (!active) {
       setResults([]);
+      setTotal(0);
       setError(null);
       setLoading(false);
       return;
     }
+
+    const filterKey = `${trimmedQuery}|${quality}|${trimmedStat}|${sort}`;
+    const filtersChanged = filterKey !== lastFilterKey.current;
+    lastFilterKey.current = filterKey;
+    const effectivePage = filtersChanged ? 1 : page;
+    if (filtersChanged && page !== 1) setPage(1);
 
     setLoading(true);
     const thisRequest = ++requestId.current;
@@ -676,6 +748,8 @@ export default function ItemSearch() {
         if (trimmedQuery.length >= 2) params.set("q", trimmedQuery);
         if (quality) params.set("quality", quality);
         if (trimmedStat.length >= 2) params.set("stat", trimmedStat);
+        if (sort !== "relevance") params.set("sort", sort);
+        params.set("page", String(effectivePage));
 
         const res = await fetch(`/api/items/search?${params.toString()}`);
         const data = await res.json();
@@ -683,14 +757,18 @@ export default function ItemSearch() {
         if (!res.ok) {
           setError(data.error ?? "Search failed");
           setResults([]);
+          setTotal(0);
         } else {
           setError(null);
           setResults(data.items ?? []);
+          setTotal(data.total ?? 0);
+          setPageSize(data.pageSize ?? 30);
         }
       } catch {
         if (thisRequest === requestId.current) {
           setError("Search failed");
           setResults([]);
+          setTotal(0);
         }
       } finally {
         if (thisRequest === requestId.current) setLoading(false);
@@ -698,7 +776,7 @@ export default function ItemSearch() {
     }, 250);
 
     return () => clearTimeout(handle);
-  }, [query, quality, stat]);
+  }, [query, quality, stat, sort, page]);
 
   // Clicking a card selects it for the details panel; if a new search makes
   // that item disappear from the results, the panel closes rather than
@@ -709,18 +787,25 @@ export default function ItemSearch() {
     }
   }, [results, selectedId]);
 
-  const sortedResults = useMemo(() => {
-    if (sort === "relevance") return results;
-    const copy = [...results];
-    if (sort === "name") copy.sort((a, b) => a.name.localeCompare(b.name));
-    if (sort === "level") copy.sort((a, b) => (b.level ?? -1) - (a.level ?? -1));
-    if (sort === "quality") {
-      copy.sort((a, b) => (QUALITY_RANK[b.quality ?? ""] ?? -1) - (QUALITY_RANK[a.quality ?? ""] ?? -1));
-    }
-    return copy;
-  }, [results, sort]);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  const selectedItem = sortedResults.find((r) => r.id === selectedId) ?? null;
+  // Jumping to a page (or a new search resetting to page 1) scrolls back up
+  // to the top of the results - now that the grid grows down the page
+  // instead of scrolling in its own box, "Next" from the bottom of a long
+  // page would otherwise leave you staring at wherever the new page's
+  // scroll position happened to land. Skips the very first render so
+  // landing on the Items page doesn't yank the scroll position around
+  // before anyone has searched for anything.
+  const didMountRef = useRef(false);
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [page]);
+
+  const selectedItem = results.find((r) => r.id === selectedId) ?? null;
 
   const active = query.trim().length >= 2 || quality.length > 0 || stat.trim().length >= 2;
 
@@ -785,7 +870,8 @@ export default function ItemSearch() {
         {active && !loading && !error && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-700/60 pt-2 text-xs text-gray-500">
             <span>
-              {sortedResults.length} result{sortedResults.length === 1 ? "" : "s"}
+              {total} result{total === 1 ? "" : "s"}
+              {totalPages > 1 && ` · page ${page} of ${totalPages}`}
             </span>
             <label className="flex items-center gap-1.5">
               Sort:
@@ -816,9 +902,9 @@ export default function ItemSearch() {
         </p>
       )}
 
-      {active && !loading && !error && sortedResults.length > 0 && (
+      {active && !loading && !error && results.length > 0 && (
         <>
-          <p className="mt-3 text-[11px] text-gray-500">
+          <p ref={resultsTopRef} className="mt-3 scroll-mt-4 text-[11px] text-gray-500">
             <span className="text-[#1eff00]">Confirmed</span> items have been seen live on a real
             Forever character. <span className="text-gray-400">Unconfirmed</span> ones are
             Blizzard&apos;s original classic data, which Forever may have changed - click any item
@@ -826,14 +912,14 @@ export default function ItemSearch() {
           </p>
           <div className="mt-1 flex flex-col gap-3 lg:flex-row lg:items-start">
             <div
-              className="max-h-[70vh] flex-1 overflow-y-auto rounded-md p-2"
+              className="flex-1 rounded-md p-2"
               style={{
                 background: "linear-gradient(180deg, #0c0c14, #000005)",
                 border: "1px solid #c8aa6e",
               }}
             >
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {sortedResults.map((item) => (
+                {results.map((item) => (
                   <ItemRow
                     key={item.id}
                     item={item}
@@ -844,6 +930,10 @@ export default function ItemSearch() {
                   />
                 ))}
               </div>
+
+              {totalPages > 1 && (
+                <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+              )}
             </div>
 
             {selectedItem && (
@@ -860,7 +950,7 @@ export default function ItemSearch() {
         </>
       )}
 
-      {active && !loading && !error && sortedResults.length === 0 && (
+      {active && !loading && !error && results.length === 0 && (
         <p className="mt-3 text-sm text-gray-400">No items found matching those filters.</p>
       )}
     </div>
