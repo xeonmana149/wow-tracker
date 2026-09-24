@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import {
   ItemTooltipBox,
   KNOWN_SLOT_LABELS,
-  TwoColumnLine,
   buildFallbackTooltipLines,
   extractEffectLines,
   extractSlotAndSubclass,
@@ -64,43 +63,43 @@ const QUALITY_OPTIONS: { value: string; label: string; color: string }[] = [
   { value: "LEGENDARY", label: "Legendary", color: "#ff8000" },
 ];
 
-// Follows the cursor rather than anchoring to the row, and is positioned
-// `fixed` (viewport-relative) so it's never clipped by the scrollable
-// results panel - a plain absolutely-positioned tooltip inside an
-// overflow/scroll container gets cut off exactly like the last version did.
-function FollowTooltip({
-  x,
-  y,
-  children,
-}: {
-  x: number;
-  y: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className="pointer-events-none fixed z-50"
-      style={{ left: x + 16, top: y + 16 }}
-    >
-      {children}
-    </div>
-  );
-}
+const QUALITY_RANK: Record<string, number> = {
+  POOR: 0,
+  COMMON: 1,
+  UNCOMMON: 2,
+  RARE: 3,
+  EPIC: 4,
+  LEGENDARY: 5,
+};
 
-function ItemRow({
-  item,
-  character,
-  allCharacters,
-}: {
-  item: ItemResult;
-  character: CharacterSummary | null;
-  allCharacters: CharacterSummary[];
-}) {
-  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
-  // A live-scanned fileID (icon) is a direct, guaranteed-correct reference
-  // when there is one; icon_name (resolved from Blizzard's item-media
-  // endpoint) is the fallback for anything that's only ever come from the
-  // bulk-seeded baseline and never actually been equipped or scanned.
+type SortOption = "relevance" | "name" | "level" | "quality";
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: "relevance", label: "Relevance" },
+  { value: "name", label: "Name (A-Z)" },
+  { value: "level", label: "Item Level" },
+  { value: "quality", label: "Quality" },
+];
+
+// Clamps text to 2 visual lines instead of the old single-line `truncate` -
+// long stat lists and Equip:/Use: text now wrap onto a second line instead
+// of getting cut off after a handful of characters, while still keeping a
+// card from growing unbounded for something with a huge tooltip.
+const CLAMP_2: React.CSSProperties = {
+  display: "-webkit-box",
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: "vertical",
+  overflow: "hidden",
+};
+
+// All the per-item derived display data (icon, tooltip lines, the character-
+// comparison warnings, etc.) - pulled out into one place so both the compact
+// card (ItemRow) and the bigger persistent details panel (ItemInspector) show
+// exactly the same information instead of two hand-maintained copies.
+function computeItemDisplay(
+  item: ItemResult,
+  character: CharacterSummary | null,
+  allCharacters: CharacterSummary[]
+) {
   const iconSrc = iconUrlForFileId(item.icon) ?? (item.icon_name ? wowIconUrl(item.icon_name) : null);
   const color = item.quality_color ? `#${item.quality_color}` : "#ffffff";
   const hasRealTooltip = !!item.tooltip && item.tooltip.length > 0;
@@ -109,27 +108,19 @@ function ItemRow({
     : buildFallbackTooltipLines(item);
   // A verified row means a real player's addon actually scanned this item
   // in Forever (applyLiveObservation, lib/items.ts) - that always overwrites
-  // and permanently outranks Blizzard's classic baseline (the bulk-seed and
-  // backfill scripts explicitly never touch a row that already exists,
-  // verified or not), so this says so plainly rather than just staying
-  // silent the way an unverified row's "Unconfirmed" badge does.
+  // and permanently outranks Blizzard's classic baseline, so this says so
+  // plainly rather than just staying silent the way an unverified row's
+  // badge does.
   const note = item.verified
     ? "Confirmed in Forever - seen on a real character"
     : tooltipLines.length > 0
       ? "Unconfirmed - based on Blizzard's classic database, may differ in Forever"
       : "No data captured yet - needs manual entry";
 
-  // A verified item's real slot/armor-or-weapon-type never got written to
-  // the inventory_type/item_subclass columns (applyLiveObservation doesn't
-  // set them - see lib/items.ts), but a live tooltip already says it in
-  // plain text, so that's read directly instead for anything verified.
-  // Unverified Blizzard-baseline rows DO have those columns, so they still
-  // work as the fallback.
   const parsedSlot = hasRealTooltip ? extractSlotAndSubclass(item.tooltip as string[]) : null;
   const subclassForCheck = parsedSlot?.subclass ?? item.item_subclass;
-  const slotLine = parsedSlot?.slot
-    ? [parsedSlot.slot, parsedSlot.subclass].filter(Boolean).join("  ")
-    : [formatSlotLabel(item.inventory_type), item.item_subclass].filter(Boolean).join("  ");
+  const slotPart = parsedSlot?.slot ?? formatSlotLabel(item.inventory_type);
+  const subclassPart = parsedSlot?.subclass ?? item.item_subclass;
 
   const armorOrDamage =
     item.armor != null
@@ -144,22 +135,11 @@ function ItemRow({
       ? item.stats.map((s) => `+${s.value} ${s.type}`).join("  ·  ")
       : null;
 
-  // A real scanned tooltip already has its Use:/Equip: lines mixed into the
-  // plain tooltip text (extractEffectLines pulls them back out); an
-  // unverified baseline row keeps them separately in spell_lines instead,
-  // straight from Blizzard's data (see extractPreviewItemDetails, lib/items.ts).
   const effectLines = hasRealTooltip ? extractEffectLines(item.tooltip) : (item.spell_lines ?? []);
 
-  // Auction-house-style "can my character actually use this" checks -
-  // only meaningful once a character is selected in the dropdown above.
   const levelBad =
     !!character && item.required_level != null && item.required_level > character.level;
   const classBad = !!character && !classCanUseSubclass(character.class, subclassForCheck);
-  // A profession requirement (e.g. "Requires Alchemy (275)" on a recipe) -
-  // a real scanned tooltip has it as a plain line; an unverified baseline
-  // recipe row has it in profession_requirement instead (Blizzard's own
-  // data, pre-formatted the same "Requires X (N)" way so the same parser
-  // handles both - see extractPreviewItemDetails, lib/items.ts).
   const profReq = hasRealTooltip
     ? extractProfessionRequirement(item.tooltip)
     : item.profession_requirement
@@ -168,9 +148,7 @@ function ItemRow({
   const profBad = !!character && !!profReq && !characterMeetsProfession(character, profReq);
   const suggestedCharacter =
     profBad && profReq
-      ? allCharacters.find(
-          (c) => c.id !== character!.id && characterMeetsProfession(c, profReq)
-        )
+      ? allCharacters.find((c) => c.id !== character!.id && characterMeetsProfession(c, profReq))
       : undefined;
   const hasCharacterWarning = classBad || levelBad || profBad;
 
@@ -188,8 +166,6 @@ function ItemRow({
     for (const label of KNOWN_SLOT_LABELS) {
       if (trimmed.startsWith(`${label}  `)) {
         const subclass = trimmed.slice(label.length + 2).trim();
-        // Only the offending word turns red (e.g. "Axe"), same as the real
-        // tooltip/auction house - the slot itself ("Two-Hand") isn't wrong.
         if (!classCanUseSubclass(character.class, subclass)) return { rightClassName: "text-red-500" };
         break;
       }
@@ -225,47 +201,143 @@ function ItemRow({
     </div>
   ) : undefined;
 
+  return {
+    iconSrc,
+    color,
+    tooltipLines,
+    note,
+    slotPart,
+    subclassPart,
+    armorOrDamage,
+    dpsLine,
+    statsSummary,
+    effectLines,
+    levelBad,
+    classBad,
+    profReq,
+    profBad,
+    suggestedCharacter,
+    characterNote,
+    tooltipLineColor,
+  };
+}
+
+// Follows the cursor rather than anchoring to the row, and is positioned
+// `fixed` (viewport-relative) so it's never clipped by the scrollable
+// results panel.
+function FollowTooltip({
+  x,
+  y,
+  children,
+}: {
+  x: number;
+  y: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="pointer-events-none fixed z-50"
+      style={{ left: x + 16, top: y + 16 }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Badge({ verified }: { verified: boolean }) {
+  return verified ? (
+    <span
+      title="Confirmed in Forever - seen on a real character"
+      className="shrink-0 rounded bg-[#1eff00]/10 px-1 py-[1px] text-[9px] font-semibold uppercase tracking-wide text-[#1eff00]"
+    >
+      Confirmed
+    </span>
+  ) : (
+    <span
+      title="Unconfirmed - based on Blizzard's classic database, which Forever may have changed"
+      className="shrink-0 rounded bg-neutral-700/60 px-1 py-[1px] text-[9px] font-semibold uppercase tracking-wide text-gray-400"
+    >
+      Unconfirmed
+    </span>
+  );
+}
+
+function ItemRow({
+  item,
+  character,
+  allCharacters,
+  selected,
+  onSelect,
+}: {
+  item: ItemResult;
+  character: CharacterSummary | null;
+  allCharacters: CharacterSummary[];
+  selected: boolean;
+  onSelect: (item: ItemResult) => void;
+}) {
+  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+  const d = computeItemDisplay(item, character, allCharacters);
+
+  const shownEffects = d.effectLines.slice(0, 2);
+  const extraEffects = d.effectLines.length - shownEffects.length;
+
   function handleMove(e: MouseEvent) {
     setHoverPos({ x: e.clientX, y: e.clientY });
   }
 
   return (
     <div
-      className="group relative flex items-center gap-3 rounded border border-neutral-800 px-3 py-2 hover:bg-neutral-800/60"
+      className={`group relative flex cursor-pointer gap-3 rounded-md border p-3 transition ${
+        selected
+          ? "border-amber-500/70 bg-amber-500/10"
+          : "border-neutral-700 bg-black/30 hover:border-neutral-500 hover:bg-black/50"
+      }`}
       onMouseMove={handleMove}
       onMouseLeave={() => setHoverPos(null)}
+      onClick={() => onSelect(item)}
     >
-      <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded border border-neutral-600 bg-neutral-800">
-        {iconSrc && (
+      <div
+        className="flex-shrink-0 overflow-hidden rounded border border-neutral-600 bg-neutral-800"
+        style={{ width: 52, height: 52 }}
+      >
+        {d.iconSrc && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={iconSrc} alt="" className="h-full w-full object-cover" />
+          <img src={d.iconSrc} alt="" className="h-full w-full object-cover" />
         )}
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="text-xs font-semibold leading-tight" style={{ color }}>
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <span className="text-sm font-semibold leading-tight" style={{ color: d.color }}>
             {item.name}
           </span>
-          {item.verified ? (
-            <span className="whitespace-nowrap text-[10px] text-[#1eff00]">Confirmed in Forever</span>
-          ) : (
-            <span className="whitespace-nowrap text-[10px] text-yellow-400">Unconfirmed</span>
+          <Badge verified={item.verified} />
+        </div>
+
+        <div className="mt-0.5 flex items-baseline justify-between gap-2 text-xs">
+          <span className="min-w-0 truncate text-gray-400">
+            {d.slotPart}
+            {d.subclassPart && (
+              <>
+                <span className="text-gray-600"> • </span>
+                <span className={d.classBad ? "text-red-500" : undefined}>{d.subclassPart}</span>
+              </>
+            )}
+          </span>
+          {item.required_level != null && (
+            <span className={`shrink-0 ${d.levelBad ? "text-red-500" : "text-gray-400"}`}>
+              Req. {item.required_level}
+            </span>
           )}
         </div>
-        {slotLine && (
-          <TwoColumnLine
-            text={slotLine}
-            className="max-w-[220px] text-xs text-gray-400"
-            rightClassName={classBad ? "text-red-500" : undefined}
-          />
-        )}
-        {armorOrDamage && (
-          <TwoColumnLine text={armorOrDamage} className="max-w-[220px] text-xs text-gray-300" />
-        )}
-        {dpsLine && <div className="text-xs text-gray-500">{dpsLine}</div>}
-        {statsSummary && (
-          <div className="truncate text-xs text-gray-300">{statsSummary}</div>
+
+        {d.armorOrDamage && <div className="mt-0.5 text-xs text-gray-300">{d.armorOrDamage}</div>}
+        {d.dpsLine && <div className="text-xs text-gray-500">{d.dpsLine}</div>}
+
+        {d.statsSummary && (
+          <div className="mt-1 text-xs text-gray-200" style={CLAMP_2}>
+            {d.statsSummary}
+          </div>
         )}
         {item.classes_text && (
           <div className="truncate text-xs text-gray-300">{item.classes_text}</div>
@@ -273,29 +345,29 @@ function ItemRow({
         {item.item_set_line && (
           <div className="truncate text-xs text-gray-400">{item.item_set_line}</div>
         )}
-        {effectLines.map((line, i) => (
-          <div key={i} className="truncate text-xs text-[#1eff00]">
+        {shownEffects.map((line, i) => (
+          <div key={i} className="mt-0.5 text-xs text-[#1eff00]" style={CLAMP_2}>
             {line}
           </div>
         ))}
-        {profBad && profReq && (
-          <div className="truncate text-xs text-red-500">
-            Requires {profReq.profession} ({profReq.skill})
+        {extraEffects > 0 && (
+          <div className="text-[10px] text-gray-500">
+            +{extraEffects} more effect{extraEffects === 1 ? "" : "s"} - hover for full tooltip
           </div>
         )}
-        {suggestedCharacter && (
-          <div className="truncate text-xs text-sky-400">
-            → {suggestedCharacter.name} can make this
+        {d.profBad && d.profReq && (
+          <div className="mt-0.5 text-xs text-red-500">
+            Requires {d.profReq.profession} ({d.profReq.skill})
           </div>
         )}
-      </div>
+        {d.suggestedCharacter && (
+          <div className="text-xs text-sky-400">→ {d.suggestedCharacter.name} can make this</div>
+        )}
 
-      <div className="w-20 flex-shrink-0 text-right text-xs text-gray-400">
-        {item.required_level != null && (
-          <div className={levelBad ? "text-red-500" : undefined}>Req. {item.required_level}</div>
-        )}
         {item.sell_price != null && (
-          <div>{renderTooltipLine(formatMoneyTokens(item.sell_price))}</div>
+          <div className="mt-1.5 flex justify-end text-xs text-gray-400">
+            {renderTooltipLine(formatMoneyTokens(item.sell_price))}
+          </div>
         )}
       </div>
 
@@ -304,14 +376,83 @@ function ItemRow({
           <ItemTooltipBox
             name={item.name}
             qualityColor={item.quality_color}
-            lines={tooltipLines}
-            note={note}
+            lines={d.tooltipLines}
+            note={d.note}
             noteClassName={item.verified ? "text-[#1eff00]" : "text-yellow-400"}
-            lineColor={tooltipLineColor}
-            characterNote={characterNote}
+            lineColor={d.tooltipLineColor}
+            characterNote={d.characterNote}
           />
         </FollowTooltip>
       )}
+    </div>
+  );
+}
+
+// A persistent details panel for whatever item was last clicked (rather than
+// only ever showing details on hover) - gives the item browser somewhere to
+// eventually grow tracker-specific actions (wishlist, pre-BiS lists, etc.)
+// beyond just a Classic-style tooltip.
+function ItemInspector({
+  item,
+  character,
+  allCharacters,
+  onClose,
+}: {
+  item: ItemResult;
+  character: CharacterSummary | null;
+  allCharacters: CharacterSummary[];
+  onClose: () => void;
+}) {
+  const d = computeItemDisplay(item, character, allCharacters);
+  return (
+    <div className="relative w-full lg:w-auto">
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close item details"
+        className="absolute -right-2 -top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-neutral-600 bg-neutral-900 text-xs text-gray-400 hover:text-white"
+      >
+        ✕
+      </button>
+      <div className="mb-2 flex justify-center">
+        <div
+          className="overflow-hidden rounded border border-neutral-600 bg-neutral-800"
+          style={{ width: 64, height: 64 }}
+        >
+          {d.iconSrc && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={d.iconSrc} alt="" className="h-full w-full object-cover" />
+          )}
+        </div>
+      </div>
+      <ItemTooltipBox
+        name={item.name}
+        qualityColor={item.quality_color}
+        lines={d.tooltipLines}
+        note={d.note}
+        noteClassName={item.verified ? "text-[#1eff00]" : "text-yellow-400"}
+        lineColor={d.tooltipLineColor}
+        characterNote={d.characterNote}
+        className="mx-auto"
+      />
+      <div className="mx-auto mt-3 flex max-w-xs flex-col gap-2">
+        <button
+          type="button"
+          disabled
+          title="Coming soon"
+          className="cursor-not-allowed rounded border border-neutral-700 px-3 py-1.5 text-left text-sm text-gray-500"
+        >
+          + Add to Wishlist
+        </button>
+        <button
+          type="button"
+          disabled
+          title="Coming soon"
+          className="cursor-not-allowed rounded border border-neutral-700 px-3 py-1.5 text-left text-sm text-gray-500"
+        >
+          + Add to Pre-BiS list
+        </button>
+      </div>
     </div>
   );
 }
@@ -320,9 +461,11 @@ export default function ItemSearch() {
   const [query, setQuery] = useState("");
   const [quality, setQuality] = useState("");
   const [stat, setStat] = useState("");
+  const [sort, setSort] = useState<SortOption>("relevance");
   const [results, setResults] = useState<ItemResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const requestId = useRef(0);
 
   const [characters, setCharacters] = useState<CharacterSummary[]>([]);
@@ -410,65 +553,109 @@ export default function ItemSearch() {
     return () => clearTimeout(handle);
   }, [query, quality, stat]);
 
+  // Clicking a card selects it for the details panel; if a new search makes
+  // that item disappear from the results, the panel closes rather than
+  // silently showing a now-irrelevant item.
+  useEffect(() => {
+    if (selectedId != null && !results.some((r) => r.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [results, selectedId]);
+
+  const sortedResults = useMemo(() => {
+    if (sort === "relevance") return results;
+    const copy = [...results];
+    if (sort === "name") copy.sort((a, b) => a.name.localeCompare(b.name));
+    if (sort === "level") copy.sort((a, b) => (b.level ?? -1) - (a.level ?? -1));
+    if (sort === "quality") {
+      copy.sort((a, b) => (QUALITY_RANK[b.quality ?? ""] ?? -1) - (QUALITY_RANK[a.quality ?? ""] ?? -1));
+    }
+    return copy;
+  }, [results, sort]);
+
+  const selectedItem = sortedResults.find((r) => r.id === selectedId) ?? null;
+
   const active = query.trim().length >= 2 || quality.length > 0 || stat.trim().length >= 2;
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search items..."
-          className="w-full max-w-md rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-gray-500"
-          autoFocus
-        />
-        <input
-          type="text"
-          value={stat}
-          onChange={(e) => setStat(e.target.value)}
-          placeholder="Filter by stat (e.g. Strength)"
-          className="w-full max-w-[220px] rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-gray-500"
-        />
-      </div>
-
-      {characters.length > 0 && (
-        <div className="mt-3 flex items-center gap-2">
-          <label className="text-sm text-gray-400" htmlFor="compare-character">
-            Compare against:
-          </label>
-          <select
-            id="compare-character"
-            value={selectedCharacterId}
-            onChange={(e) => setSelectedCharacterId(e.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-white"
-          >
-            <option value="">None</option>
-            {characters.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} (Lv. {c.level} {c.class})
-              </option>
-            ))}
-          </select>
+      <div
+        className="space-y-3 rounded-md border p-3"
+        style={{ background: "linear-gradient(180deg, rgba(20,17,12,0.85), rgba(10,9,6,0.85))", borderColor: "#4a4030" }}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search items..."
+            className="w-full max-w-md rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-gray-500"
+            autoFocus
+          />
+          <input
+            type="text"
+            value={stat}
+            onChange={(e) => setStat(e.target.value)}
+            placeholder="Filter by stat (e.g. Strength)"
+            className="w-full max-w-[220px] rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-gray-500"
+          />
+          {characters.length > 0 && (
+            <select
+              id="compare-character"
+              value={selectedCharacterId}
+              onChange={(e) => setSelectedCharacterId(e.target.value)}
+              className="rounded border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm text-white"
+              title="Compare against"
+            >
+              <option value="">Compare: None</option>
+              {characters.map((c) => (
+                <option key={c.id} value={c.id}>
+                  Compare: {c.name} (Lv. {c.level} {c.class})
+                </option>
+              ))}
+            </select>
+          )}
         </div>
-      )}
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        {QUALITY_OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => setQuality(opt.value)}
-            className="chip"
-            style={{
-              color: opt.color,
-              borderColor: quality === opt.value ? opt.color : undefined,
-              opacity: quality === opt.value || quality === "" ? 1 : 0.5,
-            }}
-          >
-            {opt.label}
-          </button>
-        ))}
+        <div className="flex flex-wrap gap-2">
+          {QUALITY_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setQuality(opt.value)}
+              className="chip"
+              style={{
+                color: opt.color,
+                borderColor: quality === opt.value ? opt.color : undefined,
+                opacity: quality === opt.value || quality === "" ? 1 : 0.5,
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {active && !loading && !error && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-700/60 pt-2 text-xs text-gray-500">
+            <span>
+              {sortedResults.length} result{sortedResults.length === 1 ? "" : "s"}
+            </span>
+            <label className="flex items-center gap-1.5">
+              Sort:
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortOption)}
+                className="rounded border border-neutral-700 bg-neutral-900 px-1.5 py-1 text-xs text-white"
+              >
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
       </div>
 
       {query.trim().length > 0 && query.trim().length < 2 && (
@@ -482,31 +669,51 @@ export default function ItemSearch() {
         </p>
       )}
 
-      {active && !loading && !error && (
-        <p className="mt-4 text-xs text-gray-500">
-          {results.length} result{results.length === 1 ? "" : "s"}
-        </p>
-      )}
+      {active && !loading && !error && sortedResults.length > 0 && (
+        <>
+          <p className="mt-3 text-[11px] text-gray-500">
+            <span className="text-[#1eff00]">Confirmed</span> items have been seen live on a real
+            Forever character. <span className="text-gray-400">Unconfirmed</span> ones are
+            Blizzard&apos;s original classic data, which Forever may have changed - click any item
+            for details, or hover for the full tooltip.
+          </p>
+          <div className="mt-1 flex flex-col gap-3 lg:flex-row lg:items-start">
+            <div
+              className="max-h-[70vh] flex-1 overflow-y-auto rounded-md p-2"
+              style={{
+                background: "linear-gradient(180deg, #0c0c14, #000005)",
+                border: "1px solid #c8aa6e",
+              }}
+            >
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {sortedResults.map((item) => (
+                  <ItemRow
+                    key={item.id}
+                    item={item}
+                    character={selectedCharacter}
+                    allCharacters={characters}
+                    selected={item.id === selectedId}
+                    onSelect={(i) => setSelectedId(i.id === selectedId ? null : i.id)}
+                  />
+                ))}
+              </div>
+            </div>
 
-      {active && !loading && !error && results.length > 0 && (
-        <div
-          className="mt-1 max-h-[70vh] overflow-y-auto rounded-md p-2"
-          style={{ background: "#0c0c14", border: "1px solid #c8aa6e" }}
-        >
-          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {results.map((item) => (
-              <ItemRow
-                key={item.id}
-                item={item}
-                character={selectedCharacter}
-                allCharacters={characters}
-              />
-            ))}
+            {selectedItem && (
+              <div className="lg:sticky lg:top-4 lg:w-[320px] lg:flex-shrink-0 lg:self-start">
+                <ItemInspector
+                  item={selectedItem}
+                  character={selectedCharacter}
+                  allCharacters={characters}
+                  onClose={() => setSelectedId(null)}
+                />
+              </div>
+            )}
           </div>
-        </div>
+        </>
       )}
 
-      {active && !loading && !error && results.length === 0 && (
+      {active && !loading && !error && sortedResults.length === 0 && (
         <p className="mt-3 text-sm text-gray-400">No items found matching those filters.</p>
       )}
     </div>
