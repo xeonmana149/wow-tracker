@@ -75,6 +75,10 @@ export type Todo = {
   // so nothing that reads a Todo without knowing about these breaks.
   value?: number;
   max?: number;
+  // Which equipped-gear slot this is about - only ever set on "gear"
+  // todos. Lets GearCard highlight the exact slot on the character's
+  // paperdoll instead of the suggestion only existing as a line of text.
+  slot?: string;
 };
 
 function plural(n: number, one: string, many: string) {
@@ -197,7 +201,8 @@ export function whatsNext(c: ProgressInput, earned: number): Todo[] {
   for (const g of gearGaps.slice(0, MAX_GEAR_TODOS)) {
     todos.push({
       kind: "gear",
-      text: `${g.slot} is item level ${g.item_level} - well behind your character level (${c.level}), recommended to upgrade`,
+      slot: g.slot,
+      text: `${g.slot} requires level ${g.item_level} - well behind your character level (${c.level}), recommended to upgrade`,
       value: g.item_level,
       max: c.level,
     });

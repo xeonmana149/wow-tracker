@@ -211,10 +211,12 @@ function ItemTooltip({
   entry,
   isOwner,
   characterId,
+  weak,
 }: {
   entry: Item;
   isOwner: boolean;
   characterId: string;
+  weak?: { requiredLevel: number; characterLevel: number };
 }) {
   const color = entry.item_quality ? `#${entry.item_quality}` : "#ffffff";
   const lines = entry.tooltip ?? [];
@@ -244,6 +246,12 @@ function ItemTooltip({
             {renderTooltipLine(line)}
           </div>
         ))}
+      {weak && (
+        <div className="mt-2 border-t border-neutral-700 pt-1.5 text-xs text-red-400">
+          ⚠ Requires level {weak.requiredLevel} - well behind your character level (
+          {weak.characterLevel}). Recommended to upgrade.
+        </div>
+      )}
       {isOwner && entry.item_id != null && entry.item_name && (
         <GearItemActions
           itemId={entry.item_id}
@@ -281,19 +289,24 @@ function Tile({
   entry,
   isOwner,
   characterId,
+  weak,
 }: {
   slot: string;
   entry: Item | undefined;
   isOwner: boolean;
   characterId: string;
+  weak?: { requiredLevel: number; characterLevel: number };
 }) {
   const hasItem = !!entry?.item_name;
   const color = entry?.item_quality ? `#${entry.item_quality}` : null;
+  const flagged = hasItem && !!weak;
 
   return (
     <div className="group relative">
       <div
-        className="gear-slot flex h-16 w-16 items-center justify-center overflow-hidden sm:h-20 sm:w-20"
+        className={`gear-slot flex h-16 w-16 items-center justify-center overflow-hidden sm:h-20 sm:w-20 ${
+          flagged ? "ring-2 ring-red-500 ring-offset-1 ring-offset-neutral-900" : ""
+        }`}
         style={hasItem ? ({ "--slot-quality": color ?? "#9d9d9d" } as CSSProperties) : undefined}
         data-filled={hasItem || undefined}
       >
@@ -322,13 +335,23 @@ function Tile({
         )}
       </div>
 
+      {flagged && (
+        <span
+          className="pointer-events-none absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-red-600 text-[11px] font-bold leading-none text-white shadow"
+          aria-label={`${slot} is well behind your level - recommended to upgrade`}
+          title="Recommended to upgrade"
+        >
+          !
+        </span>
+      )}
+
       <div
         className={`invisible opacity-0 group-hover:visible group-hover:opacity-100 ${
           hasItem ? "" : "pointer-events-none"
         }`}
       >
         {hasItem ? (
-          <ItemTooltip entry={entry as Item} isOwner={isOwner} characterId={characterId} />
+          <ItemTooltip entry={entry as Item} isOwner={isOwner} characterId={characterId} weak={weak} />
         ) : (
           <EmptySlotTooltip slot={slot} />
         )}
@@ -345,6 +368,7 @@ export default function GearCard({
   level,
   characterId,
   ownerId,
+  weakSlots,
 }: {
   items: Item[];
   characterName: string;
@@ -353,6 +377,11 @@ export default function GearCard({
   level: number;
   characterId: string;
   ownerId: string;
+  // Slots flagged by whatsNext()'s gear-upgrade check (lib/progress.ts) as
+  // sitting well below the character's level, from a real scanned
+  // requirement - not guessed. Optional so any other caller of this card
+  // doesn't need to know about it.
+  weakSlots?: Record<string, { requiredLevel: number; characterLevel: number }>;
 }) {
   const [isOwner, setIsOwner] = useState(false);
   useEffect(() => {
@@ -373,6 +402,7 @@ export default function GearCard({
         entry={bySlot[slot]}
         isOwner={isOwner}
         characterId={characterId}
+        weak={weakSlots?.[slot]}
       />
     );
   }
@@ -426,6 +456,12 @@ export default function GearCard({
 
       <p className="mt-4 text-center text-xs text-gray-500">
         Filled in by importing your addon export. Hover a slot to see the item.
+        {weakSlots && Object.keys(weakSlots).length > 0 && (
+          <>
+            {" "}
+            <span className="text-red-400">⚠</span> marks a slot well behind your level.
+          </>
+        )}
       </p>
     </section>
   );

@@ -124,6 +124,16 @@ export default async function CharacterPage({
     todos.push({ kind: "setup", text: "Enter the character's stats" });
   }
 
+  // Same gear-upgrade todos as above, reshaped as a slot -> gap lookup so
+  // GearCard can flag the exact tile on the paperdoll instead of the
+  // suggestion only existing as a line of text in What's Next.
+  const weakGearSlots: Record<string, { requiredLevel: number; characterLevel: number }> = {};
+  for (const t of todos) {
+    if (t.kind === "gear" && t.slot && typeof t.value === "number" && typeof t.max === "number") {
+      weakGearSlots[t.slot] = { requiredLevel: t.value, characterLevel: t.max };
+    }
+  }
+
   return (
     <main className="mx-auto max-w-[1500px] p-4 md:p-6">
       <NeedsSetupBanner
@@ -294,6 +304,7 @@ export default async function CharacterPage({
             level={character.level}
             characterId={character.id}
             ownerId={character.user_id}
+            weakSlots={weakGearSlots}
           />
 
           <WishlistCard
