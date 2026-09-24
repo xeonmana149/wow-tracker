@@ -29,14 +29,6 @@ const shield = (
   </Icon>
 );
 
-// A wrench, for the Crafting Directory tab - a single clean path in the
-// same stroke-only line style as the other nav icons.
-const wrench = (
-  <Icon>
-    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z" />
-  </Icon>
-);
-
 const people = (
   <Icon>
     <circle cx="9" cy="8" r="3.5" />
@@ -76,7 +68,6 @@ const items = (
 
 const links = [
   { href: "/", label: "Dashboard", icon: shield },
-  { href: "/crafting", label: "Crafting", icon: wrench },
   { href: "/items", label: "Items", icon: items },
   { href: "/friends", label: "Friends", icon: people },
   { href: "/leaderboards", label: "Leaderboards", icon: trophy },
