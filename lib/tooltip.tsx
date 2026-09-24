@@ -68,22 +68,61 @@ export function genericizeTooltipLines(lines: string[]): string[] {
   });
 }
 
-// Blizzard's SCREAMING_CASE inventory type -> a normal-looking slot label,
-// e.g. "MAINHAND" -> "Main Hand".
+// Blizzard's inventory_type.type enum doesn't spell anything out in full
+// (e.g. weapons are "WEAPONMAINHAND" / "TWOHWEAPON" / "WEAPONOFFHAND", not
+// "MAINHAND"/"TWOHAND" - a generic "insert a space before 'hand'" rule
+// mangles those), so this maps the specific codes actually seen from
+// Blizzard's API to the label WoW itself shows, falling back to a generic
+// title-case split only for anything unmapped.
+const INVENTORY_TYPE_LABELS: Record<string, string> = {
+  HEAD: "Head",
+  NECK: "Neck",
+  SHOULDER: "Shoulder",
+  BODY: "Shirt",
+  CHEST: "Chest",
+  ROBE: "Chest",
+  WAIST: "Waist",
+  LEGS: "Legs",
+  FEET: "Feet",
+  WRIST: "Wrist",
+  HAND: "Hands",
+  HANDS: "Hands",
+  FINGER: "Finger",
+  TRINKET: "Trinket",
+  CLOAK: "Back",
+  BACK: "Back",
+  TABARD: "Tabard",
+  BAG: "Bag",
+  QUIVER: "Quiver",
+  AMMO: "Ammo",
+  RELIC: "Relic",
+  WEAPON: "One-Hand",
+  WEAPONMAINHAND: "Main Hand",
+  WEAPONOFFHAND: "Off Hand",
+  TWOHWEAPON: "Two-Hand",
+  SHIELD: "Off Hand",
+  HOLDABLE: "Off Hand",
+  RANGED: "Ranged",
+  RANGEDRIGHT: "Ranged",
+  THROWN: "Thrown",
+};
+
 export function formatSlotLabel(inventoryType: string | null): string {
   if (!inventoryType) return "";
-  const spaced = inventoryType.toLowerCase().replace(/hand/g, " hand").trim();
-  return spaced
+  const mapped = INVENTORY_TYPE_LABELS[inventoryType.toUpperCase()];
+  if (mapped) return mapped;
+  return inventoryType
+    .toLowerCase()
     .split(/\s+/)
     .filter(Boolean)
     .map((w) => w[0].toUpperCase() + w.slice(1))
     .join(" ");
 }
 
-// Formats copper into the same "{gold} {silver} {copper}" token line the
-// addon's own scanned tooltips use, so it renders through renderTooltipLine
-// identically to a real captured Sell Price line.
-export function formatSellPriceLine(copper: number): string {
+// The bare "{gold} {silver} {copper}" tokens, no "Sell Price:" label - for
+// compact contexts (the Items list row) that show a price without the full
+// tooltip line around it.
+export function formatMoneyTokens(copper: number): string {
   const gold = Math.floor(copper / 10000);
   const silver = Math.floor((copper % 10000) / 100);
   const cop = copper % 100;
@@ -91,7 +130,24 @@ export function formatSellPriceLine(copper: number): string {
   if (gold > 0) segments.push(`${gold}{gold}`);
   if (gold > 0 || silver > 0) segments.push(`${silver}{silver}`);
   segments.push(`${cop}{copper}`);
-  return `Sell Price: ${segments.join(" ")}`;
+  return segments.join(" ");
+}
+
+// Formats copper into the same "{gold} {silver} {copper}" token line the
+// addon's own scanned tooltips use, so it renders through renderTooltipLine
+// identically to a real captured Sell Price line.
+export function formatSellPriceLine(copper: number): string {
+  return `Sell Price: ${formatMoneyTokens(copper)}`;
+}
+
+// Lines that render green in-game and matter for judging an item at a
+// glance (a proc, a use-effect) - pulled out of a real scanned tooltip so
+// the compact Items-list row can surface them without showing the whole
+// tooltip. Only meaningful for a verified item; Blizzard's baseline data
+// has no way to know about a Forever-specific proc on an unconfirmed item.
+export function extractEffectLines(tooltip: string[] | null | undefined): string[] {
+  if (!tooltip) return [];
+  return tooltip.filter((line) => isEquipLine(line) || isUseLine(line));
 }
 
 export type FallbackTooltipItem = {

@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import {
   ItemTooltipBox,
   buildFallbackTooltipLines,
+  extractEffectLines,
+  formatMoneyTokens,
   formatSlotLabel,
   genericizeTooltipLines,
+  renderTooltipLine,
 } from "../../lib/tooltip";
 import { iconUrlForFileId } from "../../lib/icons";
 
@@ -39,17 +42,31 @@ const QUALITY_OPTIONS: { value: string; label: string; color: string }[] = [
   { value: "LEGENDARY", label: "Legendary", color: "#ff8000" },
 ];
 
-function formatMoneyShort(copper: number | null) {
-  if (copper == null) return null;
-  const gold = Math.floor(copper / 10000);
-  const silver = Math.floor((copper % 10000) / 100);
-  const cop = copper % 100;
-  if (gold > 0) return `${gold}g ${silver}s`;
-  if (silver > 0) return `${silver}s ${cop}c`;
-  return `${cop}c`;
+// Follows the cursor rather than anchoring to the row, and is positioned
+// `fixed` (viewport-relative) so it's never clipped by the scrollable
+// results panel - a plain absolutely-positioned tooltip inside an
+// overflow/scroll container gets cut off exactly like the last version did.
+function FollowTooltip({
+  x,
+  y,
+  children,
+}: {
+  x: number;
+  y: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="pointer-events-none fixed z-50"
+      style={{ left: x + 16, top: y + 16 }}
+    >
+      {children}
+    </div>
+  );
 }
 
 function ItemRow({ item }: { item: ItemResult }) {
+  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const iconSrc = iconUrlForFileId(item.icon);
   const color = item.quality_color ? `#${item.quality_color}` : "#ffffff";
   const hasRealTooltip = !!item.tooltip && item.tooltip.length > 0;
@@ -64,18 +81,32 @@ function ItemRow({ item }: { item: ItemResult }) {
 
   const slotLine = [formatSlotLabel(item.inventory_type), item.item_subclass]
     .filter(Boolean)
-    .join(" · ");
-  const statSummary =
+    .join("  ");
+
+  const armorOrDamage =
+    item.armor != null
+      ? `${item.armor} Armor`
+      : item.damage_min != null && item.damage_max != null
+        ? `${item.damage_min} - ${item.damage_max} Damage  Speed ${item.weapon_speed ?? "?"}`
+        : null;
+
+  const statsSummary =
     item.stats && item.stats.length > 0
       ? item.stats.map((s) => `+${s.value} ${s.type}`).join("  ·  ")
-      : item.armor != null
-        ? `${item.armor} Armor`
-        : item.damage_min != null && item.damage_max != null
-          ? `${item.damage_min}-${item.damage_max} Dmg`
-          : null;
+      : null;
+
+  const effectLines = hasRealTooltip ? extractEffectLines(item.tooltip) : [];
+
+  function handleMove(e: MouseEvent) {
+    setHoverPos({ x: e.clientX, y: e.clientY });
+  }
 
   return (
-    <div className="group relative flex items-center gap-3 border-b border-neutral-800 px-3 py-2 last:border-b-0 hover:bg-neutral-800/60">
+    <div
+      className="group relative flex items-center gap-3 border-b border-neutral-800 px-3 py-2 last:border-b-0 hover:bg-neutral-800/60"
+      onMouseMove={handleMove}
+      onMouseLeave={() => setHoverPos(null)}
+    >
       <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded border border-neutral-600 bg-neutral-800">
         {iconSrc && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -92,25 +123,36 @@ function ItemRow({ item }: { item: ItemResult }) {
             <span className="whitespace-nowrap text-[10px] text-yellow-400">Unconfirmed</span>
           )}
         </div>
-        <div className="truncate text-xs text-gray-400">
-          {slotLine}
-          {statSummary && (
-            <span className="text-[#1eff00]">
-              {slotLine ? "  ·  " : ""}
-              {statSummary}
-            </span>
-          )}
-        </div>
+        {slotLine && <div className="truncate text-xs text-gray-400">{slotLine}</div>}
+        {(armorOrDamage || statsSummary) && (
+          <div className="truncate text-xs text-gray-300">
+            {[armorOrDamage, statsSummary].filter(Boolean).join("  ·  ")}
+          </div>
+        )}
+        {effectLines.map((line, i) => (
+          <div key={i} className="truncate text-xs text-[#1eff00]">
+            {line}
+          </div>
+        ))}
       </div>
 
       <div className="flex-shrink-0 text-right text-xs text-gray-400">
         {item.required_level != null && <div>Req. {item.required_level}</div>}
-        {formatMoneyShort(item.sell_price) && <div>{formatMoneyShort(item.sell_price)}</div>}
+        {item.sell_price != null && (
+          <div>{renderTooltipLine(formatMoneyTokens(item.sell_price))}</div>
+        )}
       </div>
 
-      <div className="pointer-events-none invisible absolute left-1/2 top-full z-50 mt-1 -translate-x-1/2 opacity-0 group-hover:visible group-hover:opacity-100">
-        <ItemTooltipBox name={item.name} qualityColor={item.quality_color} lines={tooltipLines} note={note} />
-      </div>
+      {hoverPos && (
+        <FollowTooltip x={hoverPos.x} y={hoverPos.y}>
+          <ItemTooltipBox
+            name={item.name}
+            qualityColor={item.quality_color}
+            lines={tooltipLines}
+            note={note}
+          />
+        </FollowTooltip>
+      )}
     </div>
   );
 }
@@ -227,7 +269,7 @@ export default function ItemSearch() {
 
       {active && !loading && !error && results.length > 0 && (
         <div
-          className="mt-1 overflow-hidden rounded-md"
+          className="mt-1 max-h-[70vh] overflow-y-auto rounded-md"
           style={{ background: "#0c0c14", border: "1px solid #c8aa6e" }}
         >
           {results.map((item) => (
