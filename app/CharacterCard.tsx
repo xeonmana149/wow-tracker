@@ -150,7 +150,15 @@ export type CardCharacter = {
   // "+N more" for the rest - the full list (with priority and the
   // obtained checkbox) lives on the character's own page.
   character_wishlist?: { item_name: string; priority: "High" | "Medium" | "Low"; obtained: boolean }[];
-
+  // For the Dashboard's "weakest gear" What's Next suggestion (see
+  // lib/progress.ts's gearTodos) - `items` comes back as an object or a
+  // one-element array depending on how Supabase infers the to-one join,
+  // so callers need to handle both.
+  equipped_gear?: {
+    slot: string;
+    item_id: number | null;
+    items?: { level: number | null } | { level: number | null }[] | null;
+  }[];
 };
 
 const WISHLIST_PRIORITY_ORDER: Record<"High" | "Medium" | "Low", number> = {

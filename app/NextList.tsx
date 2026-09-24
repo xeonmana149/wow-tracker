@@ -6,6 +6,7 @@ const DOT: Record<Todo["kind"], string> = {
   profession: "bg-emerald-400",
   level: "bg-gray-400",
   setup: "bg-yellow-300",
+  gear: "bg-red-400",
 };
 
 const BAR: Record<Todo["kind"], string> = {
@@ -14,6 +15,7 @@ const BAR: Record<Todo["kind"], string> = {
   profession: "bg-emerald-400",
   level: "bg-blue-400",
   setup: "bg-yellow-300",
+  gear: "bg-red-400",
 };
 
 // A todo, optionally tagged with which character it belongs to - shown

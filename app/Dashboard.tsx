@@ -44,12 +44,13 @@ type ActivityEvent = {
 // the mockup this is based on) rather than getting a tab of their own; a
 // "setup" todo (only ever pushed by the character's own page, never by
 // whatsNext() here) has no tab and is simply never shown on the Dashboard.
-type NextCategory = "all" | "leveling" | "professions" | "legacy";
+type NextCategory = "all" | "leveling" | "professions" | "legacy" | "gear";
 
 function categoryOf(kind: Todo["kind"]): NextCategory | null {
   if (kind === "level" || kind === "talent") return "leveling";
   if (kind === "profession") return "professions";
   if (kind === "legacy") return "legacy";
+  if (kind === "gear") return "gear";
   return null;
 }
 
@@ -178,7 +179,7 @@ export default function Dashboard({
         supabase
           .from("characters")
           .select(
-            "*, character_professions(profession, skill, recipes), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained)"
+            "*, character_professions(profession, skill, recipes), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained), equipped_gear(slot, item_id, items(level))"
           )
           .eq("user_id", userData.user.id)
           .order("level", { ascending: false }),
@@ -359,7 +360,20 @@ export default function Dashboard({
     const more = missing.length > 4 ? ` and ${missing.length - 4} more` : "";
     accountTodos.push({ kind: "profession", text: `No ${names}${more} on your account` });
   }
-  const perCharacter = characters.map((c) => ({ c, todos: whatsNext(c, legacy) }));
+  // equipped_gear's `items` join comes back as an object or a one-element
+  // array depending on how Supabase infers the to-one relationship - flatten
+  // it to the plain {slot, item_level} shape whatsNext's gear-gap check
+  // expects before handing a character off to it.
+  function gearLevelsOf(c: CardCharacter) {
+    return (c.equipped_gear ?? []).map((g) => {
+      const item = Array.isArray(g.items) ? g.items[0] : g.items;
+      return { slot: g.slot, item_level: item?.level ?? null };
+    });
+  }
+  const perCharacter = characters.map((c) => ({
+    c,
+    todos: whatsNext({ ...c, equipped_gear: gearLevelsOf(c) }, legacy),
+  }));
   const charById = new Map<string, CardCharacter>(characters.map((c) => [c.id, c]));
 
   // One flat list instead of a per-character grouping - account-wide todos
@@ -378,6 +392,7 @@ export default function Dashboard({
     leveling: allTodos.filter((t) => categoryOf(t.kind) === "leveling").length,
     professions: allTodos.filter((t) => categoryOf(t.kind) === "professions").length,
     legacy: allTodos.filter((t) => categoryOf(t.kind) === "legacy").length,
+    gear: allTodos.filter((t) => categoryOf(t.kind) === "gear").length,
   };
   const filteredTodos =
     nextFilter === "all" ? allTodos : allTodos.filter((t) => categoryOf(t.kind) === nextFilter);
@@ -624,7 +639,7 @@ export default function Dashboard({
           <section className="rounded bg-neutral-800 p-4">
             <h2 className="text-xl font-bold">What&apos;s next</h2>
             <p className="mt-1 text-xs text-gray-500">
-              Worked out from your Pre-BiS lists, talents, Legacy and professions.
+              Worked out from your Pre-BiS lists, talents, Legacy, professions and equipped gear.
             </p>
 
             <div className="mt-3 flex flex-wrap gap-2">
@@ -634,6 +649,7 @@ export default function Dashboard({
                   ["leveling", "Leveling"],
                   ["professions", "Professions"],
                   ["legacy", "Legacy"],
+                  ["gear", "Gear"],
                 ] as [NextCategory, string][]
               ).map(([key, label]) => (
                 <button

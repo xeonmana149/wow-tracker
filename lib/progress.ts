@@ -4,6 +4,15 @@ import { MAX_SKILL } from "./professions";
 
 export const MAX_LEVEL = 60;
 
+// A very rough rule of thumb (not an exact Forever formula) that "on-level"
+// gear roughly tracks character level 1:1 - quest greens can lag behind by
+// a little without it meaning anything, but a piece sitting this far below
+// your current level is usually genuinely outdated rather than just a
+// recent quest reward you haven't replaced yet. Tune this (and how many
+// pieces get suggested) here if it's flagging too eagerly or not enough.
+const GEAR_LEVEL_GAP_THRESHOLD = 15;
+const MAX_GEAR_TODOS = 2;
+
 // Everything the progress bars and to-do list need to know about a character
 export type ProgressInput = {
   level: number;
@@ -12,12 +21,18 @@ export type ProgressInput = {
   character_professions?: { profession: string; skill: number }[];
   character_talents?: { slot?: number; rank: number }[];
   character_legacy?: { rank: number }[];
+  // Slot name plus the equipped item's level (pulled from the shared items
+  // table via item_id - equipped_gear itself doesn't store item level).
+  // Optional and per-row nullable since older rows synced before item_id
+  // linking existed, or an item the shared table has no level for yet,
+  // simply can't be compared and are skipped in gearTodos below.
+  equipped_gear?: { slot: string; item_level: number | null }[];
 };
 
 export type Bar = { key: string; label: string; value: number; max: number; text: string };
 
 export type Todo = {
-  kind: "talent" | "legacy" | "profession" | "level" | "setup";
+  kind: "talent" | "legacy" | "profession" | "level" | "setup" | "gear";
   text: string;
   // Current/target numbers for todos that represent progress toward
   // something (skill level, character level, points spent) - lets the UI
@@ -130,6 +145,26 @@ export function whatsNext(c: ProgressInput, earned: number): Todo[] {
       text: `${p.profession} ${p.skill} → ${MAX_SKILL}`,
       value: p.skill,
       max: MAX_SKILL,
+    });
+  }
+
+  // The weakest equipped piece(s), if any are sitting well below current
+  // character level - see GEAR_LEVEL_GAP_THRESHOLD above. Items with no
+  // known level (no item_id link yet, or the shared items table hasn't got
+  // a level for that id) can't be judged either way, so they're skipped
+  // rather than assumed fine or assumed weak.
+  const gearGaps = (c.equipped_gear ?? [])
+    .filter((g): g is { slot: string; item_level: number } => typeof g.item_level === "number")
+    .map((g) => ({ ...g, gap: c.level - g.item_level }))
+    .filter((g) => g.gap >= GEAR_LEVEL_GAP_THRESHOLD)
+    .sort((a, b) => b.gap - a.gap);
+
+  for (const g of gearGaps.slice(0, MAX_GEAR_TODOS)) {
+    todos.push({
+      kind: "gear",
+      text: `${g.slot} is item level ${g.item_level} - well behind your character level (${c.level}), recommended to upgrade`,
+      value: g.item_level,
+      max: c.level,
     });
   }
 
