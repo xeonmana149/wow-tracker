@@ -1,82 +1,13 @@
 import Link from "next/link";
 import AuthStatus from "../AuthStatus";
 import Roadmap from "../Roadmap";
+import { loadNews } from "../../lib/news";
 
-const FEED = "https://www.wowhead.com/news/rss/all";
 const BLIZZARD_NEWS = "https://news.blizzard.com/en-us/world-of-warcraft";
 const BETA_POST =
   "https://news.blizzard.com/en-us/article/24304160/the-world-of-warcraft-forever-beta-now-live";
 
 // As announced by Blizzard: 4 November, 3:00 p.m. PST
-
-
-type NewsItem = {
-  title: string;
-  link: string;
-  summary: string;
-  category: string;
-  image: string | null;
-  date: Date | null;
-};
-
-function decode(s: string) {
-  return s
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;|&#x27;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-    .replace(/&amp;/g, "&");
-}
-
-// The text inside one tag of a feed item
-function tag(chunk: string, name: string) {
-  const m = chunk.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`));
-  return m ? m[1].replace(/^<!\[CDATA\[|\]\]>$/g, "").trim() : "";
-}
-
-function parseFeed(xml: string): NewsItem[] {
-  const items: NewsItem[] = [];
-
-  for (const chunk of xml.split("<item>").slice(1)) {
-    const title = decode(tag(chunk, "title"));
-    const link = tag(chunk, "link");
-    if (!title || !link.startsWith("https://")) continue;
-
-    // The description starts with a one-line summary, then a "continue reading" link
-    const rawSummary = tag(chunk, "description").split("&lt;br&gt;")[0];
-    const summary = decode(rawSummary).replace(/<[^>]+>/g, "").trim();
-
-    const time = Date.parse(tag(chunk, "pubDate"));
-    const image = chunk.match(/<media:content[^>]*\burl="([^"]+)"/)?.[1] ?? null;
-
-    items.push({
-      title,
-      link,
-      summary,
-      category: tag(chunk, "category"),
-      image: image && image.startsWith("https://") ? image : null,
-      date: Number.isNaN(time) ? null : new Date(time),
-    });
-  }
-
-  return items;
-}
-
-// Fetched at most once every 15 minutes, however many people visit
-async function loadNews(): Promise<NewsItem[] | null> {
-  try {
-    const res = await fetch(FEED, {
-      headers: { "User-Agent": "WoWForeverTracker/1.0 (private friends planner)" },
-      next: { revalidate: 900 },
-    });
-    if (!res.ok) return null;
-    return parseFeed(await res.text());
-  } catch {
-    return null;
-  }
-}
 
 function timeAgo(date: Date | null) {
   if (!date) return "";
