@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import {
   LEFT_SLOTS as LEFT,
   RIGHT_SLOTS as RIGHT,
@@ -9,11 +9,22 @@ import {
 } from "../../../lib/gear";
 import { RACE_FACTION } from "../../../lib/options";
 import { classIcon, iconUrl } from "../../../lib/icons";
+import { supabase } from "../../../lib/supabase";
+import { addToPreBis, addToWishlist } from "../../../lib/itemLists";
+import { isCraftedByLine, isEquipLine, isUseLine, renderTooltipLine } from "../../../lib/tooltip";
 
 type Item = {
   slot: string;
   item_name: string | null;
   item_link: string | null;
+  // The shared item database's own id for this item, parsed by the addon
+  // straight out of the item link (see importLogic.ts) - present on
+  // anything synced since item_id was added, null on older rows that
+  // haven't been re-synced yet. This is what lets "Add to Wishlist"/"Add to
+  // Pre-BiS" work directly off an equipped item, and is the same id the
+  // Items page (ItemSearch.tsx) uses, instead of equipped gear carrying its
+  // own disconnected copy of an item's identity.
+  item_id: number | null;
   item_quality: string | null;
   item_icon: string | null;
   tooltip: string[] | null;
@@ -148,48 +159,77 @@ const SLOT_ICONS: Record<string, ReactNode> = {
   ),
 };
 
-const COIN_COLORS: Record<string, string> = {
-  gold: "#ffd700",
-  silver: "#c0c0c0",
-  copper: "#b87333",
-};
+// Small "+ Wishlist" / "+ Pre-BiS" action row shown at the bottom of an
+// equipped item's tooltip - the exact same character_wishlist/
+// character_prebis tables and lib/itemLists.ts helpers the Items page uses,
+// so adding an item works identically whichever page you clicked it from.
+// Only rendered for the character's own owner (same isOwner gate
+// WishlistCard.tsx already uses) and only when this row has a real item_id
+// to link (older un-resynced rows don't have one yet).
+function GearItemActions({
+  itemId,
+  itemName,
+  slot,
+  characterId,
+}: {
+  itemId: number;
+  itemName: string;
+  slot: string;
+  characterId: string;
+}) {
+  const [status, setStatus] = useState<{ wishlist?: string; prebis?: string }>({});
 
-// The addon's stripMarkup swaps the Sell Price line's inline coin icons for
-// {gold}/{silver}/{copper} tokens (curly braces) - same convention the
-// Crafting Directory's recipe tooltips use - but replaced here defensively
-// for [gold]/[silver]/[copper] too, in case a line comes through with
-// square brackets instead. Either way they become small colored coin dots
-// rather than sitting on the page as literal text.
-function renderTooltipLine(line: string) {
-  const parts = line.split(/([{[](?:gold|silver|copper)[}\]])/g);
-  return parts.map((part, i) => {
-    const m = /^[{[](gold|silver|copper)[}\]]$/.exec(part);
-    if (!m) return <span key={i}>{part}</span>;
-    return (
-      <span
-        key={i}
-        title={m[1]}
-        className="mx-0.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full align-middle"
-        style={{ backgroundColor: COIN_COLORS[m[1]] }}
-      />
-    );
-  });
+  async function handleWishlist() {
+    setStatus((s) => ({ ...s, wishlist: "Adding..." }));
+    const result = await addToWishlist(supabase, { characterId, itemId, itemName });
+    setStatus((s) => ({ ...s, wishlist: result.ok ? "Added!" : result.message }));
+  }
+
+  async function handlePreBis() {
+    setStatus((s) => ({ ...s, prebis: "Adding..." }));
+    const result = await addToPreBis(supabase, { characterId, itemId, slot });
+    setStatus((s) => ({ ...s, prebis: result.ok ? "Added!" : result.message }));
+  }
+
+  return (
+    <div className="mt-2 flex flex-col gap-1 border-t border-neutral-700 pt-1.5 text-xs">
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={handleWishlist}
+          className="rounded border border-neutral-600 px-1.5 py-0.5 text-gray-300 hover:border-neutral-400 hover:text-white"
+        >
+          + Wishlist
+        </button>
+        <button
+          type="button"
+          onClick={handlePreBis}
+          className="rounded border border-neutral-600 px-1.5 py-0.5 text-gray-300 hover:border-neutral-400 hover:text-white"
+        >
+          + Pre-BiS
+        </button>
+      </div>
+      {status.wishlist && <span className="text-gray-400">Wishlist: {status.wishlist}</span>}
+      {status.prebis && <span className="text-gray-400">Pre-BiS: {status.prebis}</span>}
+    </div>
+  );
 }
 
-// The "<Made by X>" line the addon adds to anything crafted by a tracked
-// player - green in-game (Blizzard's own crafted-by color, #1eff00), not
-// the plain gray/white the rest of the tooltip uses.
-function isCraftedByLine(line: string) {
-  return /^<.*made by.*>$/i.test(line.trim());
-}
-
-function ItemTooltip({ entry }: { entry: Item }) {
+function ItemTooltip({
+  entry,
+  isOwner,
+  characterId,
+}: {
+  entry: Item;
+  isOwner: boolean;
+  characterId: string;
+}) {
   const color = entry.item_quality ? `#${entry.item_quality}` : "#ffffff";
   const lines = entry.tooltip ?? [];
 
   return (
     <div
-      className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-xs -translate-x-1/2 rounded-md p-3 text-left text-sm shadow-lg"
+      className="absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-xs -translate-x-1/2 rounded-md p-3 text-left text-sm shadow-lg"
       style={{
         background: "linear-gradient(180deg, #0c0c14, #000005)",
         border: "1px solid #c8aa6e",
@@ -201,10 +241,25 @@ function ItemTooltip({ entry }: { entry: Item }) {
       {lines
         .filter((line) => line !== entry.item_name)
         .map((line, i) => (
-          <div key={i} className={isCraftedByLine(line) ? "text-[#1eff00]" : "text-gray-300"}>
+          <div
+            key={i}
+            className={
+              isCraftedByLine(line) || isEquipLine(line) || isUseLine(line)
+                ? "text-[#1eff00]"
+                : "text-gray-300"
+            }
+          >
             {renderTooltipLine(line)}
           </div>
         ))}
+      {isOwner && entry.item_id != null && entry.item_name && (
+        <GearItemActions
+          itemId={entry.item_id}
+          itemName={entry.item_name}
+          slot={entry.slot}
+          characterId={characterId}
+        />
+      )}
     </div>
   );
 }
@@ -229,7 +284,17 @@ function EmptySlotTooltip({ slot }: { slot: string }) {
 // art). Equipped, the item's own icon fills the entire socket edge-to-edge
 // - same as the game, where the icon replaces the slot outline rather than
 // sitting inside it - with the item-quality color taking over the frame.
-function Tile({ slot, entry }: { slot: string; entry: Item | undefined }) {
+function Tile({
+  slot,
+  entry,
+  isOwner,
+  characterId,
+}: {
+  slot: string;
+  entry: Item | undefined;
+  isOwner: boolean;
+  characterId: string;
+}) {
   const hasItem = !!entry?.item_name;
   const color = entry?.item_quality ? `#${entry.item_quality}` : null;
 
@@ -265,8 +330,16 @@ function Tile({ slot, entry }: { slot: string; entry: Item | undefined }) {
         )}
       </div>
 
-      <div className="pointer-events-none invisible opacity-0 group-hover:visible group-hover:opacity-100">
-        {hasItem ? <ItemTooltip entry={entry as Item} /> : <EmptySlotTooltip slot={slot} />}
+      <div
+        className={`invisible opacity-0 group-hover:visible group-hover:opacity-100 ${
+          hasItem ? "" : "pointer-events-none"
+        }`}
+      >
+        {hasItem ? (
+          <ItemTooltip entry={entry as Item} isOwner={isOwner} characterId={characterId} />
+        ) : (
+          <EmptySlotTooltip slot={slot} />
+        )}
       </div>
     </div>
   );
@@ -278,13 +351,21 @@ export default function GearCard({
   race,
   charClass,
   level,
+  characterId,
+  ownerId,
 }: {
   items: Item[];
   characterName: string;
   race: string;
   charClass: string;
   level: number;
+  characterId: string;
+  ownerId: string;
 }) {
+  const [isOwner, setIsOwner] = useState(false);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setIsOwner(data.user?.id === ownerId));
+  }, [ownerId]);
   const bySlot: Record<string, Item> = {};
   for (const i of items) bySlot[i.slot] = i;
 
@@ -293,7 +374,15 @@ export default function GearCard({
   const emblem = classIcon(charClass);
 
   function renderTile(slot: string) {
-    return <Tile key={slot} slot={slot} entry={bySlot[slot]} />;
+    return (
+      <Tile
+        key={slot}
+        slot={slot}
+        entry={bySlot[slot]}
+        isOwner={isOwner}
+        characterId={characterId}
+      />
+    );
   }
 
   return (

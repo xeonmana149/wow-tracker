@@ -14,6 +14,7 @@ import {
 } from "../../lib/tooltip";
 import { iconUrlForFileId, wowIconUrl } from "../../lib/icons";
 import { supabase } from "../../lib/supabase";
+import { addToPreBis, addToWishlist } from "../../lib/itemLists";
 import {
   characterMeetsProfession,
   classCanUseSubclass,
@@ -404,6 +405,40 @@ function ItemInspector({
   onClose: () => void;
 }) {
   const d = computeItemDisplay(item, character, allCharacters);
+  const [wishlistStatus, setWishlistStatus] = useState<string | null>(null);
+  const [prebisStatus, setPrebisStatus] = useState<string | null>(null);
+
+  // Reset the "Added!" feedback whenever a different item gets selected, so
+  // it doesn't linger and look like it applies to the new item.
+  useEffect(() => {
+    setWishlistStatus(null);
+    setPrebisStatus(null);
+  }, [item.id]);
+
+  const disabledReason = !character ? "Select a character above first" : undefined;
+
+  async function handleWishlist() {
+    if (!character) return;
+    setWishlistStatus("Adding...");
+    const result = await addToWishlist(supabase, {
+      characterId: character.id,
+      itemId: item.id,
+      itemName: item.name,
+    });
+    setWishlistStatus(result.ok ? "Added!" : result.message);
+  }
+
+  async function handlePreBis() {
+    if (!character) return;
+    setPrebisStatus("Adding...");
+    const result = await addToPreBis(supabase, {
+      characterId: character.id,
+      itemId: item.id,
+      slot: d.slotPart || null,
+    });
+    setPrebisStatus(result.ok ? "Added!" : result.message);
+  }
+
   return (
     <div className="relative w-full lg:w-auto">
       <button
@@ -435,23 +470,32 @@ function ItemInspector({
         characterNote={d.characterNote}
         className="mx-auto"
       />
-      <div className="mx-auto mt-3 flex max-w-xs flex-col gap-2">
+      <div className="mx-auto mt-3 flex max-w-xs flex-col gap-1.5">
         <button
           type="button"
-          disabled
-          title="Coming soon"
-          className="cursor-not-allowed rounded border border-neutral-700 px-3 py-1.5 text-left text-sm text-gray-500"
+          onClick={handleWishlist}
+          disabled={!character}
+          title={disabledReason}
+          className="rounded border border-neutral-700 px-3 py-1.5 text-left text-sm text-gray-200 enabled:hover:border-neutral-500 enabled:hover:text-white disabled:cursor-not-allowed disabled:text-gray-500"
         >
-          + Add to Wishlist
+          + Add to Wishlist{character ? ` for ${character.name}` : ""}
         </button>
+        {wishlistStatus && <p className="text-xs text-gray-400">{wishlistStatus}</p>}
         <button
           type="button"
-          disabled
-          title="Coming soon"
-          className="cursor-not-allowed rounded border border-neutral-700 px-3 py-1.5 text-left text-sm text-gray-500"
+          onClick={handlePreBis}
+          disabled={!character}
+          title={disabledReason}
+          className="rounded border border-neutral-700 px-3 py-1.5 text-left text-sm text-gray-200 enabled:hover:border-neutral-500 enabled:hover:text-white disabled:cursor-not-allowed disabled:text-gray-500"
         >
-          + Add to Pre-BiS list
+          + Add to Pre-BiS list{character ? ` for ${character.name}` : ""}
         </button>
+        {prebisStatus && <p className="text-xs text-gray-400">{prebisStatus}</p>}
+        {!character && (
+          <p className="text-xs text-gray-500">
+            Pick a character in the toolbar above to add items for them.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -605,12 +649,12 @@ export default function ItemSearch() {
               value={selectedCharacterId}
               onChange={(e) => setSelectedCharacterId(e.target.value)}
               className="rounded border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm text-white"
-              title="Compare against"
+              title="Compare requirements against, and add items to their Wishlist/Pre-BiS"
             >
-              <option value="">Compare: None</option>
+              <option value="">Character: None</option>
               {characters.map((c) => (
                 <option key={c.id} value={c.id}>
-                  Compare: {c.name} (Lv. {c.level} {c.class})
+                  {c.name} (Lv. {c.level} {c.class})
                 </option>
               ))}
             </select>
