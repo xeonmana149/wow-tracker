@@ -173,7 +173,7 @@ const QUALITY_BY_COLOR: Record<string, string> = Object.fromEntries(
 // (in milliseconds - 2800 means Speed 2.80, so divide by 1000 to display).
 // Blizzard also hands back a precomputed, more-precise dps value at
 // `preview_item.weapon.dps.value` - used as-is rather than recomputed here.
-type BlizzardItemBody = {
+export type BlizzardItemBody = {
   id: number;
   name?: { en_US?: string };
   quality?: { type?: string };
@@ -324,7 +324,11 @@ export function extractPreviewItemDetails(previewItem: BlizzardItemBody["preview
   };
 }
 
-function rowFromBlizzard(id: number, body: BlizzardItemBody): ItemRow {
+// Exported for the same reason as mapWithConcurrency above - the backfill
+// script needs to turn a Blizzard item-detail response into the same shape
+// this file already knows how to build, rather than duplicating the field
+// mapping.
+export function rowFromBlizzard(id: number, body: BlizzardItemBody): ItemRow {
   const qualityType = body.quality?.type ?? null;
   const details = extractPreviewItemDetails(body.preview_item);
   return {
@@ -418,7 +422,12 @@ function placeholderRow(id: number, fallback: { name?: string; icon?: number | n
 // thousands, like the classic-catalog bulk-seed job) or all at once (which
 // would hammer Blizzard's API with hundreds of simultaneous requests and
 // risk getting rate-limited). Order of `results` matches `items`.
-async function mapWithConcurrency<T, R>(
+// Exported so scripts/backfill-item-baseline.ts (fixing up existing rows
+// that are missing level/item_class because they were only ever created
+// from a live tooltip observation, never a real Blizzard lookup - see
+// applyLiveObservation below) can reuse the exact same fetch-with-a-limit
+// helper instead of a second copy.
+export async function mapWithConcurrency<T, R>(
   items: T[],
   limit: number,
   fn: (item: T) => Promise<R>
@@ -609,9 +618,41 @@ export async function applyLiveObservation(
     const { error } = await supabase.from("items").update(update).eq("id", itemId);
     if (error) throw new Error(error.message);
   } else {
+    // First time this item's ever been seen at all - a live tooltip only
+    // tells us the Forever-specific stuff (quality/stats/armor/etc, already
+    // in `update` above), never structural fields like item level, item
+    // class or inventory slot. Without this, a brand-new item would sit
+    // with a permanently null `level`, invisible to anything that compares
+    // it against a character's level (e.g. the What's Next gear-upgrade
+    // check) - so grab Blizzard's baseline once, right now, the same way
+    // ensureItemsExist seeds items ahead of time. Best-effort only: if
+    // Blizzard's API is down or the id is Forever-only (404), fall through
+    // to inserting just the observed fields like before rather than losing
+    // the sync over it - a plain insert here is exactly the old behavior.
+    let baseline: Partial<ItemRow> = {};
+    try {
+      const result = await blizzardGet(ITEM_REGION, `/data/wow/item/${itemId}`, {
+        namespace: ITEM_NAMESPACE,
+      });
+      if (result.ok) {
+        const row = rowFromBlizzard(itemId, result.body as BlizzardItemBody);
+        baseline = {
+          item_class: row.item_class,
+          item_subclass: row.item_subclass,
+          inventory_type: row.inventory_type,
+          level: row.level,
+          required_level: row.required_level,
+        };
+      }
+    } catch {
+      // Network/token error - insert with what the live tooltip gave us and
+      // move on; a future observation or the backfill script can fill this
+      // in later.
+    }
+
     const { error } = await supabase
       .from("items")
-      .insert({ id: itemId, source: "auto_new" as ItemSource, ...update });
+      .insert({ id: itemId, source: "auto_new" as ItemSource, ...baseline, ...update });
     if (error) throw new Error(error.message);
   }
 }
