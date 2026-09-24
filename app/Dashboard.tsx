@@ -39,21 +39,6 @@ type ActivityEvent = {
   created_at: string;
 };
 
-// What's Next's filter tabs. Talent todos fold into "Leveling" (talent
-// points come from leveling up, and there's no separate tab for them in
-// the mockup this is based on) rather than getting a tab of their own; a
-// "setup" todo (only ever pushed by the character's own page, never by
-// whatsNext() here) has no tab and is simply never shown on the Dashboard.
-type NextCategory = "all" | "leveling" | "professions" | "legacy" | "gear";
-
-function categoryOf(kind: Todo["kind"]): NextCategory | null {
-  if (kind === "level" || kind === "talent") return "leveling";
-  if (kind === "profession") return "professions";
-  if (kind === "legacy") return "legacy";
-  if (kind === "gear") return "gear";
-  return null;
-}
-
 // Small stroke-only icon set for the Account Overview strip, matching the
 // nav bar's icon style (a plain svg wrapper, a handful of line paths) so
 // this stat row and the top nav read as one visual language.
@@ -144,7 +129,7 @@ export default function Dashboard({
   const [iconOverrides, setIconOverrides] = useState<BadgeIconOverrides>({});
   const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([]);
   const [syncOpenSignal, setSyncOpenSignal] = useState(0);
-  const [nextFilter, setNextFilter] = useState<NextCategory>("all");
+  const [nextTab, setNextTab] = useState<string>("");
   const [myVersions, setMyVersions] = useState<{ addon: string | null; tray: string | null }>({
     addon: null,
     tray: null,
@@ -363,26 +348,33 @@ export default function Dashboard({
   const perCharacter = characters.map((c) => ({ c, todos: whatsNext(c, legacy) }));
   const charById = new Map<string, CardCharacter>(characters.map((c) => [c.id, c]));
 
-  // One flat list instead of a per-character grouping - account-wide todos
-  // first, then every character's, each tagged with its own character so
-  // NextList can show "(name)" after the text. Filtering by category (the
-  // tabs below) is just filtering this one array, since every todo already
-  // knows its own kind.
-  const allTodos: NextListItem[] = [
-    ...accountTodos.map((t) => ({ ...t, character: null })),
-    ...perCharacter.flatMap(({ c, todos }) =>
-      todos.map((t) => ({ ...t, character: { id: c.id, name: c.name } }))
-    ),
-  ];
-  const nextCounts: Record<NextCategory, number> = {
-    all: allTodos.length,
-    leveling: allTodos.filter((t) => categoryOf(t.kind) === "leveling").length,
-    professions: allTodos.filter((t) => categoryOf(t.kind) === "professions").length,
-    legacy: allTodos.filter((t) => categoryOf(t.kind) === "legacy").length,
-    gear: allTodos.filter((t) => categoryOf(t.kind) === "gear").length,
-  };
-  const filteredTodos =
-    nextFilter === "all" ? allTodos : allTodos.filter((t) => categoryOf(t.kind) === nextFilter);
+  // Sectioned per character instead of one flat list - the account's Main
+  // (if one's set) leads, since that's the character most people actually
+  // care about day to day, then every other character in whatever order
+  // they're already sorted in (level, descending), and an "Account" tab
+  // last for the account-wide todos (missing professions etc) that aren't
+  // any one character's. Falls back to the first character leading if
+  // nobody's marked as Main yet.
+  const mainCharacter = characters.find((c) => c.character_type === "Main");
+  const orderedCharacters = mainCharacter
+    ? [mainCharacter, ...characters.filter((c) => c.id !== mainCharacter.id)]
+    : characters;
+
+  const characterTabs = orderedCharacters.map((c) => {
+    const todos = perCharacter.find((p) => p.c.id === c.id)?.todos ?? [];
+    return { key: c.id, label: c.name, isMain: c.id === mainCharacter?.id, count: todos.length, todos };
+  });
+
+  const defaultTab = characterTabs[0]?.key ?? "account";
+  const activeTab = nextTab || defaultTab;
+
+  const activeTodos: NextListItem[] =
+    activeTab === "account"
+      ? accountTodos.map((t) => ({ ...t, character: null }))
+      : (characterTabs.find((t) => t.key === activeTab)?.todos ?? []).map((t) => ({
+          ...t,
+          character: null,
+        }));
 
   // Only fires once this account has actually synced at least once (an
   // empty/never-synced profile has null versions, which isn't "outdated" -
@@ -629,37 +621,35 @@ export default function Dashboard({
               Worked out from your Pre-BiS lists, talents, Legacy, professions and equipped gear.
             </p>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(
-                [
-                  ["all", "All"],
-                  ["leveling", "Leveling"],
-                  ["professions", "Professions"],
-                  ["legacy", "Legacy"],
-                  ["gear", "Gear"],
-                ] as [NextCategory, string][]
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setNextFilter(key)}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                    nextFilter === key
-                      ? "bg-[#c9a566] text-[#2b1c0b]"
-                      : "bg-neutral-700 text-gray-300 hover:bg-neutral-600"
-                  }`}
-                >
-                  {label} ({nextCounts[key]})
-                </button>
-              ))}
-            </div>
-
             {characters.length === 0 ? (
               <p className="mt-3 text-sm text-gray-500">Create a character to get started.</p>
             ) : (
-              <div className="mt-4">
-                <NextList todos={filteredTodos} limit={6} empty="All caught up." />
-              </div>
+              <>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {characterTabs.map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setNextTab(t.key)}
+                      className={`tab-btn ${activeTab === t.key ? "tab-btn-active" : ""}`}
+                    >
+                      {t.isMain && "★ "}
+                      {t.label} ({t.count})
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setNextTab("account")}
+                    className={`tab-btn ${activeTab === "account" ? "tab-btn-active" : ""}`}
+                  >
+                    Account ({accountTodos.length})
+                  </button>
+                </div>
+
+                <div className="mt-4">
+                  <NextList todos={activeTodos} limit={6} empty="All caught up." />
+                </div>
+              </>
             )}
           </section>
 
