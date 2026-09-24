@@ -6,14 +6,25 @@ export type Crafter = {
   ownerName: string | null;
 };
 
+export type CraftReagent = {
+  name: string;
+  quantity: number;
+  // Same shape the addon's recipe scan already captures for every reagent
+  // (see CraftingDirectory.tsx's own Reagent type) - a numeric fileID from
+  // a live scan, occasionally a named icon string, or nothing at all.
+  icon?: number | string | null;
+  // Bare "rrggbb" hex (no '#'), read off the reagent's own tooltip color.
+  color?: string | null;
+};
+
 export type CraftedByInfo = {
   crafters: Crafter[];
-  // "Requires 4x Copper Bar, 2x Linen Cloth" - pulled from whichever
-  // matching character's recipe scan actually captured reagents (an older
-  // addon build, or a recipe nobody's re-scanned since, may have none - see
-  // CraftingDirectory.tsx's own "no extra details captured yet" case). Null
-  // when nobody who knows this has reagent data on file.
-  reagentsText: string | null;
+  // Pulled from whichever matching character's recipe scan actually
+  // captured reagents (an older addon build, or a recipe nobody's
+  // re-scanned since, may have none - see CraftingDirectory.tsx's own "no
+  // extra details captured yet" case). Null when nobody who knows this has
+  // reagent data on file.
+  reagents: CraftReagent[] | null;
 };
 
 const RECIPE_PREFIX_RE = /^(Plans|Schematic|Formula|Pattern|Design|Recipe):\s*/i;
@@ -93,7 +104,7 @@ export async function findCraftedBy(
   const rows = await loadAllRecipes(supabase);
   const crafters: Crafter[] = [];
   const seen = new Set<string>();
-  let reagentsText: string | null = null;
+  let reagents: CraftReagent[] | null = null;
 
   for (const row of rows) {
     const char = Array.isArray(row.characters) ? row.characters[0] : row.characters;
@@ -110,8 +121,13 @@ export async function findCraftedBy(
           ownerName: char.profiles?.display_name ?? null,
         });
       }
-      if (!reagentsText && recipe.reagents && recipe.reagents.length > 0) {
-        reagentsText = `Requires ${recipe.reagents.map((r) => `${r.quantity}x ${r.name}`).join(", ")}`;
+      if (!reagents && recipe.reagents && recipe.reagents.length > 0) {
+        reagents = recipe.reagents.map((r) => ({
+          name: r.name,
+          quantity: r.quantity,
+          icon: r.icon ?? null,
+          color: r.color ?? null,
+        }));
       }
     }
   }
@@ -122,7 +138,7 @@ export async function findCraftedBy(
   // inferred here in case a future caller wants to force the stripped-name
   // check even for an item whose class isn't loaded yet.
   void itemClass;
-  return { crafters, reagentsText };
+  return { crafters, reagents };
 }
 
 // "Xeon Mana knows this recipe" for a recipe/plan item, "Xeon Mana can craft

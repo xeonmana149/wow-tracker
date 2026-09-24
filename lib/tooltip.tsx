@@ -67,13 +67,19 @@ export function isSetBonusLine(line: string) {
 
 // "Xeon Mana knows this recipe" / "Xeon Mana can craft this" - the
 // friends-can-see-who-can-make-it lines added by lib/craftedBy.ts, not
-// anything Blizzard's own tooltip ever shows. Colored the same sky blue as
-// the existing "→ so-and-so can make this" character-comparison suggestion
-// on the Items page, since it's the same kind of "someone you know can help
-// with this" callout.
+// anything Blizzard's own tooltip ever shows. Given its own bright color
+// (not reused from anywhere else - see the note on FUCHSIA below) so it
+// pops against the tooltip instead of blending in with a Rare item's own
+// blue name or the existing profession-suggestion sky-blue line.
 export function isKnownByLine(line: string) {
   return /(knows this recipe|can craft this)$/i.test(line.trim());
 }
+
+// Deliberately not any of the six item-quality colors (gray/white/green/
+// blue/purple/orange) or the sky-blue already used for the "→ so-and-so can
+// make this" profession suggestion - this needed to stand out as its own
+// distinct thing on first glance.
+export const KNOWN_BY_COLOR_CLASS = "text-fuchsia-400";
 
 const MADE_BY_RE = /^<.*made by.*>$/i;
 const DURABILITY_RE = /^Durability \d+ \/ (\d+)$/;
@@ -381,6 +387,7 @@ export function ItemTooltipBox({
   note,
   noteClassName = "text-yellow-400",
   characterNote,
+  beforeNote,
   lineColor,
   className = "",
 }: {
@@ -404,6 +411,11 @@ export function ItemTooltipBox({
   // messaging (e.g. a red "you don't meet this" or a suggestion to use a
   // different character) - kept separate so it can have its own color.
   characterNote?: ReactNode;
+  // Extra content rendered right after the plain-text `lines`, before the
+  // note footer - for anything a flat string can't express, like the
+  // reagents row (lib/craftedBy.ts's data) showing each reagent's actual
+  // item icon next to its name instead of just plain text.
+  beforeNote?: ReactNode;
   className?: string;
 }) {
   const color = qualityColor ? `#${qualityColor}` : "#ffffff";
@@ -428,7 +440,7 @@ export function ItemTooltipBox({
               : isSetPieceLine(line)
               ? "text-gray-400"
               : isKnownByLine(line)
-              ? "text-sky-400"
+              ? KNOWN_BY_COLOR_CLASS
               : "text-white";
           return (
             <TwoColumnLine
@@ -440,6 +452,7 @@ export function ItemTooltipBox({
             />
           );
         })}
+      {beforeNote}
       {note && (
         <div className={`mt-2 border-t border-neutral-700 pt-1.5 text-xs ${noteClassName}`}>
           {note}

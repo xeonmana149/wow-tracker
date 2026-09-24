@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import {
   ItemTooltipBox,
+  KNOWN_BY_COLOR_CLASS,
   KNOWN_SLOT_LABELS,
   buildFallbackTooltipLines,
   extractEffectLines,
@@ -15,7 +16,7 @@ import {
 import { iconUrlForFileId, wowIconUrl } from "../../lib/icons";
 import { supabase } from "../../lib/supabase";
 import { addToPreBis, addToWishlist } from "../../lib/itemLists";
-import { findCraftedBy, formatKnownByLines, type CraftedByInfo } from "../../lib/craftedBy";
+import { findCraftedBy, formatKnownByLines, type CraftedByInfo, type CraftReagent } from "../../lib/craftedBy";
 import {
   characterMeetsProfession,
   classCanUseSubclass,
@@ -296,6 +297,43 @@ function Badge({ verified }: { verified: boolean }) {
   );
 }
 
+// A reagent icon + colored name/quantity, matching the little icon chips
+// the Crafting Directory already shows for a recipe's reagents (see
+// CraftingDirectory.tsx's QualityIcon) - shown inside the item tooltip
+// itself now, wherever lib/craftedBy.ts found a matching character's recipe
+// scan with reagents on file.
+function ReagentsRow({ reagents }: { reagents: CraftReagent[] }) {
+  return (
+    <div className="mt-2 border-t border-neutral-700 pt-1.5">
+      <p className="text-xs text-gray-400">Requires:</p>
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+        {reagents.map((r, i) => {
+          const iconSrc =
+            typeof r.icon === "number"
+              ? iconUrlForFileId(r.icon)
+              : typeof r.icon === "string"
+                ? wowIconUrl(r.icon)
+                : null;
+          const color = r.color ? `#${r.color}` : "#ffffff";
+          return (
+            <span key={i} className="flex items-center gap-1 text-xs">
+              <span className="h-4 w-4 shrink-0 overflow-hidden rounded border border-neutral-600 bg-neutral-800">
+                {iconSrc && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={iconSrc} alt="" className="h-full w-full object-cover" />
+                )}
+              </span>
+              <span style={{ color }}>
+                {r.quantity}x {r.name}
+              </span>
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ItemRow({
   item,
   character,
@@ -318,13 +356,9 @@ function ItemRow({
   // the separate recipe/plan item does) - this fills that gap from whoever
   // knows the recipe. Skipped when the item already has its own
   // reagents_text (i.e. this IS the recipe item), so it's never shown twice.
-  const derivedReagentsLine = !item.reagents_text ? craftedBy?.reagentsText ?? null : null;
-  const extraTooltipLines = [
-    ...(derivedReagentsLine ? [derivedReagentsLine] : []),
-    ...knownByLines,
-  ];
+  const derivedReagents = !item.reagents_text ? craftedBy?.reagents ?? null : null;
   const tooltipLinesWithCrafters =
-    extraTooltipLines.length > 0 ? [...d.tooltipLines, "", ...extraTooltipLines] : d.tooltipLines;
+    knownByLines.length > 0 ? [...d.tooltipLines, "", ...knownByLines] : d.tooltipLines;
 
   const shownEffects = d.effectLines.slice(0, 2);
   const extraEffects = d.effectLines.length - shownEffects.length;
@@ -412,7 +446,7 @@ function ItemRow({
           <div className="text-xs text-sky-400">→ {d.suggestedCharacter.name} can make this</div>
         )}
         {knownByLines.length > 0 && (
-          <div className="text-xs text-sky-400">
+          <div className={`text-xs ${KNOWN_BY_COLOR_CLASS}`}>
             {knownByLines.length === 1
               ? knownByLines[0]
               : `${knownByLines.length} characters ${
@@ -438,6 +472,7 @@ function ItemRow({
             noteClassName={item.verified ? "text-[#1eff00]" : "text-yellow-400"}
             lineColor={d.tooltipLineColor}
             characterNote={d.characterNote}
+            beforeNote={derivedReagents ? <ReagentsRow reagents={derivedReagents} /> : undefined}
           />
         </FollowTooltip>
       )}
@@ -464,13 +499,9 @@ function ItemInspector({
   const craftedBy = useCraftedByOnDemand(item, true);
   const knownByLines =
     craftedBy && craftedBy.crafters.length > 0 ? formatKnownByLines(craftedBy.crafters, item.item_class) : [];
-  const derivedReagentsLine = !item.reagents_text ? craftedBy?.reagentsText ?? null : null;
-  const extraTooltipLines = [
-    ...(derivedReagentsLine ? [derivedReagentsLine] : []),
-    ...knownByLines,
-  ];
+  const derivedReagents = !item.reagents_text ? craftedBy?.reagents ?? null : null;
   const tooltipLinesWithCrafters =
-    extraTooltipLines.length > 0 ? [...d.tooltipLines, "", ...extraTooltipLines] : d.tooltipLines;
+    knownByLines.length > 0 ? [...d.tooltipLines, "", ...knownByLines] : d.tooltipLines;
   const [wishlistStatus, setWishlistStatus] = useState<string | null>(null);
   const [prebisStatus, setPrebisStatus] = useState<string | null>(null);
 
@@ -534,6 +565,7 @@ function ItemInspector({
         noteClassName={item.verified ? "text-[#1eff00]" : "text-yellow-400"}
         lineColor={d.tooltipLineColor}
         characterNote={d.characterNote}
+        beforeNote={derivedReagents ? <ReagentsRow reagents={derivedReagents} /> : undefined}
         className="mx-auto"
       />
       <div className="mx-auto mt-3 flex max-w-xs flex-col gap-1.5">
