@@ -110,6 +110,12 @@ export type ParsedExport = {
     string,
     { link: string; name: string; id?: number; color?: string; icon?: number; tooltip?: string[] }
   >;
+  // Every item seen in bags/bank on this sync - NOT stored per-character
+  // anywhere (no bag-viewer feature exists or is planned), purely fed
+  // through the same item-database pipeline as gear so items get real,
+  // verified data before anyone's necessarily equipped them. See the
+  // 2026-09-24 chat and addon 1.7.0's collectContainerItems().
+  bagItems?: { id?: number; name: string; color?: string; icon?: number; tooltip?: string[] }[];
   traits?: {
     experimental?: boolean;
     error?: string;
@@ -640,6 +646,34 @@ export async function applyImport(
       .eq("character_id", characterId)
       .in("slot", emptySlots);
     if (error) throw new Error(error.message);
+  }
+
+  // 4b. Bag/bank contents - never written to any per-character table (no
+  //     bag-viewer feature exists), purely fed through the item database
+  //     pipeline so items get real data as soon as ANYONE's seen carrying
+  //     them, not only once someone's actually worn them. Same
+  //     "live tooltip always wins" rule as gear.
+  for (const item of parsed.bagItems ?? []) {
+    if (item.id == null) continue;
+    try {
+      if (item.tooltip && item.tooltip.length > 0) {
+        await applyLiveObservation(supabase, item.id, {
+          name: item.name,
+          color: item.color ?? null,
+          icon: item.icon ?? null,
+          tooltip: item.tooltip,
+        });
+      } else {
+        await ensureItemsExist(
+          supabase,
+          [item.id],
+          new Map([[item.id, { name: item.name, icon: item.icon ?? null }]])
+        );
+      }
+    } catch (e) {
+      // Never let one bad bag item block the rest of the sync.
+      console.error(`bag item sync failed for item ${item.id}:`, e);
+    }
   }
 
   // 5. Talents - only nodes the addon already resolved a name and tree for
