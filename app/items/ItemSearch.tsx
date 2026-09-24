@@ -284,7 +284,7 @@ export default function ItemSearch() {
           className="mt-1 max-h-[70vh] overflow-y-auto rounded-md p-2"
           style={{ background: "#0c0c14", border: "1px solid #c8aa6e" }}
         >
-          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {results.map((item) => (
               <ItemRow key={item.id} item={item} />
             ))}
