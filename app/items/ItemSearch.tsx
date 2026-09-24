@@ -132,9 +132,11 @@ function ItemRow({ item }: { item: ItemResult }) {
             <span className="whitespace-nowrap text-[10px] text-yellow-400">Unconfirmed</span>
           )}
         </div>
-        {slotLine && <TwoColumnLine text={slotLine} className="truncate text-xs text-gray-400" />}
+        {slotLine && (
+          <TwoColumnLine text={slotLine} className="max-w-[220px] text-xs text-gray-400" />
+        )}
         {armorOrDamage && (
-          <TwoColumnLine text={armorOrDamage} className="truncate text-xs text-gray-300" />
+          <TwoColumnLine text={armorOrDamage} className="max-w-[220px] text-xs text-gray-300" />
         )}
         {statsSummary && (
           <div className="truncate text-xs text-gray-300">{statsSummary}</div>
