@@ -18,8 +18,11 @@ import { blizzardGet } from "./blizzard";
 // whatever baseline Blizzard gave us. An item nobody's ever equipped yet
 // only has the unverified Blizzard baseline (or nothing at all, if it's
 // Forever-only) - `verified` on the row says which case you're looking at.
-const ITEM_NAMESPACE = "static-classic1x-us";
-const ITEM_REGION = "us";
+// Exported so the bulk-seed script (scripts/bulk-seed-items.ts) uses the
+// exact same namespace/region instead of a second hardcoded copy that could
+// drift out of sync with this one.
+export const ITEM_NAMESPACE = "static-classic1x-us";
+export const ITEM_REGION = "us";
 
 export type ItemSource = "classic_api" | "auto_new" | "manual";
 
@@ -138,6 +141,29 @@ function placeholderRow(id: number, fallback: { name?: string; icon?: number | n
   };
 }
 
+// Runs `fn` over `items` with at most `limit` calls in flight at once,
+// instead of either doing them all one-at-a-time (slow when there are
+// thousands, like the classic-catalog bulk-seed job) or all at once (which
+// would hammer Blizzard's API with hundreds of simultaneous requests and
+// risk getting rate-limited). Order of `results` matches `items`.
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 // Makes sure every item ID in `wanted` has a row in the `items` table,
 // fetching an (unverified) baseline from Blizzard for anything missing, or
 // creating a bare placeholder (source = "auto_new") when Blizzard doesn't
@@ -168,8 +194,7 @@ export async function ensureItemsExist(
   const missingIds = uniqueIds.filter((id) => !existingIds.has(id));
   if (missingIds.length === 0) return;
 
-  const rows: ItemRow[] = [];
-  for (const id of missingIds) {
+  const fetched = await mapWithConcurrency(missingIds, 8, async (id): Promise<ItemRow | null> => {
     const fallback = fallbacks.get(id) ?? {};
     try {
       const result = await blizzardGet(ITEM_REGION, `/data/wow/item/${id}`, {
@@ -178,18 +203,18 @@ export async function ensureItemsExist(
       if (result.ok) {
         const row = rowFromBlizzard(id, result.body as BlizzardItemBody);
         row.icon = fallback.icon ?? row.icon;
-        rows.push(row);
-      } else {
-        // 404 (or any other non-ok status) - Blizzard doesn't have this
-        // item, so it's genuinely new. Placeholder now, fill in by hand later.
-        rows.push(placeholderRow(id, fallback));
+        return row;
       }
+      // 404 (or any other non-ok status) - Blizzard doesn't have this
+      // item, so it's genuinely new. Placeholder now, fill in by hand later.
+      return placeholderRow(id, fallback);
     } catch {
       // Network/token error - don't fail the whole sync over an item
       // lookup; just skip it for now and try again on a future sync.
-      continue;
+      return null;
     }
-  }
+  });
+  const rows = fetched.filter((row): row is ItemRow => row !== null);
 
   if (rows.length === 0) return;
   const { error: insertError } = await supabase.from("items").upsert(rows, { onConflict: "id" });
