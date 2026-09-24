@@ -21,13 +21,24 @@ export type ProgressInput = {
   character_professions?: { profession: string; skill: number }[];
   character_talents?: { slot?: number; rank: number }[];
   character_legacy?: { rank: number }[];
-  // Slot name plus the equipped item's level (pulled from the shared items
-  // table via item_id - equipped_gear itself doesn't store item level).
-  // Optional and per-row nullable since older rows synced before item_id
-  // linking existed, or an item the shared table has no level for yet,
-  // simply can't be compared and are skipped in gearTodos below.
-  equipped_gear?: { slot: string; item_level: number | null }[];
+  // Raw equipped_gear rows, exactly as a query that joins the shared items
+  // table for its level (`items(level)`) returns them - equipped_gear
+  // itself doesn't store item level. `items` comes back as an object or a
+  // one-element array depending on how Supabase infers the to-one
+  // relationship; gearItemLevel() below normalizes either shape rather than
+  // pushing that onto every caller. A row with no item_id link yet, or
+  // whose item has no known level, simply can't be compared either way and
+  // is skipped further down.
+  equipped_gear?: {
+    slot: string;
+    items?: { level: number | null } | { level: number | null }[] | null;
+  }[];
 };
+
+function gearItemLevel(g: { items?: { level: number | null } | { level: number | null }[] | null }) {
+  const item = Array.isArray(g.items) ? g.items[0] : g.items;
+  return item?.level ?? null;
+}
 
 export type Bar = { key: string; label: string; value: number; max: number; text: string };
 
@@ -154,6 +165,7 @@ export function whatsNext(c: ProgressInput, earned: number): Todo[] {
   // a level for that id) can't be judged either way, so they're skipped
   // rather than assumed fine or assumed weak.
   const gearGaps = (c.equipped_gear ?? [])
+    .map((g) => ({ slot: g.slot, item_level: gearItemLevel(g) }))
     .filter((g): g is { slot: string; item_level: number } => typeof g.item_level === "number")
     .map((g) => ({ ...g, gap: c.level - g.item_level }))
     .filter((g) => g.gap >= GEAR_LEVEL_GAP_THRESHOLD)

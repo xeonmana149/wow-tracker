@@ -360,20 +360,7 @@ export default function Dashboard({
     const more = missing.length > 4 ? ` and ${missing.length - 4} more` : "";
     accountTodos.push({ kind: "profession", text: `No ${names}${more} on your account` });
   }
-  // equipped_gear's `items` join comes back as an object or a one-element
-  // array depending on how Supabase infers the to-one relationship - flatten
-  // it to the plain {slot, item_level} shape whatsNext's gear-gap check
-  // expects before handing a character off to it.
-  function gearLevelsOf(c: CardCharacter) {
-    return (c.equipped_gear ?? []).map((g) => {
-      const item = Array.isArray(g.items) ? g.items[0] : g.items;
-      return { slot: g.slot, item_level: item?.level ?? null };
-    });
-  }
-  const perCharacter = characters.map((c) => ({
-    c,
-    todos: whatsNext({ ...c, equipped_gear: gearLevelsOf(c) }, legacy),
-  }));
+  const perCharacter = characters.map((c) => ({ c, todos: whatsNext(c, legacy) }));
   const charById = new Map<string, CardCharacter>(characters.map((c) => [c.id, c]));
 
   // One flat list instead of a per-character grouping - account-wide todos
