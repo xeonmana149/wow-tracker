@@ -112,7 +112,7 @@ function ItemRow({ item }: { item: ItemResult }) {
 
   return (
     <div
-      className="group relative flex items-center gap-3 border-b border-neutral-800 px-3 py-2 last:border-b-0 hover:bg-neutral-800/60"
+      className="group relative flex items-center gap-3 rounded border border-neutral-800 px-3 py-2 hover:bg-neutral-800/60"
       onMouseMove={handleMove}
       onMouseLeave={() => setHoverPos(null)}
     >
@@ -281,12 +281,14 @@ export default function ItemSearch() {
 
       {active && !loading && !error && results.length > 0 && (
         <div
-          className="mt-1 max-h-[70vh] overflow-y-auto rounded-md"
+          className="mt-1 max-h-[70vh] overflow-y-auto rounded-md p-2"
           style={{ background: "#0c0c14", border: "1px solid #c8aa6e" }}
         >
-          {results.map((item) => (
-            <ItemRow key={item.id} item={item} />
-          ))}
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+            {results.map((item) => (
+              <ItemRow key={item.id} item={item} />
+            ))}
+          </div>
         </div>
       )}
 
