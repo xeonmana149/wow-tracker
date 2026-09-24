@@ -40,7 +40,20 @@ export type ItemSource = "classic_api" | "auto_new" | "manual";
 // Blizzard's QA items are inconsistently named ("Test Legendary", "Rings of
 // Critical Testing", "Fishing Pole JeffTest"), so a stricter whole-word
 // match was missing the ones with "test" glued onto another word.
-const JUNK_NAME_PATTERNS = [/test/i, /^\[PH\]/i, /\bdebug\b/i, /\bqa\b/i, /^monster - /i];
+// [PH] was start-anchored before, but it shows up elsewhere in a name too
+// (not just as a prefix) - matching it anywhere catches those too. zzOLD is
+// Blizzard's own convention for sorting a retired/renamed row to the bottom
+// of their internal tools; UNUSED covers both "[UNUSED] Old Thing" and a
+// bare "Unused Whatever" with no brackets at all.
+const JUNK_NAME_PATTERNS = [
+  /test/i,
+  /\[ph\]/i,
+  /\bdebug\b/i,
+  /\bqa\b/i,
+  /^monster - /i,
+  /zzold/i,
+  /\bunused\b/i,
+];
 const JUNK_NAMES = new Set(["Fabled Steed", "Shard of the Defiler"]);
 
 export function isLikelyJunkItemName(name: string): boolean {
