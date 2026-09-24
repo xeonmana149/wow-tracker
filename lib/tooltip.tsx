@@ -119,6 +119,56 @@ export function formatSlotLabel(inventoryType: string | null): string {
     .join(" ");
 }
 
+// applyLiveObservation (lib/items.ts) never stores inventory_type/
+// item_subclass on a verified row - a live tooltip already SAYS the slot
+// and armor/weapon type in plain text ("Waist  Mail", "Two-Hand  Sword"),
+// two columns separated by the addon's own "  " (two-space) join, so this
+// reads it straight from there instead of relying on a column that's
+// simply never populated for a verified item. Longest/most specific labels
+// aren't needed here since none of these happen to prefix one another.
+const KNOWN_SLOT_LABELS = [
+  "Main Hand",
+  "Off Hand",
+  "Two-Hand",
+  "One-Hand",
+  "Ranged",
+  "Thrown",
+  "Head",
+  "Neck",
+  "Shoulder",
+  "Shirt",
+  "Chest",
+  "Waist",
+  "Legs",
+  "Feet",
+  "Wrist",
+  "Hands",
+  "Finger",
+  "Trinket",
+  "Back",
+  "Tabard",
+  "Relic",
+  "Ammo",
+  "Bag",
+];
+
+export function extractSlotAndSubclass(tooltip: string[]): {
+  slot: string | null;
+  subclass: string | null;
+} {
+  for (const line of tooltip.slice(1)) {
+    for (const label of KNOWN_SLOT_LABELS) {
+      if (line === label) {
+        return { slot: label, subclass: null };
+      }
+      if (line.startsWith(`${label}  `)) {
+        return { slot: label, subclass: line.slice(label.length + 2).trim() };
+      }
+    }
+  }
+  return { slot: null, subclass: null };
+}
+
 // The bare "{gold} {silver} {copper}" tokens, no "Sell Price:" label - for
 // compact contexts (the Items list row) that show a price without the full
 // tooltip line around it.

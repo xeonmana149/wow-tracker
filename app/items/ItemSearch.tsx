@@ -5,6 +5,7 @@ import {
   ItemTooltipBox,
   buildFallbackTooltipLines,
   extractEffectLines,
+  extractSlotAndSubclass,
   formatMoneyTokens,
   formatSlotLabel,
   genericizeTooltipLines,
@@ -79,9 +80,16 @@ function ItemRow({ item }: { item: ItemResult }) {
       ? "Unconfirmed - based on Blizzard's classic database, may differ in Forever"
       : "No data captured yet - needs manual entry";
 
-  const slotLine = [formatSlotLabel(item.inventory_type), item.item_subclass]
-    .filter(Boolean)
-    .join("  ");
+  // A verified item's real slot/armor-or-weapon-type never got written to
+  // the inventory_type/item_subclass columns (applyLiveObservation doesn't
+  // set them - see lib/items.ts), but a live tooltip already says it in
+  // plain text, so that's read directly instead for anything verified.
+  // Unverified Blizzard-baseline rows DO have those columns, so they still
+  // work as the fallback.
+  const parsedSlot = hasRealTooltip ? extractSlotAndSubclass(item.tooltip as string[]) : null;
+  const slotLine = parsedSlot?.slot
+    ? [parsedSlot.slot, parsedSlot.subclass].filter(Boolean).join("  ")
+    : [formatSlotLabel(item.inventory_type), item.item_subclass].filter(Boolean).join("  ");
 
   const armorOrDamage =
     item.armor != null
