@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import {
   ItemTooltipBox,
+  TwoColumnLine,
   buildFallbackTooltipLines,
   extractEffectLines,
   extractSlotAndSubclass,
@@ -131,11 +132,12 @@ function ItemRow({ item }: { item: ItemResult }) {
             <span className="whitespace-nowrap text-[10px] text-yellow-400">Unconfirmed</span>
           )}
         </div>
-        {slotLine && <div className="truncate text-xs text-gray-400">{slotLine}</div>}
-        {(armorOrDamage || statsSummary) && (
-          <div className="truncate text-xs text-gray-300">
-            {[armorOrDamage, statsSummary].filter(Boolean).join("  ·  ")}
-          </div>
+        {slotLine && <TwoColumnLine text={slotLine} className="truncate text-xs text-gray-400" />}
+        {armorOrDamage && (
+          <TwoColumnLine text={armorOrDamage} className="truncate text-xs text-gray-300" />
+        )}
+        {statsSummary && (
+          <div className="truncate text-xs text-gray-300">{statsSummary}</div>
         )}
         {effectLines.map((line, i) => (
           <div key={i} className="truncate text-xs text-[#1eff00]">

@@ -200,6 +200,26 @@ export function extractEffectLines(tooltip: string[] | null | undefined): string
   return tooltip.filter((line) => isEquipLine(line) || isUseLine(line));
 }
 
+// The addon deliberately joins a tooltip's left/right columns (e.g.
+// "Two-Hand" + "Sword", "52 - 78 Damage" + "Speed 3.30") with exactly two
+// spaces (see scanSlotTooltip in the addon: `leftText .. "  " .. rightText`)
+// - but HTML collapses repeated whitespace, so rendered as plain text that
+// structure just disappears and everything reads as one run-on line. This
+// splits on the first 2+-space gap and lays the two halves out with real
+// space between them, matching the real tooltip's look.
+export function TwoColumnLine({ text, className = "" }: { text: string; className?: string }) {
+  const match = text.match(/^(.*?) {2,}(.*)$/);
+  if (!match) {
+    return <div className={className}>{renderTooltipLine(text)}</div>;
+  }
+  return (
+    <div className={`flex justify-between gap-4 ${className}`}>
+      <span>{renderTooltipLine(match[1])}</span>
+      <span>{renderTooltipLine(match[2])}</span>
+    </div>
+  );
+}
+
 export type FallbackTooltipItem = {
   item_subclass: string | null;
   inventory_type: string | null;
@@ -274,16 +294,15 @@ export function ItemTooltipBox({
       {lines
         .filter((line) => line !== name)
         .map((line, i) => (
-          <div
+          <TwoColumnLine
             key={i}
+            text={line}
             className={
               isCraftedByLine(line) || isEquipLine(line) || isUseLine(line)
                 ? "text-[#1eff00]"
                 : "text-white"
             }
-          >
-            {renderTooltipLine(line)}
-          </div>
+          />
         ))}
       {note && (
         <div className="mt-2 border-t border-neutral-700 pt-1.5 text-xs text-yellow-400">
