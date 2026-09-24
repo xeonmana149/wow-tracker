@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import {
   ItemTooltipBox,
   KNOWN_BY_COLOR_CLASS,
@@ -268,7 +268,13 @@ function computeItemDisplay(
 
 // Follows the cursor rather than anchoring to the row, and is positioned
 // `fixed` (viewport-relative) so it's never clipped by the scrollable
-// results panel.
+// results panel. Hovering an item near the bottom of the page used to
+// always place the tooltip below the cursor, which for a long tooltip can
+// run off the bottom of the screen entirely (rendering underneath the
+// Windows taskbar, unreadable) - this measures itself after it renders and
+// flips above the cursor instead when there isn't enough room below, the
+// same way the game's own tooltips behave. Also nudged back onto screen
+// horizontally for an item hovered near the right edge.
 function FollowTooltip({
   x,
   y,
@@ -278,10 +284,43 @@ function FollowTooltip({
   y: number;
   children: React.ReactNode;
 }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; ready: boolean }>({
+    left: x + 16,
+    top: y + 16,
+    ready: false,
+  });
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const margin = 12;
+
+    let top = y + 16;
+    if (top + rect.height > window.innerHeight - margin) {
+      // Not enough room below the cursor - flip to above it instead.
+      top = y - rect.height - 16;
+    }
+    top = Math.max(margin, top);
+
+    let left = x + 16;
+    if (left + rect.width > window.innerWidth - margin) {
+      left = window.innerWidth - rect.width - margin;
+    }
+    left = Math.max(margin, left);
+
+    setPos({ left, top, ready: true });
+    // rect.height/rect.width intentionally omitted - they're derived from
+    // the same render this effect is measuring, not independent inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [x, y]);
+
   return (
     <div
+      ref={ref}
       className="pointer-events-none fixed z-50"
-      style={{ left: x + 16, top: y + 16 }}
+      style={{ left: pos.left, top: pos.top, visibility: pos.ready ? "visible" : "hidden" }}
     >
       {children}
     </div>
