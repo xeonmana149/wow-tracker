@@ -15,7 +15,7 @@ import {
 import { iconUrlForFileId, wowIconUrl } from "../../lib/icons";
 import { supabase } from "../../lib/supabase";
 import { addToPreBis, addToWishlist } from "../../lib/itemLists";
-import { findCraftersOf, formatKnownByLines, type Crafter } from "../../lib/craftedBy";
+import { findCraftedBy, formatKnownByLines, type CraftedByInfo } from "../../lib/craftedBy";
 import {
   characterMeetsProfession,
   classCanUseSubclass,
@@ -98,27 +98,31 @@ const CLAMP_2: React.CSSProperties = {
 // looked up once per page visit, no matter how many cards/inspector opens
 // hover over it. Module-level (outside the component) so it survives
 // re-renders and is shared across every ItemRow/ItemInspector on the page.
-const craftersCache = new Map<string, Crafter[]>();
+const craftedByCache = new Map<string, CraftedByInfo>();
 
 // Only fetches once `active` (hovered, or the details panel is open for
 // this item) - not on every card's initial mount, since that would fire a
-// query per visible result just for browsing the list.
-function useCraftersOnDemand(item: ItemResult, active: boolean): Crafter[] | null {
-  const [crafters, setCrafters] = useState<Crafter[] | null>(craftersCache.get(item.name) ?? null);
+// query per visible result just for browsing the list. findCraftedBy itself
+// caches the underlying recipe data for 5 minutes, so even the first hover
+// of a page visit is usually served from that, not a fresh query.
+function useCraftedByOnDemand(item: ItemResult, active: boolean): CraftedByInfo | null {
+  const [craftedBy, setCraftedBy] = useState<CraftedByInfo | null>(
+    craftedByCache.get(item.name) ?? null
+  );
 
   useEffect(() => {
-    if (!active || craftersCache.has(item.name)) return;
+    if (!active || craftedByCache.has(item.name)) return;
     let cancelled = false;
-    findCraftersOf(supabase, item.name, item.item_class).then((result) => {
-      craftersCache.set(item.name, result);
-      if (!cancelled) setCrafters(result);
+    findCraftedBy(supabase, item.name, item.item_class).then((result) => {
+      craftedByCache.set(item.name, result);
+      if (!cancelled) setCraftedBy(result);
     });
     return () => {
       cancelled = true;
     };
   }, [active, item.name, item.item_class]);
 
-  return crafters;
+  return craftedBy;
 }
 
 // All the per-item derived display data (icon, tooltip lines, the character-
@@ -307,10 +311,20 @@ function ItemRow({
 }) {
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const d = computeItemDisplay(item, character, allCharacters);
-  const crafters = useCraftersOnDemand(item, hoverPos != null || selected);
-  const knownByLines = crafters && crafters.length > 0 ? formatKnownByLines(crafters, item.item_class) : [];
+  const craftedBy = useCraftedByOnDemand(item, hoverPos != null || selected);
+  const knownByLines =
+    craftedBy && craftedBy.crafters.length > 0 ? formatKnownByLines(craftedBy.crafters, item.item_class) : [];
+  // The crafted item's OWN row never has reagent info from Blizzard (only
+  // the separate recipe/plan item does) - this fills that gap from whoever
+  // knows the recipe. Skipped when the item already has its own
+  // reagents_text (i.e. this IS the recipe item), so it's never shown twice.
+  const derivedReagentsLine = !item.reagents_text ? craftedBy?.reagentsText ?? null : null;
+  const extraTooltipLines = [
+    ...(derivedReagentsLine ? [derivedReagentsLine] : []),
+    ...knownByLines,
+  ];
   const tooltipLinesWithCrafters =
-    knownByLines.length > 0 ? [...d.tooltipLines, "", ...knownByLines] : d.tooltipLines;
+    extraTooltipLines.length > 0 ? [...d.tooltipLines, "", ...extraTooltipLines] : d.tooltipLines;
 
   const shownEffects = d.effectLines.slice(0, 2);
   const extraEffects = d.effectLines.length - shownEffects.length;
@@ -447,10 +461,16 @@ function ItemInspector({
   onClose: () => void;
 }) {
   const d = computeItemDisplay(item, character, allCharacters);
-  const crafters = useCraftersOnDemand(item, true);
-  const knownByLines = crafters && crafters.length > 0 ? formatKnownByLines(crafters, item.item_class) : [];
+  const craftedBy = useCraftedByOnDemand(item, true);
+  const knownByLines =
+    craftedBy && craftedBy.crafters.length > 0 ? formatKnownByLines(craftedBy.crafters, item.item_class) : [];
+  const derivedReagentsLine = !item.reagents_text ? craftedBy?.reagentsText ?? null : null;
+  const extraTooltipLines = [
+    ...(derivedReagentsLine ? [derivedReagentsLine] : []),
+    ...knownByLines,
+  ];
   const tooltipLinesWithCrafters =
-    knownByLines.length > 0 ? [...d.tooltipLines, "", ...knownByLines] : d.tooltipLines;
+    extraTooltipLines.length > 0 ? [...d.tooltipLines, "", ...extraTooltipLines] : d.tooltipLines;
   const [wishlistStatus, setWishlistStatus] = useState<string | null>(null);
   const [prebisStatus, setPrebisStatus] = useState<string | null>(null);
 

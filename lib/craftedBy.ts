@@ -6,6 +6,16 @@ export type Crafter = {
   ownerName: string | null;
 };
 
+export type CraftedByInfo = {
+  crafters: Crafter[];
+  // "Requires 4x Copper Bar, 2x Linen Cloth" - pulled from whichever
+  // matching character's recipe scan actually captured reagents (an older
+  // addon build, or a recipe nobody's re-scanned since, may have none - see
+  // CraftingDirectory.tsx's own "no extra details captured yet" case). Null
+  // when nobody who knows this has reagent data on file.
+  reagentsText: string | null;
+};
+
 const RECIPE_PREFIX_RE = /^(Plans|Schematic|Formula|Pattern|Design|Recipe):\s*/i;
 
 // "Plans: Moonsteel Broadsword" -> "Moonsteel Broadsword" - the recipe ITEM's
@@ -17,59 +27,102 @@ export function craftedItemName(recipeItemName: string): string {
   return recipeItemName.replace(RECIPE_PREFIX_RE, "").trim();
 }
 
-async function fetchForName(supabase: SupabaseClient, name: string): Promise<Crafter[]> {
-  // `.contains` is a jsonb containment check - matches any row whose
-  // `recipes` array has at least one element with this exact name, ignoring
-  // whatever else (icon/reagents/tooltip/color) that element also carries.
-  // `character_professions`/`characters`/`profiles` are all public-select
-  // tables already (see crafting/page.tsx, which reads the same three with
-  // the plain anon client) - the whole point of this feature is that
-  // friends can see who knows what, same model as the Crafting Directory.
+type RawReagent = {
+  itemID?: number;
+  name: string;
+  quantity: number;
+  icon?: number | string | null;
+  color?: string | null;
+};
+type RawRecipe = string | { name: string; reagents?: RawReagent[]; tooltip?: string[] };
+type ProfessionRow = {
+  recipes: RawRecipe[] | null;
+  characters:
+    | { id: string; name: string; profiles?: { display_name?: string } | null }
+    | { id: string; name: string; profiles?: { display_name?: string } | null }[]
+    | null;
+};
+
+function normalizeRecipe(r: RawRecipe): { name: string; reagents?: RawReagent[] } {
+  return typeof r === "string" ? { name: r } : r;
+}
+
+// Everyone's recipe lists, fetched once and reused - same "read it all,
+// filter in memory" approach the Crafting Directory page already uses at
+// this project's scale (character_professions/characters/profiles are all
+// public-select tables - see crafting/page.tsx, which queries the same
+// three with the plain anon client). A single query instead of one per item
+// hovered, AND it lets matching be done case/whitespace-insensitively in
+// JS, which a database-side jsonb containment check can't do (that only
+// matches an exact byte-for-byte string).
+let cachedRows: ProfessionRow[] | null = null;
+let cachedAt = 0;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function loadAllRecipes(supabase: SupabaseClient): Promise<ProfessionRow[]> {
+  const now = Date.now();
+  if (cachedRows && now - cachedAt < CACHE_TTL_MS) return cachedRows;
   const { data, error } = await supabase
     .from("character_professions")
-    .select("characters!inner(id, name, profiles(display_name))")
-    .contains("recipes", [{ name }]);
-  if (error || !data) return [];
-
-  const out: Crafter[] = [];
-  for (const row of data as any[]) {
-    const char = Array.isArray(row.characters) ? row.characters[0] : row.characters;
-    if (!char) continue;
-    out.push({
-      characterId: char.id,
-      characterName: char.name,
-      ownerName: char.profiles?.display_name ?? null,
-    });
-  }
-  return out;
+    .select("recipes, characters!inner(id, name, profiles(display_name))")
+    .not("recipes", "is", null);
+  if (error || !data) return cachedRows ?? [];
+  cachedRows = data as unknown as ProfessionRow[];
+  cachedAt = now;
+  return cachedRows;
 }
 
 // Finds every character in the group who knows the recipe for a given item -
 // works whether `itemName` is the RECIPE item itself ("Plans: Moonsteel
-// Broadsword", so also tries the crafted name with the prefix stripped) or
-// the crafted item's own name (already an exact match, no stripping needed).
-// Two small queries at most (only ever one for a non-recipe item), each
-// scoped by a jsonb containment filter rather than pulling every
-// character's whole recipe list down to filter client-side.
-export async function findCraftersOf(
+// Broadsword", so the prefix-stripped name is checked too) or the crafted
+// item's own name (matches directly). Also returns a reagents line pulled
+// from whichever matching character's scan actually captured them, since
+// the crafted item's OWN row has no reagent info at all (Blizzard's data
+// for the result item doesn't carry it - only the recipe/plan item does,
+// and even then only when you can see that specific item's row).
+export async function findCraftedBy(
   supabase: SupabaseClient,
   itemName: string,
   itemClass: string | null
-): Promise<Crafter[]> {
+): Promise<CraftedByInfo> {
   const stripped = craftedItemName(itemName);
-  const candidates =
-    itemClass === "Recipe" && stripped.toLowerCase() !== itemName.toLowerCase()
-      ? [itemName, stripped]
-      : [itemName];
+  const candidates = new Set(
+    [itemName, stripped].map((n) => n.trim().toLowerCase())
+  );
 
-  const results = await Promise.all(candidates.map((n) => fetchForName(supabase, n)));
-  const byId = new Map<string, Crafter>();
-  for (const list of results) {
-    for (const c of list) {
-      if (!byId.has(c.characterId)) byId.set(c.characterId, c);
+  const rows = await loadAllRecipes(supabase);
+  const crafters: Crafter[] = [];
+  const seen = new Set<string>();
+  let reagentsText: string | null = null;
+
+  for (const row of rows) {
+    const char = Array.isArray(row.characters) ? row.characters[0] : row.characters;
+    if (!char) continue;
+    for (const raw of row.recipes ?? []) {
+      const recipe = normalizeRecipe(raw);
+      if (!candidates.has(recipe.name.trim().toLowerCase())) continue;
+
+      if (!seen.has(char.id)) {
+        seen.add(char.id);
+        crafters.push({
+          characterId: char.id,
+          characterName: char.name,
+          ownerName: char.profiles?.display_name ?? null,
+        });
+      }
+      if (!reagentsText && recipe.reagents && recipe.reagents.length > 0) {
+        reagentsText = `Requires ${recipe.reagents.map((r) => `${r.quantity}x ${r.name}`).join(", ")}`;
+      }
     }
   }
-  return Array.from(byId.values()).sort((a, b) => a.characterName.localeCompare(b.characterName));
+
+  crafters.sort((a, b) => a.characterName.localeCompare(b.characterName));
+  // itemClass is accepted (not just itemName) so callers don't need to know
+  // the prefix-stripping rule themselves - kept as a parameter rather than
+  // inferred here in case a future caller wants to force the stripped-name
+  // check even for an item whose class isn't loaded yet.
+  void itemClass;
+  return { crafters, reagentsText };
 }
 
 // "Xeon Mana knows this recipe" for a recipe/plan item, "Xeon Mana can craft
