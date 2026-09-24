@@ -36,12 +36,29 @@ export type ItemSource = "classic_api" | "auto_new" | "manual";
 // Items search. A real scanned tooltip is strong proof an item genuinely
 // exists in Forever regardless of what its name looks like, so
 // applyLiveObservation always clears this flag if it was set.
-const JUNK_NAME_PATTERNS = [/\btest\b/i, /^\[PH\]/i, /\bdebug\b/i, /\bqa\b/i, /^monster - /i];
+// "test" is intentionally a plain substring match (no word boundaries) -
+// Blizzard's QA items are inconsistently named ("Test Legendary", "Rings of
+// Critical Testing", "Fishing Pole JeffTest"), so a stricter whole-word
+// match was missing the ones with "test" glued onto another word.
+const JUNK_NAME_PATTERNS = [/test/i, /^\[PH\]/i, /\bdebug\b/i, /\bqa\b/i, /^monster - /i];
 const JUNK_NAMES = new Set(["Fabled Steed", "Shard of the Defiler"]);
 
 export function isLikelyJunkItemName(name: string): boolean {
   if (JUNK_NAMES.has(name)) return true;
   return JUNK_NAME_PATTERNS.some((re) => re.test(name));
+}
+
+// 2026-09-24: confirmed against the user's actual seeded data that
+// Blizzard's classic1x-us namespace also serves Season of Discovery items
+// (and other non-vanilla additions) with no separate flag to tell them
+// apart from real vanilla Classic content - see sql/items-migration-9.sql
+// for the full writeup. There's a clean gap with zero real vanilla items
+// between id 25,000 and 100,000, and everything sampled at 100,000+ is
+// unmistakably non-vanilla (SoD's rune system, SoD questline flavor items,
+// internal dev/test names), so this keeps any future bulk-seed run from
+// reintroducing the same problem for IDs migration 9 didn't already cover.
+export function isLikelyNonVanillaId(id: number): boolean {
+  return id >= 100000;
 }
 
 export type ItemRow = {
@@ -283,7 +300,13 @@ function rowFromBlizzard(id: number, body: BlizzardItemBody): ItemRow {
                       // see the caveat above. Only a real scanned tooltip
                       // (applyLiveObservation) ever sets this true.
     tooltip: null,
-    hidden: isLikelyJunkItemName(body.name?.en_US ?? ""),
+    // Only applied here (not placeholderRow below) - a placeholder means
+    // Blizzard returned 404 for this id, i.e. it's genuinely unknown to
+    // Blizzard's classic data, which is exactly what a real Forever-only
+    // custom item looks like. The non-vanilla-id check only makes sense for
+    // ids Blizzard DID recognize, coming back tagged as Season of Discovery
+    // (or similar) content instead of real vanilla Classic.
+    hidden: isLikelyJunkItemName(body.name?.en_US ?? "") || isLikelyNonVanillaId(id),
   };
 }
 
