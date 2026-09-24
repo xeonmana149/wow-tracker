@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ItemTooltipBox, buildFallbackTooltipLines } from "../../lib/tooltip";
+import { ItemTooltipBox, buildFallbackTooltipLines, genericizeTooltipLines } from "../../lib/tooltip";
 import { iconUrlForFileId } from "../../lib/icons";
 
 type ItemResult = {
@@ -146,7 +146,9 @@ export default function ItemSearch() {
         {results.map((item) => {
           const iconSrc = iconUrlForFileId(item.icon);
           const hasRealTooltip = !!item.tooltip && item.tooltip.length > 0;
-          const lines = hasRealTooltip ? (item.tooltip as string[]) : buildFallbackTooltipLines(item);
+          const lines = hasRealTooltip
+            ? genericizeTooltipLines(item.tooltip as string[])
+            : buildFallbackTooltipLines(item);
           const note = hasRealTooltip
             ? undefined
             : lines.length > 0

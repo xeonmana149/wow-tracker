@@ -38,6 +38,31 @@ export function isCraftedByLine(line: string) {
   return /^<.*made by.*>$/i.test(line.trim());
 }
 
+// "Equip: ..." proc/aura lines render green in the real game, same as a
+// crafted-by line - both use isCraftedByLine's green in ItemTooltipBox.
+export function isEquipLine(line: string) {
+  return /^Equip:/i.test(line.trim());
+}
+
+const MADE_BY_RE = /^<.*made by.*>$/i;
+const DURABILITY_RE = /^Durability \d+ \/ (\d+)$/;
+
+// A scanned tooltip reflects ONE specific instance of an item (a particular
+// character's crafter, that character's current wear-and-tear) - fine for
+// GearCard showing a real equipped item, but misleading for the shared item
+// database, which describes the item in general. This swaps those two
+// instance-specific lines for generic ones: crafted-by loses the name, and
+// durability resets to full (max/max) rather than whatever it happened to
+// be worn down to when it was scanned.
+export function genericizeTooltipLines(lines: string[]): string[] {
+  return lines.map((line) => {
+    if (MADE_BY_RE.test(line.trim())) return "<Made by a player>";
+    const durabilityMatch = line.match(DURABILITY_RE);
+    if (durabilityMatch) return `Durability ${durabilityMatch[1]} / ${durabilityMatch[1]}`;
+    return line;
+  });
+}
+
 // Blizzard's SCREAMING_CASE inventory type -> a normal-looking slot label,
 // e.g. "MAINHAND" -> "Main Hand".
 export function formatSlotLabel(inventoryType: string | null): string {
@@ -138,7 +163,12 @@ export function ItemTooltipBox({
       {lines
         .filter((line) => line !== name)
         .map((line, i) => (
-          <div key={i} className={isCraftedByLine(line) ? "text-[#1eff00]" : "text-gray-300"}>
+          <div
+            key={i}
+            className={
+              isCraftedByLine(line) || isEquipLine(line) ? "text-[#1eff00]" : "text-white"
+            }
+          >
             {renderTooltipLine(line)}
           </div>
         ))}
