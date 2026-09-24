@@ -10,7 +10,7 @@ export const MAX_LEVEL = 60;
 // your current level is usually genuinely outdated rather than just a
 // recent quest reward you haven't replaced yet. Tune this (and how many
 // pieces get suggested) here if it's flagging too eagerly or not enough.
-const GEAR_LEVEL_GAP_THRESHOLD = 15;
+const GEAR_LEVEL_GAP_THRESHOLD = 10;
 const MAX_GEAR_TODOS = 2;
 
 // Everything the progress bars and to-do list need to know about a character
