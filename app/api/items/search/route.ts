@@ -22,6 +22,14 @@ export async function GET(req: NextRequest) {
     .select(
       "id, name, quality, quality_color, item_class, item_subclass, inventory_type, required_level, armor, damage_min, damage_max, weapon_speed, stats, sell_price, icon, verified, tooltip"
     )
+    // Quest items aren't gear or anything you'd shop for in this database -
+    // they're just clutter here. Only an unverified/baseline row ever has
+    // item_class set (a live tooltip observation never writes it - see the
+    // gap noted in applyLiveObservation, lib/items.ts), so this can only
+    // ever exclude Blizzard's own baseline quest items, not a real scanned
+    // one; that's fine, `.or` lets a null item_class (any verified item)
+    // through untouched either way.
+    .or("item_class.is.null,item_class.neq.Quest")
     .order("verified", { ascending: false })
     .order("name", { ascending: true })
     .limit(60);

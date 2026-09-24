@@ -98,6 +98,19 @@ const FALLBACK_ITEM_CLASSES: { id: number; name: string }[] = [
   { id: 15, name: "Miscellaneous" },
 ];
 
+// Blizzard's Game Data API returns most names as a localized object
+// ({ en_US: "Weapon", ... }), not a plain string - both the item-class
+// index and an item-class's embedded subclasses come back this way. Handles
+// the (defensive) case where it's already a plain string too.
+function localizedName(name: unknown, fallback: string): string {
+  if (typeof name === "string") return name;
+  if (name && typeof name === "object" && "en_US" in name) {
+    const v = (name as { en_US?: unknown }).en_US;
+    if (typeof v === "string") return v;
+  }
+  return fallback;
+}
+
 const PAGE_SIZE = 100;
 const MAX_PAGES = 60; // safety valve well past Blizzard's ~50-page cap
 
@@ -143,8 +156,26 @@ async function pageSearch(
     if (results.length < PAGE_SIZE) break; // last page
     page++;
   }
-  return { ids, capped: capped && page >= MAX_PAGES };
+  // resultCountCapped is Blizzard's own word that this query had more
+  // matches than it would hand back through paging - trust it directly
+  // rather than inferring it from how many pages we happened to walk
+  // (a fixed ~1000-result ceiling can be hit well before any page-count
+  // safety valve, and requiring both was masking real cap hits).
+  return { ids, capped };
 }
+
+// A third partition level (splitting further by an "id.gte"/"id.lte" ID
+// range) was tried here and REVERTED - turned out Blizzard's search
+// endpoint doesn't actually honor those as range filters, so the recursive
+// split wasn't narrowing anything, and worse, the code that called it threw
+// away the perfectly good (if capped-at-1000) subclass results first,
+// producing FEWER total items than just keeping the simple two-level
+// (class -> subclass) split (confirmed on a live run: Armor dropped from
+// 5491 items down to 1424 once this was added). Back to the simpler,
+// verified-correct approach: a handful of large subclasses (Consumable,
+// each Armor material, Quest, Junk) stay capped around 1000 each - anything
+// beyond that still gets captured for real the moment someone actually
+// scans one via a live tooltip (applyLiveObservation always wins anyway).
 
 async function collectIdsForClass(
   blizzardGet: BlizzardGet,
@@ -160,19 +191,18 @@ async function collectIdsForClass(
 
   console.log(`    ${className} hit the ~1000-result cap - splitting by subclass...`);
   const detailRes = await blizzardGet(region, `/data/wow/item-class/${classId}`, { namespace });
-  const subclasses = ((detailRes.body as { item_subclasses?: { id: number; name?: string }[] })
-    ?.item_subclasses ?? []) as { id: number; name?: string }[];
+  const subclasses = ((detailRes.body as { item_subclasses?: { id: number; name?: unknown }[] })
+    ?.item_subclasses ?? []) as { id: number; name?: unknown }[];
 
   const ids = new Set<number>(direct.ids);
   for (const sub of subclasses) {
-    const subResult = await pageSearch(blizzardGet, region, namespace, {
-      "item_class.id": String(classId),
-      "item_subclass.id": String(sub.id),
-    });
+    const subName = localizedName(sub.name, `subclass ${sub.id}`);
+    const subParams = { "item_class.id": String(classId), "item_subclass.id": String(sub.id) };
+    const subResult = await pageSearch(blizzardGet, region, namespace, subParams);
     for (const id of subResult.ids) ids.add(id);
     if (subResult.capped) {
       console.warn(
-        `    ${className} / subclass ${sub.name ?? sub.id} STILL hit the cap - some items in this subclass may be missed. Safe to leave as-is (they'll get picked up for real the moment someone equips one), or tell me and I'll partition further.`
+        `    ${className} / ${subName} STILL over the cap - some items in this subclass may be missed. They'll still get captured for real the moment someone actually has one (a live tooltip always wins anyway).`
       );
     }
   }
@@ -192,10 +222,10 @@ async function main() {
     const idxRes = await blizzardGet(ITEM_REGION, "/data/wow/item-class/index", {
       namespace: ITEM_NAMESPACE,
     });
-    const fetched = (idxRes.body as { item_classes?: { id: number; name?: string }[] })
+    const fetched = (idxRes.body as { item_classes?: { id: number; name?: unknown }[] })
       ?.item_classes;
     if (idxRes.ok && fetched && fetched.length > 0) {
-      itemClasses = fetched.map((c) => ({ id: c.id, name: c.name ?? `Class ${c.id}` }));
+      itemClasses = fetched.map((c) => ({ id: c.id, name: localizedName(c.name, `Class ${c.id}`) }));
     } else {
       console.warn("  Couldn't read the item-class index - using the built-in fallback list.");
     }
