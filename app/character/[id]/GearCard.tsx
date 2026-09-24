@@ -194,18 +194,10 @@ function GearItemActions({
   return (
     <div className="mt-2 flex flex-col gap-1 border-t border-neutral-700 pt-1.5 text-xs">
       <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={handleWishlist}
-          className="rounded border border-neutral-600 px-1.5 py-0.5 text-gray-300 hover:border-neutral-400 hover:text-white"
-        >
+        <button type="button" onClick={handleWishlist} className="rounded bg-red-700 px-1.5 py-0.5">
           + Wishlist
         </button>
-        <button
-          type="button"
-          onClick={handlePreBis}
-          className="rounded border border-neutral-600 px-1.5 py-0.5 text-gray-300 hover:border-neutral-400 hover:text-white"
-        >
+        <button type="button" onClick={handlePreBis} className="rounded bg-red-700 px-1.5 py-0.5">
           + Pre-BiS
         </button>
       </div>

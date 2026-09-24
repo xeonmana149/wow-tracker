@@ -21,20 +21,25 @@ export default function ItemsPageTabs({
 }) {
   const [tab, setTab] = useState<Tab>(initialTab);
 
-  const tabClass = (t: Tab) =>
-    `border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-      tab === t
-        ? "border-amber-400 text-white"
-        : "border-transparent text-gray-400 hover:text-white"
-    }`;
+  const tabClass = (t: Tab) => `tab-btn ${tab === t ? "tab-btn-active" : ""}`;
 
   return (
     <div>
-      <div className="mb-4 flex gap-1 border-b border-neutral-800">
-        <button type="button" onClick={() => setTab("search")} className={tabClass("search")}>
+      <div className="mb-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setTab("search")}
+          aria-pressed={tab === "search"}
+          className={tabClass("search")}
+        >
           Item Search
         </button>
-        <button type="button" onClick={() => setTab("crafting")} className={tabClass("crafting")}>
+        <button
+          type="button"
+          onClick={() => setTab("crafting")}
+          aria-pressed={tab === "crafting"}
+          className={tabClass("crafting")}
+        >
           Crafting Directory
         </button>
       </div>

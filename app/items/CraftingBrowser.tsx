@@ -419,11 +419,7 @@ export default function CraftingBrowser({ players }: { players: CraftingPlayer[]
       type="button"
       onClick={() => setTab(p)}
       aria-pressed={tab === p}
-      className={`flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-        tab === p
-          ? "border-amber-400 bg-amber-500/10 text-white"
-          : "border-neutral-700 bg-neutral-800 text-gray-300 hover:bg-neutral-700"
-      }`}
+      className={`tab-btn shrink-0 ${tab === p ? "tab-btn-active" : ""}`}
     >
       <GameIcon name={PROFESSION_ICONS[p]} label={p} size={20} />
       {p}

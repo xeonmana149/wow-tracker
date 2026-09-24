@@ -579,7 +579,7 @@ function ItemInspector({
           onClick={handleWishlist}
           disabled={!character}
           title={disabledReason}
-          className="rounded border border-neutral-700 px-3 py-1.5 text-left text-sm text-gray-200 enabled:hover:border-neutral-500 enabled:hover:text-white disabled:cursor-not-allowed disabled:text-gray-500"
+          className="rounded bg-red-700 px-3 py-1.5 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50"
         >
           + Add to Wishlist{character ? ` for ${character.name}` : ""}
         </button>
@@ -589,7 +589,7 @@ function ItemInspector({
           onClick={handlePreBis}
           disabled={!character}
           title={disabledReason}
-          className="rounded border border-neutral-700 px-3 py-1.5 text-left text-sm text-gray-200 enabled:hover:border-neutral-500 enabled:hover:text-white disabled:cursor-not-allowed disabled:text-gray-500"
+          className="rounded bg-red-700 px-3 py-1.5 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50"
         >
           + Add to Pre-BiS list{character ? ` for ${character.name}` : ""}
         </button>
