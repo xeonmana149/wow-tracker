@@ -244,6 +244,7 @@ export function TwoColumnLine({
 }
 
 export type FallbackTooltipItem = {
+  level?: number | null;
   item_subclass: string | null;
   inventory_type: string | null;
   required_level: number | null;
@@ -251,6 +252,12 @@ export type FallbackTooltipItem = {
   damage_min: number | null;
   damage_max: number | null;
   weapon_speed: number | null;
+  weapon_dps?: number | null;
+  binding?: string | null;
+  durability?: number | null;
+  spell_lines?: string[] | null;
+  profession_requirement?: string | null;
+  reagents_text?: string | null;
   stats: { type: string; value: number }[] | null;
   sell_price: number | null;
 };
@@ -260,16 +267,33 @@ export type FallbackTooltipItem = {
 // lines out of whatever structured fields ARE known, so it still lays out
 // like a real tooltip instead of a bare data table. Returns [] when there's
 // nothing at all to show (a placeholder with only a name).
+//
+// Line order follows the real in-game tooltip (checked 2026-09-24 against
+// live examples): item level, binding, profession requirement (recipes),
+// slot/type, damage+speed+dps, armor, stats, Use:/Equip: text, durability,
+// required level, sell price, then a recipe's reagent cost last.
 export function buildFallbackTooltipLines(item: FallbackTooltipItem): string[] {
   const lines: string[] = [];
+  if (item.level != null) {
+    lines.push(`Item Level ${item.level}`);
+  }
+  if (item.binding) {
+    lines.push(item.binding);
+  }
+  if (item.profession_requirement) {
+    lines.push(item.profession_requirement);
+  }
   const slotLabel = formatSlotLabel(item.inventory_type);
   if (slotLabel || item.item_subclass) {
     lines.push([slotLabel, item.item_subclass].filter(Boolean).join("  "));
   }
   if (item.damage_min != null && item.damage_max != null) {
     lines.push(
-      `${item.damage_min} - ${item.damage_max} Damage  Speed ${item.weapon_speed ?? "?"}`
+      `${item.damage_min} - ${item.damage_max} Damage  Speed ${item.weapon_speed?.toFixed(2) ?? "?"}`
     );
+    if (item.weapon_dps != null) {
+      lines.push(`(${item.weapon_dps.toFixed(2)} damage per second)`);
+    }
   }
   if (item.armor != null) {
     lines.push(`${item.armor} Armor`);
@@ -277,11 +301,20 @@ export function buildFallbackTooltipLines(item: FallbackTooltipItem): string[] {
   if (item.stats) {
     for (const s of item.stats) lines.push(`+${s.value} ${s.type}`);
   }
+  if (item.spell_lines) {
+    for (const line of item.spell_lines) lines.push(line);
+  }
+  if (item.durability != null) {
+    lines.push(`Durability ${item.durability} / ${item.durability}`);
+  }
   if (item.required_level != null) {
     lines.push(`Requires Level ${item.required_level}`);
   }
   if (item.sell_price != null) {
     lines.push(formatSellPriceLine(item.sell_price));
+  }
+  if (item.reagents_text) {
+    lines.push(item.reagents_text);
   }
   return lines;
 }

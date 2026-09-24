@@ -30,11 +30,18 @@ type ItemResult = {
   item_class: string | null;
   item_subclass: string | null;
   inventory_type: string | null;
+  level: number | null;
   required_level: number | null;
   armor: number | null;
   damage_min: number | null;
   damage_max: number | null;
   weapon_speed: number | null;
+  weapon_dps: number | null;
+  binding: string | null;
+  durability: number | null;
+  spell_lines: string[] | null;
+  profession_requirement: string | null;
+  reagents_text: string | null;
   stats: { type: string; value: number }[] | null;
   sell_price: number | null;
   icon: number | null;
@@ -118,25 +125,36 @@ function ItemRow({
     item.armor != null
       ? `${item.armor} Armor`
       : item.damage_min != null && item.damage_max != null
-        ? `${item.damage_min} - ${item.damage_max} Damage  Speed ${item.weapon_speed ?? "?"}`
+        ? `${item.damage_min} - ${item.damage_max} Damage  Speed ${item.weapon_speed?.toFixed(2) ?? "?"}`
         : null;
+  const dpsLine = armorOrDamage && item.weapon_dps != null ? `(${item.weapon_dps.toFixed(2)} damage per second)` : null;
 
   const statsSummary =
     item.stats && item.stats.length > 0
       ? item.stats.map((s) => `+${s.value} ${s.type}`).join("  ·  ")
       : null;
 
-  const effectLines = hasRealTooltip ? extractEffectLines(item.tooltip) : [];
+  // A real scanned tooltip already has its Use:/Equip: lines mixed into the
+  // plain tooltip text (extractEffectLines pulls them back out); an
+  // unverified baseline row keeps them separately in spell_lines instead,
+  // straight from Blizzard's data (see extractPreviewItemDetails, lib/items.ts).
+  const effectLines = hasRealTooltip ? extractEffectLines(item.tooltip) : (item.spell_lines ?? []);
 
   // Auction-house-style "can my character actually use this" checks -
   // only meaningful once a character is selected in the dropdown above.
   const levelBad =
     !!character && item.required_level != null && item.required_level > character.level;
   const classBad = !!character && !classCanUseSubclass(character.class, subclassForCheck);
-  // A profession requirement (e.g. "Requires Alchemy (275)" on a recipe)
-  // only ever shows up as a real scanned tooltip line - there's nowhere
-  // else it's stored, so unverified/baseline items just can't be checked.
-  const profReq = hasRealTooltip ? extractProfessionRequirement(item.tooltip) : null;
+  // A profession requirement (e.g. "Requires Alchemy (275)" on a recipe) -
+  // a real scanned tooltip has it as a plain line; an unverified baseline
+  // recipe row has it in profession_requirement instead (Blizzard's own
+  // data, pre-formatted the same "Requires X (N)" way so the same parser
+  // handles both - see extractPreviewItemDetails, lib/items.ts).
+  const profReq = hasRealTooltip
+    ? extractProfessionRequirement(item.tooltip)
+    : item.profession_requirement
+      ? extractProfessionRequirement([item.profession_requirement])
+      : null;
   const profBad = !!character && !!profReq && !characterMeetsProfession(character, profReq);
   const suggestedCharacter =
     profBad && profReq
@@ -233,6 +251,7 @@ function ItemRow({
         {armorOrDamage && (
           <TwoColumnLine text={armorOrDamage} className="max-w-[220px] text-xs text-gray-300" />
         )}
+        {dpsLine && <div className="text-xs text-gray-500">{dpsLine}</div>}
         {statsSummary && (
           <div className="truncate text-xs text-gray-300">{statsSummary}</div>
         )}

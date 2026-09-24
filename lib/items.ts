@@ -58,6 +58,28 @@ export type ItemRow = {
   damage_min: number | null;
   damage_max: number | null;
   weapon_speed: number | null;
+  // Blizzard's own precomputed value (already accounts for the exact
+  // damage/speed combo), stored as-is rather than recomputed from
+  // damage_min/damage_max/weapon_speed - display rounded to 2 decimals.
+  weapon_dps: number | null;
+  // e.g. "Binds when equipped" / "Binds when picked up" - null means
+  // Blizzard's data doesn't mark this item as binding at all (most
+  // consumables, trade goods, etc).
+  binding: string | null;
+  durability: number | null;
+  // One tooltip line per entry - covers a recipe's "Use: Teaches you how to
+  // make X." and an item's own "Equip: ..." proc text, which both come from
+  // the same part of Blizzard's response (see BlizzardItemBody.spells).
+  spell_lines: string[] | null;
+  // e.g. "Requires Blacksmithing (180)" - only present on recipes. Stored
+  // pre-formatted (not split into {profession, level}) so it reuses the
+  // exact same "Requires <Profession> (<N>)" line shape that
+  // extractProfessionRequirement (lib/classRequirements.ts) already parses
+  // out of a real scanned tooltip - one parser now covers both sources.
+  profession_requirement: string | null;
+  // e.g. "Requires Steel Bar (8), Strong Flux (2), ..." - only present on
+  // recipes. Pre-formatted the same way as profession_requirement.
+  reagents_text: string | null;
   stats: unknown | null;
   sell_price: number | null;
   icon: number | null;
@@ -92,6 +114,17 @@ const QUALITY_BY_COLOR: Record<string, string> = Object.fromEntries(
   Object.entries(QUALITY_COLORS).map(([quality, color]) => [color, quality])
 );
 
+// 2026-09-24 correction: the weapon damage/speed fields below used to be
+// named weapon_damage/weapon_attack_speed, which don't actually exist
+// anywhere in Blizzard's real response - a guess that was never checked
+// against real data, so every baseline weapon silently got damage_min/
+// damage_max/weapon_speed = null from day one (that's why the Items page
+// was showing weapon cards with no damage line at all). Confirmed against
+// an actual stored `raw` response: it's `preview_item.weapon.damage.
+// {min_value,max_value}` and `preview_item.weapon.attack_speed.value`
+// (in milliseconds - 2800 means Speed 2.80, so divide by 1000 to display).
+// Blizzard also hands back a precomputed, more-precise dps value at
+// `preview_item.weapon.dps.value` - used as-is rather than recomputed here.
 type BlizzardItemBody = {
   id: number;
   name?: { en_US?: string };
@@ -104,11 +137,30 @@ type BlizzardItemBody = {
   sell_price?: number;
   preview_item?: {
     armor?: { value?: number };
-    weapon_damage?: {
-      min_damage?: { value?: number };
-      max_damage?: { value?: number };
+    weapon?: {
+      damage?: { min_value?: number; max_value?: number };
+      attack_speed?: { value?: number };
+      dps?: { value?: number };
     };
-    weapon_attack_speed?: { value?: number };
+    binding?: { name?: { en_US?: string } };
+    durability?: { value?: number };
+    // Covers both a recipe's "Use: Teaches you how to make X." and an
+    // item's own "Equip: ..." proc text - both live in the same array,
+    // just with different description wording. Rendered as one tooltip
+    // line per entry.
+    spells?: { description?: { en_US?: string } }[];
+    requirements?: {
+      // A plain "Requires Level N" is already covered by the top-level
+      // required_level field above; this is specifically a profession
+      // requirement (e.g. "Requires Blacksmithing (180)" on a recipe) -
+      // Blizzard nests it as requirements.skill, not requirements.level.
+      skill?: { display_string?: { en_US?: string } };
+    };
+    // Only present on recipe items (item_class "Recipe") - what it costs to
+    // craft. Blizzard hands back a ready-made, already-localized summary
+    // string here rather than making us build one from the itemized
+    // reagents[] list, which is plenty for a tooltip line.
+    recipe?: { reagents_display_string?: { en_US?: string } };
     // Blizzard nests the stat's actual identity two levels down (type.type
     // is a SCREAMING_CASE code like "STRENGTH"; type.name is its localized
     // display name) - stored as-is here, then flattened to the plain
@@ -132,7 +184,7 @@ function titleCaseStatType(raw: string): string {
     .join(" ");
 }
 
-function normalizeStats(
+export function normalizeStats(
   stats: { type?: { type?: string; name?: { en_US?: string } }; value?: number }[] | undefined
 ): { type: string; value: number }[] | null {
   if (!stats || stats.length === 0) return null;
@@ -164,8 +216,39 @@ export async function fetchItemIconName(id: number): Promise<string | null> {
   }
 }
 
+// Pulls every field this project actually displays out of a Blizzard
+// preview_item block. Exported (not just used inline by rowFromBlizzard) so
+// scripts/backfill-item-details.ts can re-derive these same fields from the
+// `raw` column already sitting in the database, for the ~13,687 rows seeded
+// before these fields existed, without calling Blizzard a second time.
+export function extractPreviewItemDetails(previewItem: BlizzardItemBody["preview_item"] | undefined) {
+  const weapon = previewItem?.weapon;
+  const speedMs = weapon?.attack_speed?.value ?? null;
+  const spellLines =
+    previewItem?.spells
+      ?.map((s) => s.description?.en_US)
+      .filter((line): line is string => !!line) ?? null;
+  return {
+    armor: previewItem?.armor?.value ?? null,
+    damage_min: weapon?.damage?.min_value ?? null,
+    damage_max: weapon?.damage?.max_value ?? null,
+    // Blizzard gives attack speed in milliseconds (2800 = Speed 2.80).
+    weapon_speed: speedMs != null ? speedMs / 1000 : null,
+    weapon_dps: weapon?.dps?.value ?? null,
+    binding: previewItem?.binding?.name?.en_US ?? null,
+    durability: previewItem?.durability?.value ?? null,
+    spell_lines: spellLines && spellLines.length > 0 ? spellLines : null,
+    profession_requirement: previewItem?.requirements?.skill?.display_string?.en_US ?? null,
+    reagents_text: previewItem?.recipe?.reagents_display_string?.en_US
+      ? `Requires ${previewItem.recipe.reagents_display_string.en_US}`
+      : null,
+    stats: normalizeStats(previewItem?.stats),
+  };
+}
+
 function rowFromBlizzard(id: number, body: BlizzardItemBody): ItemRow {
   const qualityType = body.quality?.type ?? null;
+  const details = extractPreviewItemDetails(body.preview_item);
   return {
     id,
     name: body.name?.en_US ?? `Item ${id}`,
@@ -176,11 +259,17 @@ function rowFromBlizzard(id: number, body: BlizzardItemBody): ItemRow {
     inventory_type: body.inventory_type?.type ?? null,
     level: body.level ?? null,
     required_level: body.required_level ?? null,
-    armor: body.preview_item?.armor?.value ?? null,
-    damage_min: body.preview_item?.weapon_damage?.min_damage?.value ?? null,
-    damage_max: body.preview_item?.weapon_damage?.max_damage?.value ?? null,
-    weapon_speed: body.preview_item?.weapon_attack_speed?.value ?? null,
-    stats: normalizeStats(body.preview_item?.stats),
+    armor: details.armor,
+    damage_min: details.damage_min,
+    damage_max: details.damage_max,
+    weapon_speed: details.weapon_speed,
+    weapon_dps: details.weapon_dps,
+    binding: details.binding,
+    durability: details.durability,
+    spell_lines: details.spell_lines,
+    profession_requirement: details.profession_requirement,
+    reagents_text: details.reagents_text,
+    stats: details.stats,
     sell_price: body.sell_price ?? null,
     icon: null, // Blizzard doesn't give us the client-side fileID the rest
                 // of the site uses for icons - filled in from the export's
@@ -214,6 +303,12 @@ function placeholderRow(id: number, fallback: { name?: string; icon?: number | n
     damage_min: null,
     damage_max: null,
     weapon_speed: null,
+    weapon_dps: null,
+    binding: null,
+    durability: null,
+    spell_lines: null,
+    profession_requirement: null,
+    reagents_text: null,
     stats: null,
     sell_price: null,
     icon: fallback.icon ?? null,

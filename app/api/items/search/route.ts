@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   let query = supabaseAdmin
     .from("items")
     .select(
-      "id, name, quality, quality_color, item_class, item_subclass, inventory_type, required_level, armor, damage_min, damage_max, weapon_speed, stats, sell_price, icon, icon_name, verified, tooltip"
+      "id, name, quality, quality_color, item_class, item_subclass, inventory_type, level, required_level, armor, damage_min, damage_max, weapon_speed, weapon_dps, binding, durability, spell_lines, profession_requirement, reagents_text, stats, sell_price, icon, icon_name, verified, tooltip"
     )
     // Quest items aren't gear or anything you'd shop for in this database -
     // they're just clutter here. Only an unverified/baseline row ever has
