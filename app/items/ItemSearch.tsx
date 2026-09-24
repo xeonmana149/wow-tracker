@@ -15,6 +15,7 @@ import {
 import { iconUrlForFileId, wowIconUrl } from "../../lib/icons";
 import { supabase } from "../../lib/supabase";
 import { addToPreBis, addToWishlist } from "../../lib/itemLists";
+import { findCraftersOf, formatKnownByLines, type Crafter } from "../../lib/craftedBy";
 import {
   characterMeetsProfession,
   classCanUseSubclass,
@@ -91,6 +92,34 @@ const CLAMP_2: React.CSSProperties = {
   WebkitBoxOrient: "vertical",
   overflow: "hidden",
 };
+
+// Keyed by item name (not id - a recipe and its crafted item are two
+// different rows but share the same lookup) so a name only ever gets
+// looked up once per page visit, no matter how many cards/inspector opens
+// hover over it. Module-level (outside the component) so it survives
+// re-renders and is shared across every ItemRow/ItemInspector on the page.
+const craftersCache = new Map<string, Crafter[]>();
+
+// Only fetches once `active` (hovered, or the details panel is open for
+// this item) - not on every card's initial mount, since that would fire a
+// query per visible result just for browsing the list.
+function useCraftersOnDemand(item: ItemResult, active: boolean): Crafter[] | null {
+  const [crafters, setCrafters] = useState<Crafter[] | null>(craftersCache.get(item.name) ?? null);
+
+  useEffect(() => {
+    if (!active || craftersCache.has(item.name)) return;
+    let cancelled = false;
+    findCraftersOf(supabase, item.name, item.item_class).then((result) => {
+      craftersCache.set(item.name, result);
+      if (!cancelled) setCrafters(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [active, item.name, item.item_class]);
+
+  return crafters;
+}
 
 // All the per-item derived display data (icon, tooltip lines, the character-
 // comparison warnings, etc.) - pulled out into one place so both the compact
@@ -278,6 +307,10 @@ function ItemRow({
 }) {
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const d = computeItemDisplay(item, character, allCharacters);
+  const crafters = useCraftersOnDemand(item, hoverPos != null || selected);
+  const knownByLines = crafters && crafters.length > 0 ? formatKnownByLines(crafters, item.item_class) : [];
+  const tooltipLinesWithCrafters =
+    knownByLines.length > 0 ? [...d.tooltipLines, "", ...knownByLines] : d.tooltipLines;
 
   const shownEffects = d.effectLines.slice(0, 2);
   const extraEffects = d.effectLines.length - shownEffects.length;
@@ -364,6 +397,15 @@ function ItemRow({
         {d.suggestedCharacter && (
           <div className="text-xs text-sky-400">→ {d.suggestedCharacter.name} can make this</div>
         )}
+        {knownByLines.length > 0 && (
+          <div className="text-xs text-sky-400">
+            {knownByLines.length === 1
+              ? knownByLines[0]
+              : `${knownByLines.length} characters ${
+                  item.item_class === "Recipe" ? "know this recipe" : "can craft this"
+                } - hover for names`}
+          </div>
+        )}
 
         {item.sell_price != null && (
           <div className="mt-1.5 flex justify-end text-xs text-gray-400">
@@ -377,7 +419,7 @@ function ItemRow({
           <ItemTooltipBox
             name={item.name}
             qualityColor={item.quality_color}
-            lines={d.tooltipLines}
+            lines={tooltipLinesWithCrafters}
             note={d.note}
             noteClassName={item.verified ? "text-[#1eff00]" : "text-yellow-400"}
             lineColor={d.tooltipLineColor}
@@ -405,6 +447,10 @@ function ItemInspector({
   onClose: () => void;
 }) {
   const d = computeItemDisplay(item, character, allCharacters);
+  const crafters = useCraftersOnDemand(item, true);
+  const knownByLines = crafters && crafters.length > 0 ? formatKnownByLines(crafters, item.item_class) : [];
+  const tooltipLinesWithCrafters =
+    knownByLines.length > 0 ? [...d.tooltipLines, "", ...knownByLines] : d.tooltipLines;
   const [wishlistStatus, setWishlistStatus] = useState<string | null>(null);
   const [prebisStatus, setPrebisStatus] = useState<string | null>(null);
 
@@ -463,7 +509,7 @@ function ItemInspector({
       <ItemTooltipBox
         name={item.name}
         qualityColor={item.quality_color}
-        lines={d.tooltipLines}
+        lines={tooltipLinesWithCrafters}
         note={d.note}
         noteClassName={item.verified ? "text-[#1eff00]" : "text-yellow-400"}
         lineColor={d.tooltipLineColor}

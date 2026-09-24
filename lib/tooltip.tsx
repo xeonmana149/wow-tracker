@@ -65,6 +65,16 @@ export function isSetBonusLine(line: string) {
   return /^\(\d+\)\s*Set:/i.test(line.trim());
 }
 
+// "Xeon Mana knows this recipe" / "Xeon Mana can craft this" - the
+// friends-can-see-who-can-make-it lines added by lib/craftedBy.ts, not
+// anything Blizzard's own tooltip ever shows. Colored the same sky blue as
+// the existing "→ so-and-so can make this" character-comparison suggestion
+// on the Items page, since it's the same kind of "someone you know can help
+// with this" callout.
+export function isKnownByLine(line: string) {
+  return /(knows this recipe|can craft this)$/i.test(line.trim());
+}
+
 const MADE_BY_RE = /^<.*made by.*>$/i;
 const DURABILITY_RE = /^Durability \d+ \/ (\d+)$/;
 
@@ -417,6 +427,8 @@ export function ItemTooltipBox({
               ? "text-[#1eff00]"
               : isSetPieceLine(line)
               ? "text-gray-400"
+              : isKnownByLine(line)
+              ? "text-sky-400"
               : "text-white";
           return (
             <TwoColumnLine
