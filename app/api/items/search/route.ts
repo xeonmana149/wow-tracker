@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
     // one; that's fine, `.or` lets a null item_class (any verified item)
     // through untouched either way.
     .or("item_class.is.null,item_class.neq.Quest")
+    .eq("hidden", false)
     .order("verified", { ascending: false })
     .order("name", { ascending: true })
     .limit(60);

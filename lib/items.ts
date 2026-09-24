@@ -26,6 +26,24 @@ export const ITEM_REGION = "us";
 
 export type ItemSource = "classic_api" | "auto_new" | "manual";
 
+// Blizzard's classic database is a straight pull of the real game's data,
+// including a scattering of internal-only rows that were never meant to be
+// player-facing: QA/test items, dev placeholders (named like "[PH] ..."),
+// and one-off unobtainable items that shipped in the data but never in the
+// game (spotted so far: "Fabled Steed", "Shard of the Defiler"). These get
+// flagged `hidden` rather than skipped outright - the row still exists (in
+// case it's ever needed for a manual fix), it just never shows up in the
+// Items search. A real scanned tooltip is strong proof an item genuinely
+// exists in Forever regardless of what its name looks like, so
+// applyLiveObservation always clears this flag if it was set.
+const JUNK_NAME_PATTERNS = [/\btest\b/i, /^\[PH\]/i, /\bdebug\b/i, /\bqa\b/i, /^monster - /i];
+const JUNK_NAMES = new Set(["Fabled Steed", "Shard of the Defiler"]);
+
+export function isLikelyJunkItemName(name: string): boolean {
+  if (JUNK_NAMES.has(name)) return true;
+  return JUNK_NAME_PATTERNS.some((re) => re.test(name));
+}
+
 export type ItemRow = {
   id: number;
   name: string;
@@ -55,6 +73,7 @@ export type ItemRow = {
   raw: unknown | null;
   verified: boolean;
   tooltip: string[] | null;
+  hidden: boolean;
 };
 
 // Blizzard's quality "type" enum -> the hex color the site already uses
@@ -175,13 +194,15 @@ function rowFromBlizzard(id: number, body: BlizzardItemBody): ItemRow {
                       // see the caveat above. Only a real scanned tooltip
                       // (applyLiveObservation) ever sets this true.
     tooltip: null,
+    hidden: isLikelyJunkItemName(body.name?.en_US ?? ""),
   };
 }
 
 function placeholderRow(id: number, fallback: { name?: string; icon?: number | null }): ItemRow {
+  const name = fallback.name ?? `Unknown Item ${id}`;
   return {
     id,
-    name: fallback.name ?? `Unknown Item ${id}`,
+    name,
     quality: null,
     quality_color: null,
     item_class: null,
@@ -200,6 +221,7 @@ function placeholderRow(id: number, fallback: { name?: string; icon?: number | n
     source: "auto_new",
     raw: null,
     verified: false,
+    hidden: isLikelyJunkItemName(name),
     tooltip: null,
   };
 }
@@ -372,6 +394,11 @@ export async function applyLiveObservation(
     name: observation.name,
     verified: true,
     tooltip: observation.tooltip,
+    // A real player actually has this item equipped/in their bags - proof
+    // it's genuinely obtainable, overriding any earlier guess (from a
+    // name-pattern match against Blizzard's baseline data) that it might
+    // have been a QA/test/unobtainable row.
+    hidden: false,
   };
   if (color) update.quality_color = color;
   if (quality) update.quality = quality;
