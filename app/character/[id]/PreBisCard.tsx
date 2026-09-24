@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabase";
-import { iconUrlForFileId, wowIconUrl } from "../../lib/icons";
+import { supabase } from "../../../lib/supabase";
+import { iconUrlForFileId, wowIconUrl } from "../../../lib/icons";
 
 export type PreBisEntry = {
   id: string;
