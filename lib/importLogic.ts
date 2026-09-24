@@ -12,6 +12,7 @@ import {
   isWithinFoundingWindow,
 } from "./achievements";
 import { checkAccountAchievements } from "./accountAchievements";
+import { applyLiveObservation, ensureItemsExist } from "./items";
 
 export type ParsedTraitNode = {
   entryID?: number;
@@ -105,7 +106,10 @@ export type ParsedExport = {
         }
     )[];
   }[];
-  gear?: Record<string, { link: string; name: string; color?: string; icon?: number; tooltip?: string[] }>;
+  gear?: Record<
+    string,
+    { link: string; name: string; id?: number; color?: string; icon?: number; tooltip?: string[] }
+  >;
   traits?: {
     experimental?: boolean;
     error?: string;
@@ -500,6 +504,7 @@ export async function applyImport(
     slot: string;
     item_name: string;
     item_link: string;
+    item_id: number | null;
     item_quality: string | null;
     item_icon: string | null;
     tooltip: string[];
@@ -530,6 +535,7 @@ export async function applyImport(
       slot: siteSlot,
       item_name: item.name,
       item_link: item.link,
+      item_id: item.id ?? null,
       item_quality: item.color ?? null,
       item_icon: iconUrlForFileId(item.icon),
       tooltip: item.tooltip ?? [],
@@ -579,6 +585,48 @@ export async function applyImport(
   }
 
   if (gearRows.length > 0) {
+    // Keep the items table in sync with what's actually equipped. A live
+    // scanned tooltip (present on every gear export from addon 1.6.0+) is
+    // the only trustworthy source for an item's real quality/stats - WoW
+    // Forever reuses classic item IDs but can rebalance them, and Blizzard's
+    // classic API has no idea when that's happened (confirmed 2026-09-24 on
+    // Runed Copper Belt: Blizzard says Common/86 Armor/no stats, the live
+    // game says Uncommon/91 Armor/+3 Str/+2 Sta). So applyLiveObservation
+    // always wins when there's a tooltip to read; ensureItemsExist (an
+    // unverified Blizzard-baseline placeholder) only covers the rare case
+    // where an item ID came through with no tooltip at all.
+    const idsNeedingBaseline: number[] = [];
+    const fallbacks = new Map<number, { name?: string; icon?: number | null }>();
+    for (const addonSlot of Object.keys(GEAR_SLOT_MAP)) {
+      const item = parsed.gear?.[addonSlot];
+      if (item?.id == null) continue;
+      if (item.tooltip && item.tooltip.length > 0) {
+        try {
+          await applyLiveObservation(supabase, item.id, {
+            name: item.name,
+            color: item.color ?? null,
+            icon: item.icon ?? null,
+            tooltip: item.tooltip,
+          });
+        } catch (e) {
+          // Never let an item-database hiccup block the actual gear sync -
+          // the equipped_gear upsert below is what matters for the
+          // character page; items can catch up next sync.
+          console.error(`applyLiveObservation failed for item ${item.id}:`, e);
+        }
+      } else {
+        idsNeedingBaseline.push(item.id);
+        fallbacks.set(item.id, { name: item.name, icon: item.icon ?? null });
+      }
+    }
+    if (idsNeedingBaseline.length > 0) {
+      try {
+        await ensureItemsExist(supabase, idsNeedingBaseline, fallbacks);
+      } catch (e) {
+        console.error("ensureItemsExist failed during gear sync:", e);
+      }
+    }
+
     const { error } = await supabase
       .from("equipped_gear")
       .upsert(gearRows, { onConflict: "character_id,slot" });
