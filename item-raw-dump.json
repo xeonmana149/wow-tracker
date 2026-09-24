@@ -1,714 +1,664 @@
 [
   {
-    "matchedName": "Plans: Moonsteel Broadsword",
-    "id": 12163,
-    "name": "Plans: Moonsteel Broadsword",
+    "matchedName": "Stormrage Bracers",
+    "id": 16904,
+    "name": "Stormrage Bracers",
     "source": "classic_api",
     "verified": false,
     "raw": {
-      "id": 12163,
+      "id": 16904,
       "name": {
-        "de_DE": "Pläne: Mondstahlbreitschwert",
-        "en_GB": "Plans: Moonsteel Broadsword",
-        "en_US": "Plans: Moonsteel Broadsword",
-        "es_ES": "Diseño: sable de acero lunar",
-        "es_MX": "Diseño: espada ancha de acero lunar",
-        "fr_FR": "Plans : Epée d'acier lunaire",
-        "it_IT": "Progetto: Spadone d'Acciaio Lunare",
-        "ko_KR": "도면: 달의 강철 브로드소드",
-        "pt_BR": "Instruções: Espada Larga de Lunaço",
-        "ru_RU": "Чертеж: палаш лунной стали",
-        "zh_CN": "设计图：月钢宽剑",
-        "zh_TW": "設計圖：月鋼寬劍"
+        "de_DE": "Armschienen des Stormrage",
+        "en_GB": "Stormrage Bracers",
+        "en_US": "Stormrage Bracers",
+        "es_ES": "Brazales de Tempestira",
+        "es_MX": "Brazales de Tempestira",
+        "fr_FR": "Brassards de Stormrage",
+        "it_IT": "Bracciali di Grantempesta",
+        "ko_KR": "성난폭풍 팔보호구",
+        "pt_BR": "Braçadeiras Tempesfúria",
+        "ru_RU": "Наручи Ярости Бури",
+        "zh_CN": "怒风护腕",
+        "zh_TW": "怒風護腕"
       },
-      "level": 36,
+      "level": 76,
       "media": {
-        "id": 12163,
+        "id": 16904,
         "key": {
-          "href": "https://us.api.blizzard.com/data/wow/media/item/12163?namespace=static-1.15.9_68185-classic1x-us"
+          "href": "https://us.api.blizzard.com/data/wow/media/item/16904?namespace=static-1.15.9_68185-classic1x-us"
         }
       },
       "_links": {
         "self": {
-          "href": "https://us.api.blizzard.com/data/wow/item/12163?namespace=static-1.15.9_68185-classic1x-us"
+          "href": "https://us.api.blizzard.com/data/wow/item/16904?namespace=static-1.15.9_68185-classic1x-us"
         }
       },
       "quality": {
         "name": {
-          "de_DE": "Verbreitet",
-          "en_GB": "Common",
-          "en_US": "Common",
-          "es_ES": "Común",
-          "es_MX": "Común",
-          "fr_FR": "Commun",
-          "it_IT": "Comune",
-          "ko_KR": "일반",
-          "pt_BR": "Comum",
-          "ru_RU": "Обычное",
-          "zh_CN": "普通",
-          "zh_TW": "普通"
+          "de_DE": "Episch",
+          "en_GB": "Epic",
+          "en_US": "Epic",
+          "es_ES": "Épico",
+          "es_MX": "Épico",
+          "fr_FR": "Epique",
+          "it_IT": "Epico",
+          "ko_KR": "영웅",
+          "pt_BR": "Épico",
+          "ru_RU": "Превосходное",
+          "zh_CN": "史诗",
+          "zh_TW": "史詩"
         },
-        "type": "COMMON"
+        "type": "EPIC"
       },
       "max_count": 0,
       "item_class": {
-        "id": 9,
+        "id": 4,
         "key": {
-          "href": "https://us.api.blizzard.com/data/wow/item-class/9?namespace=static-1.15.9_68185-classic1x-us"
+          "href": "https://us.api.blizzard.com/data/wow/item-class/4?namespace=static-1.15.9_68185-classic1x-us"
         },
         "name": {
-          "de_DE": "Rezept",
-          "en_GB": "Recipe",
-          "en_US": "Recipe",
-          "es_ES": "Receta",
-          "es_MX": "Receta",
-          "fr_FR": "Recette",
-          "it_IT": "Ricette",
-          "ko_KR": "제조법",
-          "pt_BR": "Receita",
-          "ru_RU": "Рецепты",
-          "zh_CN": "配方",
-          "zh_TW": "配方"
+          "de_DE": "Rüstung",
+          "en_GB": "Armor",
+          "en_US": "Armor",
+          "es_ES": "Armadura",
+          "es_MX": "Armadura",
+          "fr_FR": "Armure",
+          "it_IT": "Armature",
+          "ko_KR": "방어구",
+          "pt_BR": "Armadura",
+          "ru_RU": "Доспехи",
+          "zh_CN": "护甲",
+          "zh_TW": "護甲"
         }
       },
-      "sell_price": 1100,
+      "sell_price": 36606,
       "is_stackable": false,
       "preview_item": {
+        "set": {
+          "items": [
+            {
+              "item": {
+                "id": 16903,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/16903?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Gürtel des Stormrage",
+                  "en_GB": "Stormrage Belt",
+                  "en_US": "Stormrage Belt",
+                  "es_ES": "Cinturón de Tempestira",
+                  "es_MX": "Cinturón de Tempestira",
+                  "fr_FR": "Ceinture de Stormrage",
+                  "it_IT": "Cintura di Grantempesta",
+                  "ko_KR": "성난폭풍 허리띠",
+                  "pt_BR": "Cinto Tempesfúria",
+                  "ru_RU": "Пояс Ярости Бури",
+                  "zh_CN": "怒风腰带",
+                  "zh_TW": "怒風腰帶"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 16898,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/16898?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Stiefel des Stormrage",
+                  "en_GB": "Stormrage Boots",
+                  "en_US": "Stormrage Boots",
+                  "es_ES": "Botas de Tempestira",
+                  "es_MX": "Botas de Tempestira",
+                  "fr_FR": "Bottes de Stormrage",
+                  "it_IT": "Stivali di Grantempesta",
+                  "ko_KR": "성난폭풍 장화",
+                  "pt_BR": "Botas Tempesfúria",
+                  "ru_RU": "Сапоги Ярости Бури",
+                  "zh_CN": "怒风长靴",
+                  "zh_TW": "怒風長靴"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 16904,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/16904?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Armschienen des Stormrage",
+                  "en_GB": "Stormrage Bracers",
+                  "en_US": "Stormrage Bracers",
+                  "es_ES": "Brazales de Tempestira",
+                  "es_MX": "Brazales de Tempestira",
+                  "fr_FR": "Brassards de Stormrage",
+                  "it_IT": "Bracciali di Grantempesta",
+                  "ko_KR": "성난폭풍 팔보호구",
+                  "pt_BR": "Braçadeiras Tempesfúria",
+                  "ru_RU": "Наручи Ярости Бури",
+                  "zh_CN": "怒风护腕",
+                  "zh_TW": "怒風護腕"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 16897,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/16897?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Brustschutz des Stormrage",
+                  "en_GB": "Stormrage Chestguard",
+                  "en_US": "Stormrage Chestguard",
+                  "es_ES": "Coraza de Tempestira",
+                  "es_MX": "Coselete de Tempestira",
+                  "fr_FR": "Robe de Stormrage",
+                  "it_IT": "Corazza Foderata di Grantempesta",
+                  "ko_KR": "성난폭풍 흉갑",
+                  "pt_BR": "Couraça Tempesfúria",
+                  "ru_RU": "Нагрудный доспех Ярости Бури",
+                  "zh_CN": "怒风胸甲",
+                  "zh_TW": "怒風胸甲"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 16900,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/16900?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Bedeckung des Stormrage",
+                  "en_GB": "Stormrage Cover",
+                  "en_US": "Stormrage Cover",
+                  "es_ES": "Abrigo de Tempestira",
+                  "es_MX": "Casquete de Tempestira",
+                  "fr_FR": "Couvre-chef de Stormrage",
+                  "it_IT": "Copricapo di Grantempesta",
+                  "ko_KR": "성난폭풍 투구",
+                  "pt_BR": "Mantel Tempesfúria",
+                  "ru_RU": "Капюшон Ярости Бури",
+                  "zh_CN": "怒风头巾",
+                  "zh_TW": "怒風頭巾"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 16899,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/16899?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Handschützer des Stormrage",
+                  "en_GB": "Stormrage Handguards",
+                  "en_US": "Stormrage Handguards",
+                  "es_ES": "Manoplas de Tempestira",
+                  "es_MX": "Manoplas de Tempestira",
+                  "fr_FR": "Garde-mains de Stormrage",
+                  "it_IT": "Guardamani Foderati di Grantempesta",
+                  "ko_KR": "성난폭풍 장갑",
+                  "pt_BR": "Protetores de Mão Tempesfúria",
+                  "ru_RU": "Боевые рукавицы Ярости Бури",
+                  "zh_CN": "怒风护手",
+                  "zh_TW": "怒風護手"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 16901,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/16901?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Beinschützer des Stormrage",
+                  "en_GB": "Stormrage Legguards",
+                  "en_US": "Stormrage Legguards",
+                  "es_ES": "Musleras de Tempestira",
+                  "es_MX": "Musleras de Tempestira",
+                  "fr_FR": "Jambières de Stormrage",
+                  "it_IT": "Gambali Foderati di Grantempesta",
+                  "ko_KR": "성난폭풍 다리보호대",
+                  "pt_BR": "Guarda-pernas Tempesfúria",
+                  "ru_RU": "Набедренники Ярости Бури",
+                  "zh_CN": "怒风腿甲",
+                  "zh_TW": "怒風腿甲"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 16902,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/16902?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Schulterstücke des Stormrage",
+                  "en_GB": "Stormrage Pauldrons",
+                  "en_US": "Stormrage Pauldrons",
+                  "es_ES": "Espaldares de Tempestira",
+                  "es_MX": "Espaldares de Tempestira",
+                  "fr_FR": "Espauliers de Stormrage",
+                  "it_IT": "Spallaccio di Grantempesta",
+                  "ko_KR": "성난폭풍 어깨갑옷",
+                  "pt_BR": "Brafoneiras Tempesfúria",
+                  "ru_RU": "Наплечье Ярости Бури",
+                  "zh_CN": "怒风肩甲",
+                  "zh_TW": "怒風肩甲"
+                }
+              }
+            }
+          ],
+          "effects": [
+            {
+              "display_string": {
+                "de_DE": "(3) Set: Ermöglicht, dass 15% Eurer Manaregeneration während des Zauberwirkens weiterläuft.",
+                "en_GB": "(3) Set: Allows 15% of your Mana regeneration to continue while casting.",
+                "en_US": "(3) Set: Allows 15% of your Mana regeneration to continue while casting.",
+                "es_ES": "(3) Bonif.: Permite que un 15% de la regeneración de maná continúe mientras lanzas hechizos.",
+                "es_MX": "(3) Bonif.: Permite que un 15% de la regeneración de maná continúe mientras lanzas hechizos.",
+                "fr_FR": "(3) Ensemble : Vous confère 15% de votre vitesse normale de récupération du mana pendant l'incantation.",
+                "it_IT": "Set (3): Allows 15% of your Mana regeneration to continue while casting.",
+                "ko_KR": "(3) 세트 효과: 시전 중에도 평소의 15%에 달하는 속도로 마나가 회복됩니다.",
+                "pt_BR": "(3) Conjunto: Permite que 15% da regeneração de mana continue enquanto estiver lançando feitiços.",
+                "ru_RU": "Комплект (3 предмета): В процессе применения заклинаний продолжается 15% от восполнения маны.",
+                "zh_CN": "(3) 套装：使你在施法时仍保持15%的法力回复速度。",
+                "zh_TW": "(3) 套裝: 使你在施法時仍保持15%的法力回復速度。"
+              },
+              "required_count": 3
+            },
+            {
+              "display_string": {
+                "de_DE": "(5) Set: Verringert die Zauberzeit Eures Zaubers 'Nachwachsen' um 0,2 Sekunden.",
+                "en_GB": "(5) Set: Reduces the casting time of your Regrowth spell by 0.2 sec.",
+                "en_US": "(5) Set: Reduces the casting time of your Regrowth spell by 0.2 sec.",
+                "es_ES": "(5) Bonif.: Reduce el tiempo de lanzamiento de tu hechizo Recrecimiento en 0,2 s.",
+                "es_MX": "(5) Bonif.: Reduce el tiempo de lanzamiento de tu hechizo Recrecimiento 0.2 s.",
+                "fr_FR": "(5) Ensemble : Réduit le temps d'incantation de votre sort Rétablissement de 0,2 sec.",
+                "it_IT": "Set (5): Riduce il tempo di lancio di Ricrescita di 0,2 s.",
+                "ko_KR": "(5) 세트 효과: 재생의 시전 시간이 0.2초만큼 단축됩니다.",
+                "pt_BR": "(5) Conjunto: Reduz em 0,2 s o tempo de lançamento do seu feitiço Recrescimento.",
+                "ru_RU": "Комплект (5 предметов): Уменьшение времени наложения вашего заклинания \"Восстановление\" на 0,2 сек.",
+                "zh_CN": "(5) 套装：使你的愈合法术的施法时间减少0.2秒。",
+                "zh_TW": "(5) 套裝: 使你的癒合法術的施法時間減少0.2秒。"
+              },
+              "required_count": 5
+            },
+            {
+              "display_string": {
+                "de_DE": "(8) Set: Erhöht die Dauer Eures Zaubers 'Verjüngung' um 3 Sek.",
+                "en_GB": "(8) Set: Increases the duration of your Rejuvenation spell by 3 sec.",
+                "en_US": "(8) Set: Increases the duration of your Rejuvenation spell by 3 sec.",
+                "es_ES": "(8) Bonif.: Aumenta en 3 segundos la duración de tu hechizo Rejuvenecimiento.",
+                "es_MX": "(8) Bonif.: Aumenta 3 s la duración de tu hechizo Rejuvenecimiento.",
+                "fr_FR": "(8) Ensemble : Augmente la durée de votre sort Récupération de 3 sec.",
+                "it_IT": "Set (8): Aumenta la durata di Rinvigorimento di 3 s.",
+                "ko_KR": "(8) 세트 효과: 회복의 지속시간이 3만큼 증가합니다.",
+                "pt_BR": "(8) Conjunto: Aumenta em 3 s a duração do seu feitiço Rejuvenescer.",
+                "ru_RU": "Комплект (8 предметов): Увеличение длительности заклинания \"Омоложение\" на 3 сек.",
+                "zh_CN": "(8) 套装：使你的回春术的持续时间延长3秒。",
+                "zh_TW": "(8) 套裝: 使你的回春術的持續時間延長3秒。"
+              },
+              "required_count": 8
+            }
+          ],
+          "item_set": {
+            "id": 214,
+            "key": {
+              "href": "https://us.api.blizzard.com/data/wow/item-set/214?namespace=static-1.15.9_68185-classic1x-us"
+            },
+            "name": {
+              "de_DE": "Gewänder des Stormrage",
+              "en_GB": "Stormrage Raiment",
+              "en_US": "Stormrage Raiment",
+              "es_ES": "Vestiduras Tempestira",
+              "es_MX": "Vestiduras de Tempestira",
+              "fr_FR": "Grande tenue de Stormrage",
+              "it_IT": "Divisa della Rabbia Tempestosa",
+              "ko_KR": "성난폭풍 의복",
+              "pt_BR": "Traje Tempesfúria",
+              "ru_RU": "Одеяния Ярости Бури",
+              "zh_CN": "怒风",
+              "zh_TW": "怒風"
+            }
+          },
+          "display_string": {
+            "de_DE": "Gewänder des Stormrage (0/8)",
+            "en_GB": "Stormrage Raiment (0/8)",
+            "en_US": "Stormrage Raiment (0/8)",
+            "es_ES": "Vestiduras Tempestira (0/8)",
+            "es_MX": "Vestiduras de Tempestira (0/8)",
+            "fr_FR": "Grande tenue de Stormrage (0/8)",
+            "it_IT": "Divisa della Rabbia Tempestosa (0/8)",
+            "ko_KR": "성난폭풍 의복 (0/8)",
+            "pt_BR": "Traje Tempesfúria (0/8)",
+            "ru_RU": "Одеяния Ярости Бури (0/8)",
+            "zh_CN": "怒风（0/8）",
+            "zh_TW": "怒風（0/8）"
+          }
+        },
         "item": {
-          "id": 12163,
+          "id": 16904,
           "key": {
-            "href": "https://us.api.blizzard.com/data/wow/item/12163?namespace=static-1.15.9_68185-classic1x-us"
+            "href": "https://us.api.blizzard.com/data/wow/item/16904?namespace=static-1.15.9_68185-classic1x-us"
           }
         },
         "name": {
-          "de_DE": "Pläne: Mondstahlbreitschwert",
-          "en_GB": "Plans: Moonsteel Broadsword",
-          "en_US": "Plans: Moonsteel Broadsword",
-          "es_ES": "Diseño: sable de acero lunar",
-          "es_MX": "Diseño: espada ancha de acero lunar",
-          "fr_FR": "Plans : Epée d'acier lunaire",
-          "it_IT": "Progetto: Spadone d'Acciaio Lunare",
-          "ko_KR": "도면: 달의 강철 브로드소드",
-          "pt_BR": "Instruções: Espada Larga de Lunaço",
-          "ru_RU": "Чертеж: палаш лунной стали",
-          "zh_CN": "设计图：月钢宽剑",
-          "zh_TW": "設計圖：月鋼寬劍"
+          "de_DE": "Armschienen des Stormrage",
+          "en_GB": "Stormrage Bracers",
+          "en_US": "Stormrage Bracers",
+          "es_ES": "Brazales de Tempestira",
+          "es_MX": "Brazales de Tempestira",
+          "fr_FR": "Brassards de Stormrage",
+          "it_IT": "Bracciali di Grantempesta",
+          "ko_KR": "성난폭풍 팔보호구",
+          "pt_BR": "Braçadeiras Tempesfúria",
+          "ru_RU": "Наручи Ярости Бури",
+          "zh_CN": "怒风护腕",
+          "zh_TW": "怒風護腕"
+        },
+        "armor": {
+          "value": 98,
+          "display": {
+            "color": {
+              "a": 1,
+              "b": 255,
+              "g": 255,
+              "r": 255
+            },
+            "display_string": {
+              "de_DE": "98 Rüstung",
+              "en_GB": "98 Armor",
+              "en_US": "98 Armor",
+              "es_ES": "98 armadura",
+              "es_MX": "98 p. de armadura",
+              "fr_FR": "Armure : 98",
+              "it_IT": "98 Armor",
+              "ko_KR": "방어도 98",
+              "pt_BR": "98 de Armadura",
+              "ru_RU": "Броня: 98",
+              "zh_CN": "98点护甲",
+              "zh_TW": "98點護甲"
+            }
+          }
         },
         "media": {
-          "id": 12163,
+          "id": 16904,
           "key": {
-            "href": "https://us.api.blizzard.com/data/wow/media/item/12163?namespace=static-1.15.9_68185-classic1x-us"
+            "href": "https://us.api.blizzard.com/data/wow/media/item/16904?namespace=static-1.15.9_68185-classic1x-us"
           }
         },
-        "recipe": {
-          "item": {
-            "item": {
-              "id": 3853,
-              "key": {
-                "href": "https://us.api.blizzard.com/data/wow/item/3853?namespace=static-1.15.9_68185-classic1x-us"
-              }
-            },
-            "name": {
-              "de_DE": "Mondstahlbreitschwert",
-              "en_GB": "Moonsteel Broadsword",
-              "en_US": "Moonsteel Broadsword",
-              "es_ES": "Sable de acero lunar",
-              "es_MX": "Espada ancha de acero lunar",
-              "fr_FR": "Epée d'acier lunaire",
-              "it_IT": "Spadone d'Acciaio Lunare",
-              "ko_KR": "달의 강철 브로드소드",
-              "pt_BR": "Espada Larga de Lunaço",
-              "ru_RU": "Палаш лунной стали",
-              "zh_CN": "月钢宽剑",
-              "zh_TW": "月鋼寬劍"
-            },
-            "media": {
-              "id": 3853,
-              "key": {
-                "href": "https://us.api.blizzard.com/data/wow/media/item/3853?namespace=static-1.15.9_68185-classic1x-us"
-              }
-            },
-            "stats": [
-              {
-                "type": {
-                  "name": {
-                    "de_DE": "Ausdauer",
-                    "en_GB": "Stamina",
-                    "en_US": "Stamina",
-                    "es_ES": "aguante",
-                    "es_MX": "Aguante",
-                    "fr_FR": "Endurance",
-                    "it_IT": "Tempra",
-                    "ko_KR": "체력",
-                    "pt_BR": "Vigor",
-                    "ru_RU": "к выносливости",
-                    "zh_CN": "耐力",
-                    "zh_TW": "耐力"
-                  },
-                  "type": "STAMINA"
-                },
-                "value": 4,
-                "display": {
-                  "color": {
-                    "a": 1,
-                    "b": 255,
-                    "g": 255,
-                    "r": 255
-                  },
-                  "display_string": {
-                    "de_DE": "+4 Ausdauer",
-                    "en_GB": "+4 Stamina",
-                    "en_US": "+4 Stamina",
-                    "es_ES": "+4 aguante",
-                    "es_MX": "+4 Aguante",
-                    "fr_FR": "+4 Endurance",
-                    "it_IT": "+4 Tempra",
-                    "ko_KR": "체력 +4",
-                    "pt_BR": "+4 Vigor",
-                    "ru_RU": "+4 к выносливости",
-                    "zh_CN": "+4 耐力",
-                    "zh_TW": "+4耐力"
-                  }
-                }
-              },
-              {
-                "type": {
-                  "name": {
-                    "de_DE": "Willenskraft",
-                    "en_GB": "Spirit",
-                    "en_US": "Spirit",
-                    "es_ES": "espíritu",
-                    "es_MX": "Espíritu",
-                    "fr_FR": "Esprit",
-                    "it_IT": "Spirito",
-                    "ko_KR": "정신력",
-                    "pt_BR": "Espírito",
-                    "ru_RU": "к духу",
-                    "zh_CN": "精神",
-                    "zh_TW": "精神"
-                  },
-                  "type": "SPIRIT"
-                },
-                "value": 12,
-                "display": {
-                  "color": {
-                    "a": 1,
-                    "b": 255,
-                    "g": 255,
-                    "r": 255
-                  },
-                  "display_string": {
-                    "de_DE": "+12 Willenskraft",
-                    "en_GB": "+12 Spirit",
-                    "en_US": "+12 Spirit",
-                    "es_ES": "+12 espíritu",
-                    "es_MX": "+12 Espíritu",
-                    "fr_FR": "+12 Esprit",
-                    "it_IT": "+12 Spirito",
-                    "ko_KR": "정신력 +12",
-                    "pt_BR": "+12 Espírito",
-                    "ru_RU": "+12 к духу",
-                    "zh_CN": "+12 精神",
-                    "zh_TW": "+12精神"
-                  }
-                }
-              }
-            ],
-            "weapon": {
-              "dps": {
-                "value": 24.642855,
-                "display_string": {
-                  "de_DE": "(24.6 Schaden pro Sekunde)",
-                  "en_GB": "(24.6 damage per second)",
-                  "en_US": "(24.6 damage per second)",
-                  "es_ES": "(24.6 daño por segundo)",
-                  "es_MX": "(24.6 p. de daño por segundo)",
-                  "fr_FR": "(24.6 dégâts par seconde)",
-                  "it_IT": "(24.6 damage per second)",
-                  "ko_KR": "(초당 공격력 24.6)",
-                  "pt_BR": "(24.6 de dano por segundo)",
-                  "ru_RU": "(24.6 ед. урона в секунду)",
-                  "zh_CN": "（每秒伤害24.6）",
-                  "zh_TW": "（每秒傷害24.6）"
-                }
-              },
-              "damage": {
-                "max_value": 83,
-                "min_value": 55,
-                "damage_class": {
-                  "name": {
-                    "de_DE": "Körperlich",
-                    "en_GB": "Physical",
-                    "en_US": "Physical",
-                    "es_ES": "Físico",
-                    "es_MX": "Físico",
-                    "fr_FR": "Physique",
-                    "it_IT": "Fisico",
-                    "ko_KR": "물리",
-                    "pt_BR": "Físico",
-                    "ru_RU": "физический",
-                    "zh_CN": "物理",
-                    "zh_TW": "物理"
-                  },
-                  "type": "PHYSICAL"
-                },
-                "display_string": {
-                  "de_DE": "55 - 83 Schaden",
-                  "en_GB": "55 - 83 Damage",
-                  "en_US": "55 - 83 Damage",
-                  "es_ES": "55 - 83 Daño",
-                  "es_MX": "55 - 83 p. de daño",
-                  "fr_FR": "Dégâts : 55 - 83",
-                  "it_IT": "55 - 83 Damage",
-                  "ko_KR": "공격력 55 - 83",
-                  "pt_BR": "55 - 83 de dano",
-                  "ru_RU": "Урон: 55-83",
-                  "zh_CN": "55 - 83伤害",
-                  "zh_TW": "55 - 83傷害"
-                }
-              },
-              "attack_speed": {
-                "value": 2800,
-                "display_string": {
-                  "de_DE": "Tempo 2,80",
-                  "en_GB": "Speed 2.80",
-                  "en_US": "Speed 2.80",
-                  "es_ES": "Velocidad 2,80",
-                  "es_MX": "Velocidad 2.80",
-                  "fr_FR": "Vitesse 2,80",
-                  "it_IT": "Velocità 2,80",
-                  "ko_KR": "속도 2.80",
-                  "pt_BR": "Velocidade 2,80",
-                  "ru_RU": "Скорость 2,80",
-                  "zh_CN": "速度 2.80",
-                  "zh_TW": "速度 2.80"
-                }
-              }
-            },
-            "binding": {
+        "stats": [
+          {
+            "type": {
               "name": {
-                "de_DE": "Wird beim Anlegen gebunden",
-                "en_GB": "Binds when equipped",
-                "en_US": "Binds when equipped",
-                "es_ES": "Se liga al equiparlo",
-                "es_MX": "Se liga al equiparlo",
-                "fr_FR": "Lié quand équipé",
-                "it_IT": "Vincola all'equipaggiamento",
-                "ko_KR": "착용 시 귀속",
-                "pt_BR": "Vincula-se quando equipado",
-                "ru_RU": "Становится персональным при надевании",
-                "zh_CN": "装备后绑定",
-                "zh_TW": "裝備後綁定"
+                "de_DE": "Ausdauer",
+                "en_GB": "Stamina",
+                "en_US": "Stamina",
+                "es_ES": "aguante",
+                "es_MX": "Aguante",
+                "fr_FR": "Endurance",
+                "it_IT": "Tempra",
+                "ko_KR": "체력",
+                "pt_BR": "Vigor",
+                "ru_RU": "к выносливости",
+                "zh_CN": "耐力",
+                "zh_TW": "耐力"
               },
-              "type": "ON_EQUIP"
+              "type": "STAMINA"
             },
-            "quality": {
-              "name": {
-                "de_DE": "Selten",
-                "en_GB": "Uncommon",
-                "en_US": "Uncommon",
-                "es_ES": "No común",
-                "es_MX": "Inusual",
-                "fr_FR": "Inhabituel",
-                "it_IT": "Pregiato",
-                "ko_KR": "고급",
-                "pt_BR": "Incomum",
-                "ru_RU": "Необычное",
-                "zh_CN": "优秀",
-                "zh_TW": "優秀"
+            "value": 11,
+            "display": {
+              "color": {
+                "a": 1,
+                "b": 255,
+                "g": 255,
+                "r": 255
               },
-              "type": "UNCOMMON"
-            },
-            "durability": {
-              "value": 85,
               "display_string": {
-                "de_DE": "Haltbarkeit 85 / 85",
-                "en_GB": "Durability 85 / 85",
-                "en_US": "Durability 85 / 85",
-                "es_ES": "Durabilidad 85 / 85",
-                "es_MX": "Durabilidad 85 / 85",
-                "fr_FR": "Durabilité 85 / 85",
-                "it_IT": "Integrità 85 / 85",
-                "ko_KR": "내구도 85 / 85",
-                "pt_BR": "Durabilidade 85 / 85",
-                "ru_RU": "Прочность: 85 / 85",
-                "zh_CN": "耐久度 85 / 85",
-                "zh_TW": "耐久度 85 / 85"
+                "de_DE": "+11 Ausdauer",
+                "en_GB": "+11 Stamina",
+                "en_US": "+11 Stamina",
+                "es_ES": "+11 aguante",
+                "es_MX": "+11 Aguante",
+                "fr_FR": "+11 Endurance",
+                "it_IT": "+11 Tempra",
+                "ko_KR": "체력 +11",
+                "pt_BR": "+11 Vigor",
+                "ru_RU": "+11 к выносливости",
+                "zh_CN": "+11 耐力",
+                "zh_TW": "+11耐力"
               }
-            },
-            "item_class": {
-              "id": 2,
-              "key": {
-                "href": "https://us.api.blizzard.com/data/wow/item-class/2?namespace=static-1.15.9_68185-classic1x-us"
-              },
-              "name": {
-                "de_DE": "Waffe",
-                "en_GB": "Weapon",
-                "en_US": "Weapon",
-                "es_ES": "Arma",
-                "es_MX": "Arma",
-                "fr_FR": "Arme",
-                "it_IT": "Armi",
-                "ko_KR": "무기",
-                "pt_BR": "Arma",
-                "ru_RU": "Оружие",
-                "zh_CN": "武器",
-                "zh_TW": "武器"
-              }
-            },
-            "sell_price": {
-              "value": 10153,
-              "display_strings": {
-                "gold": {
-                  "de_DE": "1",
-                  "en_GB": "1",
-                  "en_US": "1",
-                  "es_ES": "1",
-                  "es_MX": "1",
-                  "fr_FR": "1",
-                  "it_IT": "1",
-                  "ko_KR": "1",
-                  "pt_BR": "1",
-                  "ru_RU": "1",
-                  "zh_CN": "1",
-                  "zh_TW": "1"
-                },
-                "copper": {
-                  "de_DE": "53",
-                  "en_GB": "53",
-                  "en_US": "53",
-                  "es_ES": "53",
-                  "es_MX": "53",
-                  "fr_FR": "53",
-                  "it_IT": "53",
-                  "ko_KR": "53",
-                  "pt_BR": "53",
-                  "ru_RU": "53",
-                  "zh_CN": "53",
-                  "zh_TW": "53"
-                },
-                "header": {
-                  "de_DE": "Verkaufspreis:",
-                  "en_GB": "Sell Price:",
-                  "en_US": "Sell Price:",
-                  "es_ES": "Precio de venta:",
-                  "es_MX": "Precio de venta:",
-                  "fr_FR": "Prix de vente :",
-                  "it_IT": "Prezzo di vendita:",
-                  "ko_KR": "판매 가격:",
-                  "pt_BR": "Preço de Venda:",
-                  "ru_RU": "Цена продажи:",
-                  "zh_CN": "卖价:",
-                  "zh_TW": "售價:"
-                },
-                "silver": {
-                  "de_DE": "1",
-                  "en_GB": "1",
-                  "en_US": "1",
-                  "es_ES": "1",
-                  "es_MX": "1",
-                  "fr_FR": "1",
-                  "it_IT": "1",
-                  "ko_KR": "1",
-                  "pt_BR": "1",
-                  "ru_RU": "1",
-                  "zh_CN": "1",
-                  "zh_TW": "1"
-                }
-              }
-            },
-            "requirements": {
-              "level": {
-                "value": 31,
-                "display_string": {
-                  "de_DE": "Benötigt Stufe 31",
-                  "en_GB": "Requires Level 31",
-                  "en_US": "Requires Level 31",
-                  "es_ES": "Necesitas ser de nivel 31",
-                  "es_MX": "Necesitas ser de nivel 31",
-                  "fr_FR": "Niveau 31 requis",
-                  "it_IT": "Richiede il livello 31",
-                  "ko_KR": "최소 요구 레벨 31",
-                  "pt_BR": "Requer o Nível 31",
-                  "ru_RU": "Требуется 31-й уровень",
-                  "zh_CN": "需要等级 31",
-                  "zh_TW": "需要等級 31"
-                }
-              }
-            },
-            "item_subclass": {
-              "id": 8,
-              "key": {
-                "href": "https://us.api.blizzard.com/data/wow/item-class/2/item-subclass/8?namespace=static-1.15.9_68185-classic1x-us"
-              },
-              "name": {
-                "de_DE": "Schwert",
-                "en_GB": "Sword",
-                "en_US": "Sword",
-                "es_ES": "Espada",
-                "es_MX": "Espada",
-                "fr_FR": "Epée",
-                "it_IT": "Spada",
-                "ko_KR": "도검",
-                "pt_BR": "Espada",
-                "ru_RU": "Меч",
-                "zh_CN": "剑",
-                "zh_TW": "劍"
-              }
-            },
-            "inventory_type": {
-              "name": {
-                "de_DE": "Zweihändig",
-                "en_GB": "Two-Hand",
-                "en_US": "Two-Hand",
-                "es_ES": "Dos manos",
-                "es_MX": "Dos manos",
-                "fr_FR": "Deux mains",
-                "it_IT": "Due mani",
-                "ko_KR": "양손 장비",
-                "pt_BR": "Duas mãos",
-                "ru_RU": "Двуручное",
-                "zh_CN": "双手",
-                "zh_TW": "雙手"
-              },
-              "type": "TWOHWEAPON"
             }
           },
-          "reagents": [
-            {
-              "reagent": {
-                "id": 3859,
-                "key": {
-                  "href": "https://us.api.blizzard.com/data/wow/item/3859?namespace=static-1.15.9_68185-classic1x-us"
-                },
-                "name": {
-                  "de_DE": "Stahlbarren",
-                  "en_GB": "Steel Bar",
-                  "en_US": "Steel Bar",
-                  "es_ES": "Lingote de acero",
-                  "es_MX": "Barra de acero",
-                  "fr_FR": "Barre d'acier",
-                  "it_IT": "Barra d'Acciaio",
-                  "ko_KR": "강철 주괴",
-                  "pt_BR": "Barra de Aço",
-                  "ru_RU": "Стальной слиток",
-                  "zh_CN": "钢锭",
-                  "zh_TW": "鋼錠"
-                }
-              },
-              "quantity": 8
-            },
-            {
-              "reagent": {
-                "id": 3466,
-                "key": {
-                  "href": "https://us.api.blizzard.com/data/wow/item/3466?namespace=static-1.15.9_68185-classic1x-us"
-                },
-                "name": {
-                  "de_DE": "Starker Fluxus",
-                  "en_GB": "Strong Flux",
-                  "en_US": "Strong Flux",
-                  "es_ES": "Flujo fuerte",
-                  "es_MX": "Flujo concentrado",
-                  "fr_FR": "Catalyseur puissant",
-                  "it_IT": "Flussante Forte",
-                  "ko_KR": "강한 융해촉진제",
-                  "pt_BR": "Catalisador Forte",
-                  "ru_RU": "Сильный плавень",
-                  "zh_CN": "强效助熔剂",
-                  "zh_TW": "強效助熔劑"
-                }
-              },
-              "quantity": 2
-            },
-            {
-              "reagent": {
-                "id": 3486,
-                "key": {
-                  "href": "https://us.api.blizzard.com/data/wow/item/3486?namespace=static-1.15.9_68185-classic1x-us"
-                },
-                "name": {
-                  "de_DE": "Schwerer Schleifstein",
-                  "en_GB": "Heavy Grinding Stone",
-                  "en_US": "Heavy Grinding Stone",
-                  "es_ES": "Piedra de pulir pesada",
-                  "es_MX": "Piedra de pulir pesada",
-                  "fr_FR": "Silex à aiguiser lourd",
-                  "it_IT": "Pietra da Molatura Pesante",
-                  "ko_KR": "단단한 연마석",
-                  "pt_BR": "Pedra de Amolar Pesada",
-                  "ru_RU": "Тяжелый шлифовальный камень",
-                  "zh_CN": "重砂轮",
-                  "zh_TW": "重砂輪"
-                }
-              },
-              "quantity": 2
-            },
-            {
-              "reagent": {
-                "id": 1705,
-                "key": {
-                  "href": "https://us.api.blizzard.com/data/wow/item/1705?namespace=static-1.15.9_68185-classic1x-us"
-                },
-                "name": {
-                  "de_DE": "Geringer Mondstein",
-                  "en_GB": "Lesser Moonstone",
-                  "en_US": "Lesser Moonstone",
-                  "es_ES": "Piedra lunar inferior",
-                  "es_MX": "Piedra lunar inferior",
-                  "fr_FR": "Pierre de lune inférieure",
-                  "it_IT": "Pietraluna Minore",
-                  "ko_KR": "저급 월장석",
-                  "pt_BR": "Pedra-da-lua Inferior",
-                  "ru_RU": "Малый лунный камень",
-                  "zh_CN": "次级月亮石",
-                  "zh_TW": "次級月亮石"
-                }
-              },
-              "quantity": 3
-            },
-            {
-              "reagent": {
-                "id": 4234,
-                "key": {
-                  "href": "https://us.api.blizzard.com/data/wow/item/4234?namespace=static-1.15.9_68185-classic1x-us"
-                },
-                "name": {
-                  "de_DE": "Schweres Leder",
-                  "en_GB": "Heavy Leather",
-                  "en_US": "Heavy Leather",
-                  "es_ES": "Cuero pesado",
-                  "es_MX": "Cuero pesado",
-                  "fr_FR": "Cuir lourd",
-                  "it_IT": "Cuoio Pesante",
-                  "ko_KR": "질긴 가죽",
-                  "pt_BR": "Couro Pesado",
-                  "ru_RU": "Толстая кожа",
-                  "zh_CN": "重皮",
-                  "zh_TW": "重皮"
-                }
-              },
-              "quantity": 3
-            }
-          ],
-          "reagents_display_string": {
-            "de_DE": "Stahlbarren (8), Starker Fluxus (2), Schwerer Schleifstein (2), Geringer Mondstein (3), Schweres Leder (3)",
-            "en_GB": "Steel Bar (8), Strong Flux (2), Heavy Grinding Stone (2), Lesser Moonstone (3), Heavy Leather (3)",
-            "en_US": "Steel Bar (8), Strong Flux (2), Heavy Grinding Stone (2), Lesser Moonstone (3), Heavy Leather (3)",
-            "es_ES": "Lingote de acero (8), Flujo fuerte (2), Piedra de pulir pesada (2), Piedra lunar inferior (3), Cuero pesado (3)",
-            "es_MX": "Barra de acero (8), Flujo concentrado (2), Piedra de pulir pesada (2), Piedra lunar inferior (3), Cuero pesado (3)",
-            "fr_FR": "Barre d'acier (8), Catalyseur puissant (2), Silex à aiguiser lourd (2), Pierre de lune inférieure (3), Cuir lourd (3)",
-            "it_IT": "Barra d'Acciaio (8), Flussante Forte (2), Pietra da Molatura Pesante (2), Pietraluna Minore (3), Cuoio Pesante (3)",
-            "ko_KR": "강철 주괴 (8), 강한 융해촉진제 (2), 단단한 연마석 (2), 저급 월장석 (3), 질긴 가죽 (3)",
-            "pt_BR": "Barra de Aço (8), Catalisador Forte (2), Pedra de Amolar Pesada (2), Pedra-da-lua Inferior (3), Couro Pesado (3)",
-            "ru_RU": "Стальной слиток (8), Сильный плавень (2), Тяжелый шлифовальный камень (2), Малый лунный камень (3), Толстая кожа (3)",
-            "zh_CN": "钢锭 (8), 强效助熔剂 (2), 重砂轮 (2), 次级月亮石 (3), 重皮 (3)",
-            "zh_TW": "鋼錠 (8), 強效助熔劑 (2), 重砂輪 (2), 次級月亮石 (3), 重皮 (3)"
-          }
-        },
-        "spells": [
           {
-            "spell": {
-              "id": 15756,
-              "key": {
-                "href": "https://us.api.blizzard.com/data/wow/spell/15756?namespace=static-1.15.9_68185-classic1x-us"
-              },
+            "type": {
               "name": {
-                "de_DE": "Pläne: Mondstahlbreitschwert",
-                "en_GB": "Plans: Moonsteel Broadsword",
-                "en_US": "Plans: Moonsteel Broadsword",
-                "es_ES": "Diseño: espada de acero lunar",
-                "es_MX": "Diseño: espada ancha de acero lunar",
-                "fr_FR": "Plans : Epée d'acier lunaire",
-                "ko_KR": "도면: 달의 강철 브로드소드",
-                "pt_BR": "Instruções: Espada Larga de Lunaço",
-                "ru_RU": "Чертеж: палаш лунной стали",
-                "zh_CN": "设计图：月钢宽剑",
-                "zh_TW": "設計圖：月鋼寬劍"
-              }
+                "de_DE": "Intelligenz",
+                "en_GB": "Intellect",
+                "en_US": "Intellect",
+                "es_ES": "intelecto",
+                "es_MX": "Intelecto",
+                "fr_FR": "Intelligence",
+                "it_IT": "Intelletto",
+                "ko_KR": "지능",
+                "pt_BR": "Intelecto",
+                "ru_RU": "к интеллекту",
+                "zh_CN": "智力",
+                "zh_TW": "智力"
+              },
+              "type": "INTELLECT"
             },
-            "description": {
-              "de_DE": "Benutzen: Lehrt Euch die Herstellung eines Mondstahlbreitschwerts.",
-              "en_GB": "Use: Teaches you how to make a Moonsteel Broadsword.",
-              "en_US": "Use: Teaches you how to make a Moonsteel Broadsword.",
-              "es_ES": "Usar: Enseña a confeccionar un bracamarte lunacero.",
-              "es_MX": "Uso: Te enseña a hacer una espada ancha de acero lunar.",
-              "fr_FR": "Utiliser : Vous apprend à forger une Epée d'acier lunaire.",
-              "ko_KR": "사용 효과: 달의 강철 브로드소드 만드는 법을 배웁니다.",
-              "pt_BR": "Usar: Ensina a fazer Espada Larga de Lunaço.",
-              "ru_RU": "Использование: Обучение изготовлению палаша Лунной стали.",
-              "zh_CN": "使用： 教你学会制作月钢宽剑。",
-              "zh_TW": "使用： 教你學會製作月鋼寬劍。"
+            "value": 15,
+            "display": {
+              "color": {
+                "a": 1,
+                "b": 255,
+                "g": 255,
+                "r": 255
+              },
+              "display_string": {
+                "de_DE": "+15 Intelligenz",
+                "en_GB": "+15 Intellect",
+                "en_US": "+15 Intellect",
+                "es_ES": "+15 intelecto",
+                "es_MX": "+15 Intelecto",
+                "fr_FR": "+15 Intelligence",
+                "it_IT": "+15 Intelletto",
+                "ko_KR": "지능 +15",
+                "pt_BR": "+15 Intelecto",
+                "ru_RU": "+15 к интеллекту",
+                "zh_CN": "+15 智力",
+                "zh_TW": "+15智力"
+              }
+            }
+          },
+          {
+            "type": {
+              "name": {
+                "de_DE": "Willenskraft",
+                "en_GB": "Spirit",
+                "en_US": "Spirit",
+                "es_ES": "espíritu",
+                "es_MX": "Espíritu",
+                "fr_FR": "Esprit",
+                "it_IT": "Spirito",
+                "ko_KR": "정신력",
+                "pt_BR": "Espírito",
+                "ru_RU": "к духу",
+                "zh_CN": "精神",
+                "zh_TW": "精神"
+              },
+              "type": "SPIRIT"
+            },
+            "value": 12,
+            "display": {
+              "color": {
+                "a": 1,
+                "b": 255,
+                "g": 255,
+                "r": 255
+              },
+              "display_string": {
+                "de_DE": "+12 Willenskraft",
+                "en_GB": "+12 Spirit",
+                "en_US": "+12 Spirit",
+                "es_ES": "+12 espíritu",
+                "es_MX": "+12 Espíritu",
+                "fr_FR": "+12 Esprit",
+                "it_IT": "+12 Spirito",
+                "ko_KR": "정신력 +12",
+                "pt_BR": "+12 Espírito",
+                "ru_RU": "+12 к духу",
+                "zh_CN": "+12 精神",
+                "zh_TW": "+12精神"
+              }
             }
           }
         ],
+        "spells": [
+          {
+            "spell": {
+              "id": 9318,
+              "key": {
+                "href": "https://us.api.blizzard.com/data/wow/spell/9318?namespace=static-1.15.9_68185-classic1x-us"
+              },
+              "name": {
+                "de_DE": "Heilung erhöhen 33",
+                "en_GB": "Increase Healing 33",
+                "en_US": "Increase Healing 33",
+                "es_ES": "Aumentar curación 33",
+                "es_MX": "Aumentar sanación 33",
+                "fr_FR": "Augmente les soins de 33",
+                "it_IT": "Increase Healing 33",
+                "ko_KR": "치유 효과 증가 33",
+                "pt_BR": "Aumentar Cura 33",
+                "ru_RU": "Увеличенное исцеление 33",
+                "zh_CN": "Increase Healing 30",
+                "zh_TW": "增強治癒 33"
+              }
+            },
+            "description": {
+              "de_DE": "Anlegen: Erhöht durch Zauber und Effekte verursachte Heilung um bis zu 33.",
+              "en_GB": "Equip: Increases healing done by spells and effects by up to 33.",
+              "en_US": "Equip: Increases healing done by spells and effects by up to 33.",
+              "es_ES": "Equipar: Aumenta la curación de los hechizos y los efectos hasta en 33 p.",
+              "es_MX": "Equipar: Aumenta hasta 33 p. la sanación de los hechizos y efectos.",
+              "fr_FR": "Equipé : Augmente les soins prodigués par les sorts et effets de 33 au maximum.",
+              "it_IT": "Equipaggia: Increases healing done by spells and effects by up to 33.",
+              "ko_KR": "착용 효과: 모든 주문 및 효과에 의한 치유량이 최대 33만큼 증가합니다.",
+              "pt_BR": "Equipado: Aumenta em até 33 a cura realizada por feitiços e efeitos mágicos.",
+              "ru_RU": "Если на персонаже: Усиливает исцеление от заклинаний и эффектов максимум на 33 ед.",
+              "zh_CN": "装备： 提高法术所造成的治疗效果，最多33点。",
+              "zh_TW": "裝備： 提高法術和魔法效果所造成的治療效果，最多33點。"
+            }
+          }
+        ],
+        "binding": {
+          "name": {
+            "de_DE": "Wird beim Aufheben gebunden",
+            "en_GB": "Binds when picked up",
+            "en_US": "Binds when picked up",
+            "es_ES": "Se liga al recogerlo",
+            "es_MX": "Se liga al recogerlo",
+            "fr_FR": "Lié quand ramassé",
+            "it_IT": "Vincola alla raccolta",
+            "ko_KR": "획득 시 귀속",
+            "pt_BR": "Vincula-se ao ser recolhido",
+            "ru_RU": "Становится персональным при поднятии",
+            "zh_CN": "拾取后绑定",
+            "zh_TW": "拾取後綁定"
+          },
+          "type": "ON_ACQUIRE"
+        },
         "quality": {
           "name": {
-            "de_DE": "Verbreitet",
-            "en_GB": "Common",
-            "en_US": "Common",
-            "es_ES": "Común",
-            "es_MX": "Común",
-            "fr_FR": "Commun",
-            "it_IT": "Comune",
-            "ko_KR": "일반",
-            "pt_BR": "Comum",
-            "ru_RU": "Обычное",
-            "zh_CN": "普通",
-            "zh_TW": "普通"
+            "de_DE": "Episch",
+            "en_GB": "Epic",
+            "en_US": "Epic",
+            "es_ES": "Épico",
+            "es_MX": "Épico",
+            "fr_FR": "Epique",
+            "it_IT": "Epico",
+            "ko_KR": "영웅",
+            "pt_BR": "Épico",
+            "ru_RU": "Превосходное",
+            "zh_CN": "史诗",
+            "zh_TW": "史詩"
           },
-          "type": "COMMON"
+          "type": "EPIC"
+        },
+        "durability": {
+          "value": 40,
+          "display_string": {
+            "de_DE": "Haltbarkeit 40 / 40",
+            "en_GB": "Durability 40 / 40",
+            "en_US": "Durability 40 / 40",
+            "es_ES": "Durabilidad 40 / 40",
+            "es_MX": "Durabilidad 40 / 40",
+            "fr_FR": "Durabilité 40 / 40",
+            "it_IT": "Integrità 40 / 40",
+            "ko_KR": "내구도 40 / 40",
+            "pt_BR": "Durabilidade 40 / 40",
+            "ru_RU": "Прочность: 40 / 40",
+            "zh_CN": "耐久度 40 / 40",
+            "zh_TW": "耐久度 40 / 40"
+          }
         },
         "item_class": {
-          "id": 9,
+          "id": 4,
           "key": {
-            "href": "https://us.api.blizzard.com/data/wow/item-class/9?namespace=static-1.15.9_68185-classic1x-us"
+            "href": "https://us.api.blizzard.com/data/wow/item-class/4?namespace=static-1.15.9_68185-classic1x-us"
           },
           "name": {
-            "de_DE": "Rezept",
-            "en_GB": "Recipe",
-            "en_US": "Recipe",
-            "es_ES": "Receta",
-            "es_MX": "Receta",
-            "fr_FR": "Recette",
-            "it_IT": "Ricette",
-            "ko_KR": "제조법",
-            "pt_BR": "Receita",
-            "ru_RU": "Рецепты",
-            "zh_CN": "配方",
-            "zh_TW": "配方"
+            "de_DE": "Rüstung",
+            "en_GB": "Armor",
+            "en_US": "Armor",
+            "es_ES": "Armadura",
+            "es_MX": "Armadura",
+            "fr_FR": "Armure",
+            "it_IT": "Armature",
+            "ko_KR": "방어구",
+            "pt_BR": "Armadura",
+            "ru_RU": "Доспехи",
+            "zh_CN": "护甲",
+            "zh_TW": "護甲"
           }
         },
         "sell_price": {
-          "value": 1100,
+          "value": 36606,
           "display_strings": {
             "gold": {
-              "de_DE": "0",
-              "en_GB": "0",
-              "en_US": "0",
-              "es_ES": "0",
-              "es_MX": "0",
-              "fr_FR": "0",
-              "it_IT": "0",
-              "ko_KR": "0",
-              "pt_BR": "0",
-              "ru_RU": "0",
-              "zh_CN": "0",
-              "zh_TW": "0"
+              "de_DE": "3",
+              "en_GB": "3",
+              "en_US": "3",
+              "es_ES": "3",
+              "es_MX": "3",
+              "fr_FR": "3",
+              "it_IT": "3",
+              "ko_KR": "3",
+              "pt_BR": "3",
+              "ru_RU": "3",
+              "zh_CN": "3",
+              "zh_TW": "3"
             },
             "copper": {
-              "de_DE": "0",
-              "en_GB": "0",
-              "en_US": "0",
-              "es_ES": "0",
-              "es_MX": "0",
-              "fr_FR": "0",
-              "it_IT": "0",
-              "ko_KR": "0",
-              "pt_BR": "0",
-              "ru_RU": "0",
-              "zh_CN": "0",
-              "zh_TW": "0"
+              "de_DE": "6",
+              "en_GB": "6",
+              "en_US": "6",
+              "es_ES": "6",
+              "es_MX": "6",
+              "fr_FR": "6",
+              "it_IT": "6",
+              "ko_KR": "6",
+              "pt_BR": "6",
+              "ru_RU": "6",
+              "zh_CN": "6",
+              "zh_TW": "6"
             },
             "header": {
               "de_DE": "Verkaufspreis:",
@@ -725,848 +675,809 @@
               "zh_TW": "售價:"
             },
             "silver": {
-              "de_DE": "11",
-              "en_GB": "11",
-              "en_US": "11",
-              "es_ES": "11",
-              "es_MX": "11",
-              "fr_FR": "11",
-              "it_IT": "11",
-              "ko_KR": "11",
-              "pt_BR": "11",
-              "ru_RU": "11",
-              "zh_CN": "11",
-              "zh_TW": "11"
+              "de_DE": "66",
+              "en_GB": "66",
+              "en_US": "66",
+              "es_ES": "66",
+              "es_MX": "66",
+              "fr_FR": "66",
+              "it_IT": "66",
+              "ko_KR": "66",
+              "pt_BR": "66",
+              "ru_RU": "66",
+              "zh_CN": "66",
+              "zh_TW": "66"
             }
           }
         },
         "requirements": {
-          "skill": {
-            "level": 180,
-            "profession": {
-              "id": 164,
-              "key": {
-                "href": "https://us.api.blizzard.com/data/wow/profession/164?namespace=static-1.15.9_68185-classic1x-us"
-              },
-              "name": {
-                "de_DE": "Schmiedekunst",
-                "en_GB": "Blacksmithing",
-                "en_US": "Blacksmithing",
-                "es_ES": "Herrería",
-                "es_MX": "Herrería",
-                "fr_FR": "Forge",
-                "it_IT": "Forgiatura",
-                "ko_KR": "대장기술",
-                "pt_BR": "Ferraria",
-                "ru_RU": "Кузнечное дело",
-                "zh_CN": "锻造",
-                "zh_TW": "鍛造"
-              }
-            },
+          "level": {
+            "value": 60,
             "display_string": {
-              "de_DE": "Benötigt Schmiedekunst (180)",
-              "en_GB": "Requires Blacksmithing (180)",
-              "en_US": "Requires Blacksmithing (180)",
-              "es_ES": "Requiere Herrería (180)",
-              "es_MX": "Requiere Herrería (180)",
-              "fr_FR": "Forge (180) requis",
-              "it_IT": "Richiede: Forgiatura (180)",
-              "ko_KR": "요구 사항: 대장기술 (180)",
-              "pt_BR": "Requer Ferraria (180)",
-              "ru_RU": "Требуется: Кузнечное дело (180)",
-              "zh_CN": "需要锻造（180）",
-              "zh_TW": "需要鍛造（180）"
+              "de_DE": "Benötigt Stufe 60",
+              "en_GB": "Requires Level 60",
+              "en_US": "Requires Level 60",
+              "es_ES": "Necesitas ser de nivel 60",
+              "es_MX": "Necesitas ser de nivel 60",
+              "fr_FR": "Niveau 60 requis",
+              "it_IT": "Richiede il livello 60",
+              "ko_KR": "최소 요구 레벨 60",
+              "pt_BR": "Requer o Nível 60",
+              "ru_RU": "Требуется 60-й уровень",
+              "zh_CN": "需要等级 60",
+              "zh_TW": "需要等級 60"
+            }
+          },
+          "playable_classes": {
+            "links": [
+              {
+                "id": 11,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/playable-class/11?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Druide",
+                  "en_GB": "Druid",
+                  "en_US": "Druid",
+                  "es_ES": "Druida",
+                  "es_MX": "Druida",
+                  "fr_FR": "Druide",
+                  "ko_KR": "드루이드",
+                  "pt_BR": "Druida",
+                  "ru_RU": "Друид",
+                  "zh_CN": "德鲁伊",
+                  "zh_TW": "德魯伊"
+                }
+              }
+            ],
+            "display_string": {
+              "de_DE": "Klassen: Druide",
+              "en_GB": "Classes: Druid",
+              "en_US": "Classes: Druid",
+              "es_ES": "Clases: Druida",
+              "es_MX": "Clases: Druida",
+              "fr_FR": "Classes : Druide",
+              "it_IT": "Classi: ",
+              "ko_KR": "직업: 드루이드",
+              "pt_BR": "Classes: Druida",
+              "ru_RU": "Классы: Друид",
+              "zh_CN": "职业：德鲁伊",
+              "zh_TW": "職業：德魯伊"
             }
           }
         },
         "item_subclass": {
-          "id": 4,
+          "id": 2,
           "key": {
-            "href": "https://us.api.blizzard.com/data/wow/item-class/9/item-subclass/4?namespace=static-1.15.9_68185-classic1x-us"
+            "href": "https://us.api.blizzard.com/data/wow/item-class/4/item-subclass/2?namespace=static-1.15.9_68185-classic1x-us"
           },
           "name": {
-            "de_DE": "Schmiedekunst",
-            "en_GB": "Blacksmithing",
-            "en_US": "Blacksmithing",
-            "es_ES": "Herrería",
-            "es_MX": "Herrería",
-            "fr_FR": "Forge",
-            "it_IT": "Forgiatura",
-            "ko_KR": "대장기술",
-            "pt_BR": "Ferraria",
-            "ru_RU": "Кузнечное дело",
-            "zh_CN": "锻造",
-            "zh_TW": "鍛造"
+            "de_DE": "Leder",
+            "en_GB": "Leather",
+            "en_US": "Leather",
+            "es_ES": "Cuero",
+            "es_MX": "Cuero",
+            "fr_FR": "Cuir",
+            "it_IT": "Cuoio",
+            "ko_KR": "가죽",
+            "pt_BR": "Couro",
+            "ru_RU": "Кожа",
+            "zh_CN": "皮甲",
+            "zh_TW": "皮甲"
           }
         },
         "inventory_type": {
           "name": {
-            "de_DE": "Nicht anlegbar",
-            "en_GB": "Non-equippable",
-            "en_US": "Non-equippable",
-            "es_ES": "No se puede equipar",
-            "es_MX": "No equipable",
-            "fr_FR": "Objet hors équipement",
-            "it_IT": "Non equipaggiabile",
-            "ko_KR": "착용 불가",
-            "pt_BR": "Não equipável",
-            "ru_RU": "Неэкипируемое",
-            "zh_CN": "无法装备",
-            "zh_TW": "無法裝備"
+            "de_DE": "Handgelenke",
+            "en_GB": "Wrist",
+            "en_US": "Wrist",
+            "es_ES": "Muñeca",
+            "es_MX": "Muñeca",
+            "fr_FR": "Poignets",
+            "it_IT": "Polsi",
+            "ko_KR": "손목",
+            "pt_BR": "Pulsos",
+            "ru_RU": "Запястья",
+            "zh_CN": "手腕",
+            "zh_TW": "手腕"
           },
-          "type": "NON_EQUIP"
-        },
-        "is_subclass_hidden": true
+          "type": "WRIST"
+        }
       },
-      "is_equippable": false,
+      "is_equippable": true,
       "item_subclass": {
-        "id": 4,
+        "id": 2,
         "key": {
-          "href": "https://us.api.blizzard.com/data/wow/item-class/9/item-subclass/4?namespace=static-1.15.9_68185-classic1x-us"
+          "href": "https://us.api.blizzard.com/data/wow/item-class/4/item-subclass/2?namespace=static-1.15.9_68185-classic1x-us"
         },
         "name": {
-          "de_DE": "Schmiedekunst",
-          "en_GB": "Blacksmithing",
-          "en_US": "Blacksmithing",
-          "es_ES": "Herrería",
-          "es_MX": "Herrería",
-          "fr_FR": "Forge",
-          "it_IT": "Forgiatura",
-          "ko_KR": "대장기술",
-          "pt_BR": "Ferraria",
-          "ru_RU": "Кузнечное дело",
-          "zh_CN": "锻造",
-          "zh_TW": "鍛造"
+          "de_DE": "Leder",
+          "en_GB": "Leather",
+          "en_US": "Leather",
+          "es_ES": "Cuero",
+          "es_MX": "Cuero",
+          "fr_FR": "Cuir",
+          "it_IT": "Cuoio",
+          "ko_KR": "가죽",
+          "pt_BR": "Couro",
+          "ru_RU": "Кожа",
+          "zh_CN": "皮甲",
+          "zh_TW": "皮甲"
         }
       },
       "inventory_type": {
         "name": {
-          "de_DE": "Nicht anlegbar",
-          "en_GB": "Non-equippable",
-          "en_US": "Non-equippable",
-          "es_ES": "No se puede equipar",
-          "es_MX": "No equipable",
-          "fr_FR": "Objet hors équipement",
-          "it_IT": "Non equipaggiabile",
-          "ko_KR": "착용 불가",
-          "pt_BR": "Não equipável",
-          "ru_RU": "Неэкипируемое",
-          "zh_CN": "无法装备",
-          "zh_TW": "無法裝備"
+          "de_DE": "Handgelenke",
+          "en_GB": "Wrist",
+          "en_US": "Wrist",
+          "es_ES": "Muñeca",
+          "es_MX": "Muñeca",
+          "fr_FR": "Poignets",
+          "it_IT": "Polsi",
+          "ko_KR": "손목",
+          "pt_BR": "Pulsos",
+          "ru_RU": "Запястья",
+          "zh_CN": "手腕",
+          "zh_TW": "手腕"
         },
-        "type": "NON_EQUIP"
+        "type": "WRIST"
       },
-      "purchase_price": 4400,
-      "required_level": 0,
+      "purchase_price": 183030,
+      "required_level": 60,
       "purchase_quantity": 1
     }
   },
   {
-    "matchedName": "Plans: Moonsteel Broadsword",
-    "id": 217282,
-    "name": "Plans: Moonsteel Broadsword",
+    "matchedName": "Stormrage Bracers",
+    "id": 231237,
+    "name": "Stormrage Bracers",
     "source": "classic_api",
     "verified": false,
     "raw": {
-      "id": 217282,
+      "id": 231237,
       "name": {
-        "de_DE": "Pläne: Mondstahlbreitschwert",
-        "en_GB": "Plans: Moonsteel Broadsword",
-        "en_US": "Plans: Moonsteel Broadsword",
-        "es_ES": "Diseño: espada ancha de acero lunar",
-        "es_MX": "Diseño: espada ancha de acero lunar",
-        "fr_FR": "Plans : Épée large en acier lunaire",
-        "it_IT": "Progetto: Spadone d'Acciaio Lunare",
-        "ko_KR": "도면: 달의 강철 브로드소드",
-        "pt_BR": "Instruções: Espada Larga de Lunaço",
-        "ru_RU": "Чертеж: палаш лунной стали",
-        "zh_CN": "设计图：月钢宽剑",
-        "zh_TW": "設計圖：月鋼寬劍"
+        "de_DE": "Armschienen des Stormrage",
+        "en_GB": "Stormrage Bracers",
+        "en_US": "Stormrage Bracers",
+        "es_ES": "Brazales de Tempestira",
+        "es_MX": "Brazales de Tempestira",
+        "fr_FR": "Brassards de Hurlorage",
+        "it_IT": "Bracciali di Grantempesta",
+        "ko_KR": "성난폭풍 팔보호구",
+        "pt_BR": "Braçadeiras Tempesfúria",
+        "ru_RU": "Наручи Ярости Бури",
+        "zh_CN": "怒风护腕",
+        "zh_TW": "怒風護腕"
       },
-      "level": 36,
+      "level": 76,
       "media": {
-        "id": 217282,
+        "id": 231237,
         "key": {
-          "href": "https://us.api.blizzard.com/data/wow/media/item/217282?namespace=static-1.15.9_68185-classic1x-us"
+          "href": "https://us.api.blizzard.com/data/wow/media/item/231237?namespace=static-1.15.9_68185-classic1x-us"
         }
       },
       "_links": {
         "self": {
-          "href": "https://us.api.blizzard.com/data/wow/item/217282?namespace=static-1.15.9_68185-classic1x-us"
+          "href": "https://us.api.blizzard.com/data/wow/item/231237?namespace=static-1.15.9_68185-classic1x-us"
         }
       },
       "quality": {
         "name": {
-          "de_DE": "Verbreitet",
-          "en_GB": "Common",
-          "en_US": "Common",
-          "es_ES": "Común",
-          "es_MX": "Común",
-          "fr_FR": "Commun",
-          "it_IT": "Comune",
-          "ko_KR": "일반",
-          "pt_BR": "Comum",
-          "ru_RU": "Обычное",
-          "zh_CN": "普通",
-          "zh_TW": "普通"
+          "de_DE": "Episch",
+          "en_GB": "Epic",
+          "en_US": "Epic",
+          "es_ES": "Épico",
+          "es_MX": "Épico",
+          "fr_FR": "Epique",
+          "it_IT": "Epico",
+          "ko_KR": "영웅",
+          "pt_BR": "Épico",
+          "ru_RU": "Превосходное",
+          "zh_CN": "史诗",
+          "zh_TW": "史詩"
         },
-        "type": "COMMON"
+        "type": "EPIC"
       },
       "max_count": 0,
       "item_class": {
-        "id": 9,
+        "id": 4,
         "key": {
-          "href": "https://us.api.blizzard.com/data/wow/item-class/9?namespace=static-1.15.9_68185-classic1x-us"
+          "href": "https://us.api.blizzard.com/data/wow/item-class/4?namespace=static-1.15.9_68185-classic1x-us"
         },
         "name": {
-          "de_DE": "Rezept",
-          "en_GB": "Recipe",
-          "en_US": "Recipe",
-          "es_ES": "Receta",
-          "es_MX": "Receta",
-          "fr_FR": "Recette",
-          "it_IT": "Ricette",
-          "ko_KR": "제조법",
-          "pt_BR": "Receita",
-          "ru_RU": "Рецепты",
-          "zh_CN": "配方",
-          "zh_TW": "配方"
+          "de_DE": "Rüstung",
+          "en_GB": "Armor",
+          "en_US": "Armor",
+          "es_ES": "Armadura",
+          "es_MX": "Armadura",
+          "fr_FR": "Armure",
+          "it_IT": "Armature",
+          "ko_KR": "방어구",
+          "pt_BR": "Armadura",
+          "ru_RU": "Доспехи",
+          "zh_CN": "护甲",
+          "zh_TW": "護甲"
         }
       },
-      "sell_price": 1100,
+      "sell_price": 36606,
       "is_stackable": false,
       "preview_item": {
+        "set": {
+          "items": [
+            {
+              "item": {
+                "id": 231230,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/231230?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Brustschutz des Stormrage",
+                  "en_GB": "Stormrage Chestguard",
+                  "en_US": "Stormrage Chestguard",
+                  "es_ES": "Coselete de Tempestira",
+                  "es_MX": "Coselete de Tempestira",
+                  "fr_FR": "Corselet de Hurlorage",
+                  "it_IT": "Corazza Foderata di Grantempesta",
+                  "ko_KR": "성난폭풍 흉갑",
+                  "pt_BR": "Couraça Tempesfúria",
+                  "ru_RU": "Нагрудный доспех Ярости Бури",
+                  "zh_CN": "怒风胸甲",
+                  "zh_TW": "怒風護胸"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 231231,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/231231?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Stiefel des Stormrage",
+                  "en_GB": "Stormrage Boots",
+                  "en_US": "Stormrage Boots",
+                  "es_ES": "Botas de Tempestira",
+                  "es_MX": "Botas de Tempestira",
+                  "fr_FR": "Bottes de Hurlorage",
+                  "it_IT": "Stivali di Grantempesta",
+                  "ko_KR": "성난폭풍 장화",
+                  "pt_BR": "Botas Tempesfúria",
+                  "ru_RU": "Сапоги Ярости Бури",
+                  "zh_CN": "怒风长靴",
+                  "zh_TW": "怒風長靴"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 231232,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/231232?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Handschützer des Stormrage",
+                  "en_GB": "Stormrage Handguards",
+                  "en_US": "Stormrage Handguards",
+                  "es_ES": "Manoplas de Tempestira",
+                  "es_MX": "Manoplas de Tempestira",
+                  "fr_FR": "Garde-mains de Hurlorage",
+                  "it_IT": "Guardamani Foderati di Grantempesta",
+                  "ko_KR": "성난폭풍 장갑",
+                  "pt_BR": "Protetores de Mão Tempesfúria",
+                  "ru_RU": "Боевые рукавицы Ярости Бури",
+                  "zh_CN": "怒风护手",
+                  "zh_TW": "怒風手甲"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 231233,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/231233?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Bedeckung des Stormrage",
+                  "en_GB": "Stormrage Cover",
+                  "en_US": "Stormrage Cover",
+                  "es_ES": "Casquete de Tempestira",
+                  "es_MX": "Casquete de Tempestira",
+                  "fr_FR": "Couvre-chef de Hurlorage",
+                  "it_IT": "Copricapo di Grantempesta",
+                  "ko_KR": "성난폭풍 투구",
+                  "pt_BR": "Mantel Tempesfúria",
+                  "ru_RU": "Убор Ярости Бури",
+                  "zh_CN": "怒风头巾",
+                  "zh_TW": "怒風頭罩"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 231234,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/231234?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Beinschützer des Stormrage",
+                  "en_GB": "Stormrage Legguards",
+                  "en_US": "Stormrage Legguards",
+                  "es_ES": "Musleras de Tempestira",
+                  "es_MX": "Musleras de Tempestira",
+                  "fr_FR": "Garde-jambes de Hurlorage",
+                  "it_IT": "Gambali Foderati di Grantempesta",
+                  "ko_KR": "성난폭풍 다리보호대",
+                  "pt_BR": "Guarda-pernas Tempesfúria",
+                  "ru_RU": "Набедренники Ярости Бури",
+                  "zh_CN": "怒风腿甲",
+                  "zh_TW": "怒風腿甲"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 231235,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/231235?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Schulterstücke des Stormrage",
+                  "en_GB": "Stormrage Pauldrons",
+                  "en_US": "Stormrage Pauldrons",
+                  "es_ES": "Espaldares de Tempestira",
+                  "es_MX": "Espaldares de Tempestira",
+                  "fr_FR": "Espauliers de Hurlorage",
+                  "it_IT": "Spallaccio di Grantempesta",
+                  "ko_KR": "성난폭풍 어깨갑옷",
+                  "pt_BR": "Brafoneiras Tempesfúria",
+                  "ru_RU": "Наплечье Ярости Бури",
+                  "zh_CN": "怒风肩甲",
+                  "zh_TW": "怒風肩鎧"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 231236,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/231236?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Gürtel des Stormrage",
+                  "en_GB": "Stormrage Belt",
+                  "en_US": "Stormrage Belt",
+                  "es_ES": "Cinturón de Tempestira",
+                  "es_MX": "Cinturón de Tempestira",
+                  "fr_FR": "Ceinture de Hurlorage",
+                  "it_IT": "Cintura di Grantempesta",
+                  "ko_KR": "성난폭풍 허리띠",
+                  "pt_BR": "Cinto Tempesfúria",
+                  "ru_RU": "Пояс Ярости Бури",
+                  "zh_CN": "怒风腰带",
+                  "zh_TW": "怒風腰帶"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 231237,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/231237?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Armschienen des Stormrage",
+                  "en_GB": "Stormrage Bracers",
+                  "en_US": "Stormrage Bracers",
+                  "es_ES": "Brazales de Tempestira",
+                  "es_MX": "Brazales de Tempestira",
+                  "fr_FR": "Brassards de Hurlorage",
+                  "it_IT": "Bracciali di Grantempesta",
+                  "ko_KR": "성난폭풍 팔보호구",
+                  "pt_BR": "Braçadeiras Tempesfúria",
+                  "ru_RU": "Наручи Ярости Бури",
+                  "zh_CN": "怒风护腕",
+                  "zh_TW": "怒風護腕"
+                }
+              }
+            }
+          ],
+          "effects": [
+            {
+              "display_string": {
+                "de_DE": "(2) Set: Kritische Treffer Eurer Heilzauber lösen den Effekt 'Traumzustand' aus und gewähren Euch 8 Sek. lang 50% Manaregeneration, während Ihr Zauber wirkt. ",
+                "en_GB": "(2) Set: Your healing spell critical strikes trigger the Dreamstate effect, granting you 50% of your mana regeneration while casting for 8 sec. ",
+                "en_US": "(2) Set: Your healing spell critical strikes trigger the Dreamstate effect, granting you 50% of your mana regeneration while casting for 8 sec. ",
+                "es_ES": "(2) Bonif.: Los golpes críticos con hechizos de sanación activan el efecto Estado onírico, lo que te otorga un 50% de tu regeneración de maná mientras lanzas hechizos durante 8 s. ",
+                "es_MX": "(2) Bonif.: Los golpes críticos de tus hechizos de sanación activan el efecto Estado onírico, lo que te otorga un 50% de tu regeneración de maná al lanzar hechizos durante 8 s. ",
+                "fr_FR": "(2) Ensemble : Les coups critiques avec vos sorts de soins déclenchent l’effet État de rêve, vous accordant 50 % de votre régénération de mana pendant l’incantation pendant 8 sec. ",
+                "it_IT": "Set (2): Your healing spell critical strikes trigger the Dreamstate effect, granting you 50% of your mana regeneration while casting for 8 s. ",
+                "ko_KR": "(2) 세트 효과: 치유 주문이 치명타 및 극대화 효과를 발휘하면 꿈결 효과가 발동해 8초 동안 주문을 시전할 때 마나 회복 속도가 50%만큼 증가합니다. ",
+                "pt_BR": "(2) Conjunto: Suas curas críticas ativam o Estado Onírico, concedendo 50% de regeneração de mana durante os lançamentos por 8 s. ",
+                "ru_RU": "Комплект (2 предмета): Критические эффекты исцеляющих заклинаний дают вам эффект \"Состояние сна\", позволяющий восполнять ману во время применения заклинаний со скоростью 50% от обычной в течение 8 сек. ",
+                "zh_CN": "(2) 套装：你的治疗法术爆击会触发迷梦效果，使你在施法时保持50%的法力值恢复速度，持续8秒。 ",
+                "zh_TW": "(2) 套裝: 你的治療法術造成極效治療後，會觸發夢境效果，在施放法術時會賦予你50%的法力恢復，持續8秒。 "
+              },
+              "required_count": 2
+            },
+            {
+              "display_string": {
+                "de_DE": "(4) Set: Die kritischen Treffer Eurer nicht regelmäßigen Zauber verringern die Zauberzeit Eures nächsten Einsatzes von 'Heilende Berührung', 'Pflege' und 'Nachwachsen' um 0,5 Sek.",
+                "en_GB": "(4) Set: Your non-periodic spell critical strikes reduce the casting time of your next Healing Touch, Regrowth, or Nourish spell by 0.5 sec.",
+                "en_US": "(4) Set: Your non-periodic spell critical strikes reduce the casting time of your next Healing Touch, Regrowth, or Nourish spell by 0.5 sec.",
+                "es_ES": "(4) Bonif.: Tus golpes críticos con hechizos que no sean periódicos reducen 0,5 s el tiempo de lanzamiento de tu siguiente Toque de sanación, Recrecimiento y Nutrir.",
+                "es_MX": "(4) Bonif.: Tus golpes críticos con hechizos que no son periódicos reducen 0.5 s el tiempo de lanzamiento de tu siguiente Toque de sanación, Recrecimiento o Nutrir.",
+                "fr_FR": "(4) Ensemble : Les coups critiques avec vos sorts non périodiques réduisent le temps d’incantation de votre prochain sort Toucher guérisseur, Rétablissement ou Nourrir de 0,5 s.",
+                "it_IT": "Set (4): Your non-periodic spell critical strikes reduce the casting time of your next Healing Touch, Regrowth, or Nourish spell by 0,5 sec.",
+                "ko_KR": "(4) 세트 효과: 비주기적인 주문이 치명타 및 극대화 효과를 발휘하면 다음 치유의 손길, 재생 또는 육성의 시전 시간이 0.5초만큼 감소합니다.",
+                "pt_BR": "(4) Conjunto: Os acertos críticos dos seus feitiços não periódicos reduzem em 0,5 s o tempo de lançamento do seu próximo Toque de Cura, Recrescimento ou Nutrir.",
+                "ru_RU": "Комплект (4 предмета): Непериодические критические эффекты заклинаний сокращают время применения следующего \"Целительного прикосновения\", \"Покровительства природы\" или \"Восстановления\" на 0,5 сек.",
+                "zh_CN": "(4) 套装：你的非周期性法术爆击时，你的下一个治疗之触、愈合或滋养法术的施法时间缩短0.5秒。",
+                "zh_TW": "(4) 套裝: 你的非週期性法術造成致命一擊和極效治療時，使你下一個治療之觸、癒合或滋補術法術的施法時間縮短0.5秒。"
+              },
+              "required_count": 4
+            },
+            {
+              "display_string": {
+                "de_DE": "(6) Set: Erhöht die Heilung durch 'Wildwuchs' um 10%. Darüber hinaus lässt sich 'Wildwuchs' nun in der Mondkingestalt einsetzen, und seine Heilung wird in dieser Gestalt zusätzlich um 50% erhöht.",
+                "en_GB": "(6) Set: Increases healing from Wild Growth by 10%. In addition, Wild Growth can now be used in Moonkin Form, and its healing is increased by an additional 50% in that form.",
+                "en_US": "(6) Set: Increases healing from Wild Growth by 10%. In addition, Wild Growth can now be used in Moonkin Form, and its healing is increased by an additional 50% in that form.",
+                "es_ES": "(6) Bonif.: Aumenta un 10% la sanación de Crecimiento salvaje. Además, ahora Crecimiento salvaje se puede usar en forma de lechúcico lunar, y su sanación aumenta un 50% más en esa forma.",
+                "es_MX": "(6) Bonif.: Aumenta un 10% la sanación de Crecimiento salvaje. Además, Crecimiento salvaje se puede usar en forma de lechúcico lunar, y su sanación aumenta un 50% en esa forma.",
+                "fr_FR": "(6) Ensemble : Augmente les soins de Croissance sauvage de 10 %. De plus, Croissance sauvage peut désormais être utilisée sous forme de sélénien, et ses soins sont augmentés de 50 % supplémentaires sous cette forme.",
+                "it_IT": "Set (6): Increases healing from Wild Growth by 10%. In addition, Wild Growth can now be used in Moonkin Form, and its healing is increased by an additional 50% in that form.",
+                "ko_KR": "(6) 세트 효과: 급속 성장의 치유량이 10%만큼 증가합니다. 또한 달빛야수 변신 상태에서 급속 성장을 시전할 수 있으며, 해당 변신 상태일 때의 치유량이 추가로 50%만큼 증가합니다.",
+                "pt_BR": "(6) Conjunto: Aumenta em 10% a cura do Crescimento Silvestre. Além disso, o Crescimento Silvestre agora pode ser usado na Forma de Luniscante, e a cura aumenta em 50% nessa forma.",
+                "ru_RU": "Комплект (6 предметов): Усиливает исцеление от \"Буйного роста\" на 10%. Кроме того, теперь вы можете применять \"Буйный рост\" в облике лунного совуха, и в этом облике исцеление от \"Буйного роста\" усиливается еще на 50%.",
+                "zh_CN": "(6) 套装：使野性成长的治疗效果提高10%。另外，野性成长还可以在枭兽形态下使用，在该形态下治疗效果额外提高50%。",
+                "zh_TW": "(6) 套裝: 野性痊癒的治療效果提高10%。此外，現在可以在梟獸形態下使用野性痊癒，且在該形態下，其治療效果額外提高50%。"
+              },
+              "required_count": 6
+            }
+          ],
+          "item_set": {
+            "id": 1802,
+            "key": {
+              "href": "https://us.api.blizzard.com/data/wow/item-set/1802?namespace=static-1.15.9_68185-classic1x-us"
+            },
+            "name": {
+              "de_DE": "Beute des Stormrage",
+              "en_GB": "Bounty of Stormrage",
+              "en_US": "Bounty of Stormrage",
+              "es_ES": "Botín de Tempestira",
+              "es_MX": "Abundancia de Tempestira",
+              "fr_FR": "Manne de Hurlorage",
+              "ko_KR": "성난폭풍의 은혜",
+              "pt_BR": "Dádiva de Tempesfúria",
+              "ru_RU": "Трофей Ярости Бури",
+              "zh_CN": "怒风之慷慨",
+              "zh_TW": "怒風之賜"
+            }
+          },
+          "display_string": {
+            "de_DE": "Beute des Stormrage (0/8)",
+            "en_GB": "Bounty of Stormrage (0/8)",
+            "en_US": "Bounty of Stormrage (0/8)",
+            "es_ES": "Botín de Tempestira (0/8)",
+            "es_MX": "Abundancia de Tempestira (0/8)",
+            "fr_FR": "Manne de Hurlorage (0/8)",
+            "it_IT": "Bounty of Stormrage (0/8)",
+            "ko_KR": "성난폭풍의 은혜 (0/8)",
+            "pt_BR": "Dádiva de Tempesfúria (0/8)",
+            "ru_RU": "Трофей Ярости Бури (0/8)",
+            "zh_CN": "怒风之慷慨（0/8）",
+            "zh_TW": "怒風之賜（0/8）"
+          }
+        },
         "item": {
-          "id": 217282,
+          "id": 231237,
           "key": {
-            "href": "https://us.api.blizzard.com/data/wow/item/217282?namespace=static-1.15.9_68185-classic1x-us"
+            "href": "https://us.api.blizzard.com/data/wow/item/231237?namespace=static-1.15.9_68185-classic1x-us"
           }
         },
         "name": {
-          "de_DE": "Pläne: Mondstahlbreitschwert",
-          "en_GB": "Plans: Moonsteel Broadsword",
-          "en_US": "Plans: Moonsteel Broadsword",
-          "es_ES": "Diseño: espada ancha de acero lunar",
-          "es_MX": "Diseño: espada ancha de acero lunar",
-          "fr_FR": "Plans : Épée large en acier lunaire",
-          "it_IT": "Progetto: Spadone d'Acciaio Lunare",
-          "ko_KR": "도면: 달의 강철 브로드소드",
-          "pt_BR": "Instruções: Espada Larga de Lunaço",
-          "ru_RU": "Чертеж: палаш лунной стали",
-          "zh_CN": "设计图：月钢宽剑",
-          "zh_TW": "設計圖：月鋼寬劍"
+          "de_DE": "Armschienen des Stormrage",
+          "en_GB": "Stormrage Bracers",
+          "en_US": "Stormrage Bracers",
+          "es_ES": "Brazales de Tempestira",
+          "es_MX": "Brazales de Tempestira",
+          "fr_FR": "Brassards de Hurlorage",
+          "it_IT": "Bracciali di Grantempesta",
+          "ko_KR": "성난폭풍 팔보호구",
+          "pt_BR": "Braçadeiras Tempesfúria",
+          "ru_RU": "Наручи Ярости Бури",
+          "zh_CN": "怒风护腕",
+          "zh_TW": "怒風護腕"
+        },
+        "armor": {
+          "value": 98,
+          "display": {
+            "color": {
+              "a": 1,
+              "b": 255,
+              "g": 255,
+              "r": 255
+            },
+            "display_string": {
+              "de_DE": "98 Rüstung",
+              "en_GB": "98 Armor",
+              "en_US": "98 Armor",
+              "es_ES": "98 armadura",
+              "es_MX": "98 p. de armadura",
+              "fr_FR": "Armure : 98",
+              "it_IT": "98 Armor",
+              "ko_KR": "방어도 98",
+              "pt_BR": "98 de Armadura",
+              "ru_RU": "Броня: 98",
+              "zh_CN": "98点护甲",
+              "zh_TW": "98點護甲"
+            }
+          }
         },
         "media": {
-          "id": 217282,
+          "id": 231237,
           "key": {
-            "href": "https://us.api.blizzard.com/data/wow/media/item/217282?namespace=static-1.15.9_68185-classic1x-us"
+            "href": "https://us.api.blizzard.com/data/wow/media/item/231237?namespace=static-1.15.9_68185-classic1x-us"
           }
         },
-        "recipe": {
-          "item": {
-            "item": {
-              "id": 217281,
-              "key": {
-                "href": "https://us.api.blizzard.com/data/wow/item/217281?namespace=static-1.15.9_68185-classic1x-us"
-              }
-            },
-            "name": {
-              "de_DE": "Mondstahlbreitschwert",
-              "en_GB": "Moonsteel Broadsword",
-              "en_US": "Moonsteel Broadsword",
-              "es_ES": "Espada ancha de acero lunar",
-              "es_MX": "Espada ancha de acero lunar",
-              "fr_FR": "Épée large en acier lunaire",
-              "it_IT": "Spadone d'Acciaio Lunare",
-              "ko_KR": "달의 강철 브로드소드",
-              "pt_BR": "Espada Larga de Lunaço",
-              "ru_RU": "Палаш лунной стали",
-              "zh_CN": "月钢宽剑",
-              "zh_TW": "月鋼寬劍"
-            },
-            "media": {
-              "id": 217281,
-              "key": {
-                "href": "https://us.api.blizzard.com/data/wow/media/item/217281?namespace=static-1.15.9_68185-classic1x-us"
-              }
-            },
-            "stats": [
-              {
-                "type": {
-                  "name": {
-                    "de_DE": "Ausdauer",
-                    "en_GB": "Stamina",
-                    "en_US": "Stamina",
-                    "es_ES": "aguante",
-                    "es_MX": "Aguante",
-                    "fr_FR": "Endurance",
-                    "it_IT": "Tempra",
-                    "ko_KR": "체력",
-                    "pt_BR": "Vigor",
-                    "ru_RU": "к выносливости",
-                    "zh_CN": "耐力",
-                    "zh_TW": "耐力"
-                  },
-                  "type": "STAMINA"
-                },
-                "value": 4,
-                "display": {
-                  "color": {
-                    "a": 1,
-                    "b": 255,
-                    "g": 255,
-                    "r": 255
-                  },
-                  "display_string": {
-                    "de_DE": "+4 Ausdauer",
-                    "en_GB": "+4 Stamina",
-                    "en_US": "+4 Stamina",
-                    "es_ES": "+4 aguante",
-                    "es_MX": "+4 Aguante",
-                    "fr_FR": "+4 Endurance",
-                    "it_IT": "+4 Tempra",
-                    "ko_KR": "체력 +4",
-                    "pt_BR": "+4 Vigor",
-                    "ru_RU": "+4 к выносливости",
-                    "zh_CN": "+4 耐力",
-                    "zh_TW": "+4耐力"
-                  }
-                }
-              }
-            ],
-            "spells": [
-              {
-                "spell": {
-                  "id": 9315,
-                  "key": {
-                    "href": "https://us.api.blizzard.com/data/wow/spell/9315?namespace=static-1.15.9_68185-classic1x-us"
-                  },
-                  "name": {
-                    "de_DE": "Heilung erhöhen 26",
-                    "en_GB": "Increase Healing 26",
-                    "en_US": "Increase Healing 26",
-                    "es_ES": "Aumentar curación 26",
-                    "es_MX": "Aumentar sanación 26",
-                    "fr_FR": "Augmente les soins de 26",
-                    "it_IT": "Increase Healing 26",
-                    "ko_KR": "치유 효과 증가 26",
-                    "pt_BR": "Aumentar Cura 26",
-                    "ru_RU": "Увеличенное исцеление 26",
-                    "zh_CN": "Increase Healing 24",
-                    "zh_TW": "增強治癒 26"
-                  }
-                },
-                "description": {
-                  "de_DE": "Anlegen: Erhöht durch Zauber und Effekte verursachte Heilung um bis zu 26.",
-                  "en_GB": "Equip: Increases healing done by spells and effects by up to 26.",
-                  "en_US": "Equip: Increases healing done by spells and effects by up to 26.",
-                  "es_ES": "Equipar: Aumenta la curación de los hechizos y los efectos hasta en 26 p.",
-                  "es_MX": "Equipar: Aumenta hasta 26 p. la sanación de los hechizos y efectos.",
-                  "fr_FR": "Equipé : Augmente les soins prodigués par les sorts et effets de 26 au maximum.",
-                  "it_IT": "Equipaggia: Increases healing done by spells and effects by up to 26.",
-                  "ko_KR": "착용 효과: 모든 주문 및 효과에 의한 치유량이 최대 26만큼 증가합니다.",
-                  "pt_BR": "Equipado: Aumenta em até 26 a cura realizada por feitiços e efeitos mágicos.",
-                  "ru_RU": "Если на персонаже: Усиливает исцеление от заклинаний и эффектов максимум на 26 ед.",
-                  "zh_CN": "装备： 提高法术所造成的治疗效果，最多26点。",
-                  "zh_TW": "裝備： 提高法術和魔法效果所造成的治療效果，最多26點。"
-                }
-              }
-            ],
-            "weapon": {
-              "dps": {
-                "value": 24.642855,
-                "display_string": {
-                  "de_DE": "(24.6 Schaden pro Sekunde)",
-                  "en_GB": "(24.6 damage per second)",
-                  "en_US": "(24.6 damage per second)",
-                  "es_ES": "(24.6 daño por segundo)",
-                  "es_MX": "(24.6 p. de daño por segundo)",
-                  "fr_FR": "(24.6 dégâts par seconde)",
-                  "it_IT": "(24.6 damage per second)",
-                  "ko_KR": "(초당 공격력 24.6)",
-                  "pt_BR": "(24.6 de dano por segundo)",
-                  "ru_RU": "(24.6 ед. урона в секунду)",
-                  "zh_CN": "（每秒伤害24.6）",
-                  "zh_TW": "（每秒傷害24.6）"
-                }
-              },
-              "damage": {
-                "max_value": 83,
-                "min_value": 55,
-                "damage_class": {
-                  "name": {
-                    "de_DE": "Körperlich",
-                    "en_GB": "Physical",
-                    "en_US": "Physical",
-                    "es_ES": "Físico",
-                    "es_MX": "Físico",
-                    "fr_FR": "Physique",
-                    "it_IT": "Fisico",
-                    "ko_KR": "물리",
-                    "pt_BR": "Físico",
-                    "ru_RU": "физический",
-                    "zh_CN": "物理",
-                    "zh_TW": "物理"
-                  },
-                  "type": "PHYSICAL"
-                },
-                "display_string": {
-                  "de_DE": "55 - 83 Schaden",
-                  "en_GB": "55 - 83 Damage",
-                  "en_US": "55 - 83 Damage",
-                  "es_ES": "55 - 83 Daño",
-                  "es_MX": "55 - 83 p. de daño",
-                  "fr_FR": "Dégâts : 55 - 83",
-                  "it_IT": "55 - 83 Damage",
-                  "ko_KR": "공격력 55 - 83",
-                  "pt_BR": "55 - 83 de dano",
-                  "ru_RU": "Урон: 55-83",
-                  "zh_CN": "55 - 83伤害",
-                  "zh_TW": "55 - 83傷害"
-                }
-              },
-              "attack_speed": {
-                "value": 2800,
-                "display_string": {
-                  "de_DE": "Tempo 2,80",
-                  "en_GB": "Speed 2.80",
-                  "en_US": "Speed 2.80",
-                  "es_ES": "Velocidad 2,80",
-                  "es_MX": "Velocidad 2.80",
-                  "fr_FR": "Vitesse 2,80",
-                  "it_IT": "Velocità 2,80",
-                  "ko_KR": "속도 2.80",
-                  "pt_BR": "Velocidade 2,80",
-                  "ru_RU": "Скорость 2,80",
-                  "zh_CN": "速度 2.80",
-                  "zh_TW": "速度 2.80"
-                }
-              }
-            },
-            "binding": {
+        "stats": [
+          {
+            "type": {
               "name": {
-                "de_DE": "Wird beim Anlegen gebunden",
-                "en_GB": "Binds when equipped",
-                "en_US": "Binds when equipped",
-                "es_ES": "Se liga al equiparlo",
-                "es_MX": "Se liga al equiparlo",
-                "fr_FR": "Lié quand équipé",
-                "it_IT": "Vincola all'equipaggiamento",
-                "ko_KR": "착용 시 귀속",
-                "pt_BR": "Vincula-se quando equipado",
-                "ru_RU": "Становится персональным при надевании",
-                "zh_CN": "装备后绑定",
-                "zh_TW": "裝備後綁定"
+                "de_DE": "Ausdauer",
+                "en_GB": "Stamina",
+                "en_US": "Stamina",
+                "es_ES": "aguante",
+                "es_MX": "Aguante",
+                "fr_FR": "Endurance",
+                "it_IT": "Tempra",
+                "ko_KR": "체력",
+                "pt_BR": "Vigor",
+                "ru_RU": "к выносливости",
+                "zh_CN": "耐力",
+                "zh_TW": "耐力"
               },
-              "type": "ON_EQUIP"
+              "type": "STAMINA"
             },
-            "quality": {
-              "name": {
-                "de_DE": "Selten",
-                "en_GB": "Uncommon",
-                "en_US": "Uncommon",
-                "es_ES": "No común",
-                "es_MX": "Inusual",
-                "fr_FR": "Inhabituel",
-                "it_IT": "Pregiato",
-                "ko_KR": "고급",
-                "pt_BR": "Incomum",
-                "ru_RU": "Необычное",
-                "zh_CN": "优秀",
-                "zh_TW": "優秀"
+            "value": 13,
+            "display": {
+              "color": {
+                "a": 1,
+                "b": 255,
+                "g": 255,
+                "r": 255
               },
-              "type": "UNCOMMON"
-            },
-            "durability": {
-              "value": 85,
               "display_string": {
-                "de_DE": "Haltbarkeit 85 / 85",
-                "en_GB": "Durability 85 / 85",
-                "en_US": "Durability 85 / 85",
-                "es_ES": "Durabilidad 85 / 85",
-                "es_MX": "Durabilidad 85 / 85",
-                "fr_FR": "Durabilité 85 / 85",
-                "it_IT": "Integrità 85 / 85",
-                "ko_KR": "내구도 85 / 85",
-                "pt_BR": "Durabilidade 85 / 85",
-                "ru_RU": "Прочность: 85 / 85",
-                "zh_CN": "耐久度 85 / 85",
-                "zh_TW": "耐久度 85 / 85"
+                "de_DE": "+13 Ausdauer",
+                "en_GB": "+13 Stamina",
+                "en_US": "+13 Stamina",
+                "es_ES": "+13 aguante",
+                "es_MX": "+13 Aguante",
+                "fr_FR": "+13 Endurance",
+                "it_IT": "+13 Tempra",
+                "ko_KR": "체력 +13",
+                "pt_BR": "+13 Vigor",
+                "ru_RU": "+13 к выносливости",
+                "zh_CN": "+13 耐力",
+                "zh_TW": "+13耐力"
               }
-            },
-            "item_class": {
-              "id": 2,
-              "key": {
-                "href": "https://us.api.blizzard.com/data/wow/item-class/2?namespace=static-1.15.9_68185-classic1x-us"
-              },
-              "name": {
-                "de_DE": "Waffe",
-                "en_GB": "Weapon",
-                "en_US": "Weapon",
-                "es_ES": "Arma",
-                "es_MX": "Arma",
-                "fr_FR": "Arme",
-                "it_IT": "Armi",
-                "ko_KR": "무기",
-                "pt_BR": "Arma",
-                "ru_RU": "Оружие",
-                "zh_CN": "武器",
-                "zh_TW": "武器"
-              }
-            },
-            "sell_price": {
-              "value": 10153,
-              "display_strings": {
-                "gold": {
-                  "de_DE": "1",
-                  "en_GB": "1",
-                  "en_US": "1",
-                  "es_ES": "1",
-                  "es_MX": "1",
-                  "fr_FR": "1",
-                  "it_IT": "1",
-                  "ko_KR": "1",
-                  "pt_BR": "1",
-                  "ru_RU": "1",
-                  "zh_CN": "1",
-                  "zh_TW": "1"
-                },
-                "copper": {
-                  "de_DE": "53",
-                  "en_GB": "53",
-                  "en_US": "53",
-                  "es_ES": "53",
-                  "es_MX": "53",
-                  "fr_FR": "53",
-                  "it_IT": "53",
-                  "ko_KR": "53",
-                  "pt_BR": "53",
-                  "ru_RU": "53",
-                  "zh_CN": "53",
-                  "zh_TW": "53"
-                },
-                "header": {
-                  "de_DE": "Verkaufspreis:",
-                  "en_GB": "Sell Price:",
-                  "en_US": "Sell Price:",
-                  "es_ES": "Precio de venta:",
-                  "es_MX": "Precio de venta:",
-                  "fr_FR": "Prix de vente :",
-                  "it_IT": "Prezzo di vendita:",
-                  "ko_KR": "판매 가격:",
-                  "pt_BR": "Preço de Venda:",
-                  "ru_RU": "Цена продажи:",
-                  "zh_CN": "卖价:",
-                  "zh_TW": "售價:"
-                },
-                "silver": {
-                  "de_DE": "1",
-                  "en_GB": "1",
-                  "en_US": "1",
-                  "es_ES": "1",
-                  "es_MX": "1",
-                  "fr_FR": "1",
-                  "it_IT": "1",
-                  "ko_KR": "1",
-                  "pt_BR": "1",
-                  "ru_RU": "1",
-                  "zh_CN": "1",
-                  "zh_TW": "1"
-                }
-              }
-            },
-            "requirements": {
-              "level": {
-                "value": 31,
-                "display_string": {
-                  "de_DE": "Benötigt Stufe 31",
-                  "en_GB": "Requires Level 31",
-                  "en_US": "Requires Level 31",
-                  "es_ES": "Necesitas ser de nivel 31",
-                  "es_MX": "Necesitas ser de nivel 31",
-                  "fr_FR": "Niveau 31 requis",
-                  "it_IT": "Richiede il livello 31",
-                  "ko_KR": "최소 요구 레벨 31",
-                  "pt_BR": "Requer o Nível 31",
-                  "ru_RU": "Требуется 31-й уровень",
-                  "zh_CN": "需要等级 31",
-                  "zh_TW": "需要等級 31"
-                }
-              }
-            },
-            "item_subclass": {
-              "id": 8,
-              "key": {
-                "href": "https://us.api.blizzard.com/data/wow/item-class/2/item-subclass/8?namespace=static-1.15.9_68185-classic1x-us"
-              },
-              "name": {
-                "de_DE": "Schwert",
-                "en_GB": "Sword",
-                "en_US": "Sword",
-                "es_ES": "Espada",
-                "es_MX": "Espada",
-                "fr_FR": "Epée",
-                "it_IT": "Spada",
-                "ko_KR": "도검",
-                "pt_BR": "Espada",
-                "ru_RU": "Меч",
-                "zh_CN": "剑",
-                "zh_TW": "劍"
-              }
-            },
-            "inventory_type": {
-              "name": {
-                "de_DE": "Zweihändig",
-                "en_GB": "Two-Hand",
-                "en_US": "Two-Hand",
-                "es_ES": "Dos manos",
-                "es_MX": "Dos manos",
-                "fr_FR": "Deux mains",
-                "it_IT": "Due mani",
-                "ko_KR": "양손 장비",
-                "pt_BR": "Duas mãos",
-                "ru_RU": "Двуручное",
-                "zh_CN": "双手",
-                "zh_TW": "雙手"
-              },
-              "type": "TWOHWEAPON"
             }
           },
-          "reagents": [
-            {
-              "reagent": {
-                "id": 3859,
-                "key": {
-                  "href": "https://us.api.blizzard.com/data/wow/item/3859?namespace=static-1.15.9_68185-classic1x-us"
-                },
-                "name": {
-                  "de_DE": "Stahlbarren",
-                  "en_GB": "Steel Bar",
-                  "en_US": "Steel Bar",
-                  "es_ES": "Lingote de acero",
-                  "es_MX": "Barra de acero",
-                  "fr_FR": "Barre d'acier",
-                  "it_IT": "Barra d'Acciaio",
-                  "ko_KR": "강철 주괴",
-                  "pt_BR": "Barra de Aço",
-                  "ru_RU": "Стальной слиток",
-                  "zh_CN": "钢锭",
-                  "zh_TW": "鋼錠"
-                }
-              },
-              "quantity": 8
-            },
-            {
-              "reagent": {
-                "id": 3466,
-                "key": {
-                  "href": "https://us.api.blizzard.com/data/wow/item/3466?namespace=static-1.15.9_68185-classic1x-us"
-                },
-                "name": {
-                  "de_DE": "Starker Fluxus",
-                  "en_GB": "Strong Flux",
-                  "en_US": "Strong Flux",
-                  "es_ES": "Flujo fuerte",
-                  "es_MX": "Flujo concentrado",
-                  "fr_FR": "Catalyseur puissant",
-                  "it_IT": "Flussante Forte",
-                  "ko_KR": "강한 융해촉진제",
-                  "pt_BR": "Catalisador Forte",
-                  "ru_RU": "Сильный плавень",
-                  "zh_CN": "强效助熔剂",
-                  "zh_TW": "強效助熔劑"
-                }
-              },
-              "quantity": 2
-            },
-            {
-              "reagent": {
-                "id": 3486,
-                "key": {
-                  "href": "https://us.api.blizzard.com/data/wow/item/3486?namespace=static-1.15.9_68185-classic1x-us"
-                },
-                "name": {
-                  "de_DE": "Schwerer Schleifstein",
-                  "en_GB": "Heavy Grinding Stone",
-                  "en_US": "Heavy Grinding Stone",
-                  "es_ES": "Piedra de pulir pesada",
-                  "es_MX": "Piedra de pulir pesada",
-                  "fr_FR": "Silex à aiguiser lourd",
-                  "it_IT": "Pietra da Molatura Pesante",
-                  "ko_KR": "단단한 연마석",
-                  "pt_BR": "Pedra de Amolar Pesada",
-                  "ru_RU": "Тяжелый шлифовальный камень",
-                  "zh_CN": "重砂轮",
-                  "zh_TW": "重砂輪"
-                }
-              },
-              "quantity": 2
-            },
-            {
-              "reagent": {
-                "id": 1705,
-                "key": {
-                  "href": "https://us.api.blizzard.com/data/wow/item/1705?namespace=static-1.15.9_68185-classic1x-us"
-                },
-                "name": {
-                  "de_DE": "Geringer Mondstein",
-                  "en_GB": "Lesser Moonstone",
-                  "en_US": "Lesser Moonstone",
-                  "es_ES": "Piedra lunar inferior",
-                  "es_MX": "Piedra lunar inferior",
-                  "fr_FR": "Pierre de lune inférieure",
-                  "it_IT": "Pietraluna Minore",
-                  "ko_KR": "저급 월장석",
-                  "pt_BR": "Pedra-da-lua Inferior",
-                  "ru_RU": "Малый лунный камень",
-                  "zh_CN": "次级月亮石",
-                  "zh_TW": "次級月亮石"
-                }
-              },
-              "quantity": 3
-            },
-            {
-              "reagent": {
-                "id": 4234,
-                "key": {
-                  "href": "https://us.api.blizzard.com/data/wow/item/4234?namespace=static-1.15.9_68185-classic1x-us"
-                },
-                "name": {
-                  "de_DE": "Schweres Leder",
-                  "en_GB": "Heavy Leather",
-                  "en_US": "Heavy Leather",
-                  "es_ES": "Cuero pesado",
-                  "es_MX": "Cuero pesado",
-                  "fr_FR": "Cuir lourd",
-                  "it_IT": "Cuoio Pesante",
-                  "ko_KR": "질긴 가죽",
-                  "pt_BR": "Couro Pesado",
-                  "ru_RU": "Толстая кожа",
-                  "zh_CN": "重皮",
-                  "zh_TW": "重皮"
-                }
-              },
-              "quantity": 3
-            }
-          ],
-          "reagents_display_string": {
-            "de_DE": "Stahlbarren (8), Starker Fluxus (2), Schwerer Schleifstein (2), Geringer Mondstein (3), Schweres Leder (3)",
-            "en_GB": "Steel Bar (8), Strong Flux (2), Heavy Grinding Stone (2), Lesser Moonstone (3), Heavy Leather (3)",
-            "en_US": "Steel Bar (8), Strong Flux (2), Heavy Grinding Stone (2), Lesser Moonstone (3), Heavy Leather (3)",
-            "es_ES": "Lingote de acero (8), Flujo fuerte (2), Piedra de pulir pesada (2), Piedra lunar inferior (3), Cuero pesado (3)",
-            "es_MX": "Barra de acero (8), Flujo concentrado (2), Piedra de pulir pesada (2), Piedra lunar inferior (3), Cuero pesado (3)",
-            "fr_FR": "Barre d'acier (8), Catalyseur puissant (2), Silex à aiguiser lourd (2), Pierre de lune inférieure (3), Cuir lourd (3)",
-            "it_IT": "Barra d'Acciaio (8), Flussante Forte (2), Pietra da Molatura Pesante (2), Pietraluna Minore (3), Cuoio Pesante (3)",
-            "ko_KR": "강철 주괴 (8), 강한 융해촉진제 (2), 단단한 연마석 (2), 저급 월장석 (3), 질긴 가죽 (3)",
-            "pt_BR": "Barra de Aço (8), Catalisador Forte (2), Pedra de Amolar Pesada (2), Pedra-da-lua Inferior (3), Couro Pesado (3)",
-            "ru_RU": "Стальной слиток (8), Сильный плавень (2), Тяжелый шлифовальный камень (2), Малый лунный камень (3), Толстая кожа (3)",
-            "zh_CN": "钢锭 (8), 强效助熔剂 (2), 重砂轮 (2), 次级月亮石 (3), 重皮 (3)",
-            "zh_TW": "鋼錠 (8), 強效助熔劑 (2), 重砂輪 (2), 次級月亮石 (3), 重皮 (3)"
-          }
-        },
-        "spells": [
           {
-            "spell": {
-              "id": 439129,
-              "key": {
-                "href": "https://us.api.blizzard.com/data/wow/spell/439129?namespace=static-1.15.9_68185-classic1x-us"
-              },
+            "type": {
               "name": {
-                "de_DE": "Pläne: Mondstahlbreitschwert",
-                "en_GB": "Plans: Moonsteel Broadsword",
-                "en_US": "Plans: Moonsteel Broadsword",
-                "es_ES": "Diseño: espada ancha de acero lunar",
-                "es_MX": "Diseño: espada ancha de acero lunar",
-                "fr_FR": "Plans : Épée large en acier lunaire",
-                "ko_KR": "도면: 달의 강철 브로드소드",
-                "pt_BR": "Instruções: Espada Larga de Lunaço",
-                "ru_RU": "Чертеж: палаш лунной стали",
-                "zh_CN": "设计图：月钢宽剑",
-                "zh_TW": "設計圖：月鋼寬劍"
-              }
+                "de_DE": "Intelligenz",
+                "en_GB": "Intellect",
+                "en_US": "Intellect",
+                "es_ES": "intelecto",
+                "es_MX": "Intelecto",
+                "fr_FR": "Intelligence",
+                "it_IT": "Intelletto",
+                "ko_KR": "지능",
+                "pt_BR": "Intelecto",
+                "ru_RU": "к интеллекту",
+                "zh_CN": "智力",
+                "zh_TW": "智力"
+              },
+              "type": "INTELLECT"
             },
-            "description": {
-              "de_DE": "Benutzen: Lehrt Euch die Herstellung eines Mondstahlbreitschwerts.",
-              "en_GB": "Use: Teaches you how to make a Moonsteel Broadsword.",
-              "en_US": "Use: Teaches you how to make a Moonsteel Broadsword.",
-              "es_ES": "Usar: Te enseña a fabricar una espada ancha de acero lunar.",
-              "es_MX": "Uso: Te enseña a hacer una espada ancha de acero lunar.",
-              "fr_FR": "Utiliser : Vous apprend à forger une Épée large en acier lunaire.",
-              "ko_KR": "사용 효과: 달의 강철 브로드소드 만드는 법을 배웁니다.",
-              "pt_BR": "Usar: Ensina a fazer Espada Larga de Lunaço.",
-              "ru_RU": "Использование: Обучает изготовлению палаша из лунной стали.",
-              "zh_CN": "使用： 教你学会制作月钢宽剑。",
-              "zh_TW": "使用： 教你學會如何製作月鋼寬劍。"
+            "value": 10,
+            "display": {
+              "color": {
+                "a": 1,
+                "b": 255,
+                "g": 255,
+                "r": 255
+              },
+              "display_string": {
+                "de_DE": "+10 Intelligenz",
+                "en_GB": "+10 Intellect",
+                "en_US": "+10 Intellect",
+                "es_ES": "+10 intelecto",
+                "es_MX": "+10 Intelecto",
+                "fr_FR": "+10 Intelligence",
+                "it_IT": "+10 Intelletto",
+                "ko_KR": "지능 +10",
+                "pt_BR": "+10 Intelecto",
+                "ru_RU": "+10 к интеллекту",
+                "zh_CN": "+10 智力",
+                "zh_TW": "+10智力"
+              }
             }
           }
         ],
+        "spells": [
+          {
+            "spell": {
+              "id": 436239,
+              "key": {
+                "href": "https://us.api.blizzard.com/data/wow/spell/436239?namespace=static-1.15.9_68185-classic1x-us"
+              },
+              "name": {
+                "de_DE": "Kritisch 1 erhöht - Alle",
+                "en_GB": "Increased Critical 1 - All",
+                "en_US": "Increased Critical 1 - All",
+                "es_ES": "Golpe crítico aumentado 1 - Todos",
+                "es_MX": "Aumento en golpe crítico 1 - Todos",
+                "fr_FR": "Critique augmenté 1 - Tout",
+                "ko_KR": "치명타 및 극대화 증가 1 - 전체",
+                "pt_BR": "Crítico Aumentado 1 - Todos",
+                "ru_RU": "Усиление критического урона 1 – все",
+                "zh_CN": "爆击提高1 - 所有",
+                "zh_TW": "提高致命一擊1 - 全部"
+              }
+            },
+            "description": {
+              "de_DE": "Anlegen: Erhöht Eure kritische Trefferchance aller Eurer Angriffe und Zauber um 1%.",
+              "en_GB": "Equip: Improves your chance to get a critical strike with all spells and attacks by 1%.",
+              "en_US": "Equip: Improves your chance to get a critical strike with all spells and attacks by 1%.",
+              "es_ES": "Equipar: Mejora tu probabilidad de conseguir un golpe crítico con todos los hechizos y ataques un 1%.",
+              "es_MX": "Equipar: Mejora un 1% tu probabilidad de obtener un golpe crítico con todos tus hechizos y ataques.",
+              "fr_FR": "Equipé : Augmente de 1 % vos chances d’infliger un coup critique avec tous les sorts et attaques.",
+              "it_IT": "Equipaggia: Improves your chance to get a critical strike with all spells and attacks by 1%.",
+              "ko_KR": "착용 효과: 모든 주문과 공격의 주문 극대화 확률과 치명타 적중도가 1%만큼 증가합니다.",
+              "pt_BR": "Equipado: Aumenta em 1% sua chance de obter acerto crítico com todos os feitiços e ataques.",
+              "ru_RU": "Если на персонаже: Повышает вероятность критического эффекта атак и заклинаний на 1%.",
+              "zh_CN": "装备： 使你的所有法术和攻击的爆击几率提高1%。",
+              "zh_TW": "裝備： 使你的所有法術和攻擊造成致命一擊的機率提高1%。"
+            }
+          },
+          {
+            "spell": {
+              "id": 468621,
+              "key": {
+                "href": "https://us.api.blizzard.com/data/wow/spell/468621?namespace=static-1.15.9_68185-classic1x-us"
+              },
+              "name": {
+                "de_DE": "Hybrid - Heilung/Schadenszauber 31/11",
+                "en_GB": "Hybrid Healing/Spell Dam 31/11",
+                "en_US": "Hybrid Healing/Spell Dam 31/11",
+                "es_ES": "Híbrido daño con hechizos/sanación 31/11",
+                "es_MX": "Hybrid Healing/Spell Dam 31/11",
+                "fr_FR": "Hybrid Healing/Spell Dam 31/11",
+                "ko_KR": "혼합 치유량/주문 공격력 31/11",
+                "pt_BR": "Híbrido 31/11 de Cura/Dano Mágico",
+                "ru_RU": "Гибридный бонус к исцелению и урону от заклинаний 31/11",
+                "zh_CN": "混合治疗/法术伤害 31/11",
+                "zh_TW": "混合治療效果/法術傷害31/11"
+              }
+            },
+            "description": {
+              "de_DE": "Anlegen: Erhöht durch sämtliche Zauber und magische Effekte verursachte Heilung um bis zu 31 und den verursachten Schaden um bis zu 11.",
+              "en_GB": "Equip: Increases healing done by up to 31 and damage done by up to 11 for all magical spells and effects.",
+              "en_US": "Equip: Increases healing done by up to 31 and damage done by up to 11 for all magical spells and effects.",
+              "es_ES": "Equipar: Aumenta hasta 31 p. la sanación que aplicas y hasta 11 p. el daño que infliges con todos los hechizos y efectos mágicos.",
+              "es_MX": "Equipar: Aumenta hasta 31 p. la sanación realizada y hasta 11 p. el daño que infligen todos los efectos y hechizos mágicos.",
+              "fr_FR": "Equipé : Augmente les soins d’un maximum de 31 et les dégâts d’un maximum de 11 pour tous les sorts et effets magiques.",
+              "it_IT": "Equipaggia: Increases healing done by up to 31 and damage done by up to 11 for all magical spells and effects.",
+              "ko_KR": "착용 효과: 모든 주문 및 효과에 의한 치유량이 최대 31만큼, 공격력이 최대 11만큼 증가합니다.",
+              "pt_BR": "Equipado: Aumenta em 31 a cura realizada e em até 11 o dano causado por todos os feitiços e efeitos mágicos.",
+              "ru_RU": "Если на персонаже: Увеличивает силу исцеления магических эффектов и заклинаний максимум на 31 ед., а наносимый ими урон – максимум на 11 ед.",
+              "zh_CN": "装备： 使法术治疗提高最多31点，法术伤害提高最多11点。",
+              "zh_TW": "裝備： 使所有魔法法術和效果造成的治療效果最多提高31點，傷害最多提高11點。"
+            }
+          }
+        ],
+        "binding": {
+          "name": {
+            "de_DE": "Wird beim Aufheben gebunden",
+            "en_GB": "Binds when picked up",
+            "en_US": "Binds when picked up",
+            "es_ES": "Se liga al recogerlo",
+            "es_MX": "Se liga al recogerlo",
+            "fr_FR": "Lié quand ramassé",
+            "it_IT": "Vincola alla raccolta",
+            "ko_KR": "획득 시 귀속",
+            "pt_BR": "Vincula-se ao ser recolhido",
+            "ru_RU": "Становится персональным при поднятии",
+            "zh_CN": "拾取后绑定",
+            "zh_TW": "拾取後綁定"
+          },
+          "type": "ON_ACQUIRE"
+        },
         "quality": {
           "name": {
-            "de_DE": "Verbreitet",
-            "en_GB": "Common",
-            "en_US": "Common",
-            "es_ES": "Común",
-            "es_MX": "Común",
-            "fr_FR": "Commun",
-            "it_IT": "Comune",
-            "ko_KR": "일반",
-            "pt_BR": "Comum",
-            "ru_RU": "Обычное",
-            "zh_CN": "普通",
-            "zh_TW": "普通"
+            "de_DE": "Episch",
+            "en_GB": "Epic",
+            "en_US": "Epic",
+            "es_ES": "Épico",
+            "es_MX": "Épico",
+            "fr_FR": "Epique",
+            "it_IT": "Epico",
+            "ko_KR": "영웅",
+            "pt_BR": "Épico",
+            "ru_RU": "Превосходное",
+            "zh_CN": "史诗",
+            "zh_TW": "史詩"
           },
-          "type": "COMMON"
+          "type": "EPIC"
+        },
+        "durability": {
+          "value": 40,
+          "display_string": {
+            "de_DE": "Haltbarkeit 40 / 40",
+            "en_GB": "Durability 40 / 40",
+            "en_US": "Durability 40 / 40",
+            "es_ES": "Durabilidad 40 / 40",
+            "es_MX": "Durabilidad 40 / 40",
+            "fr_FR": "Durabilité 40 / 40",
+            "it_IT": "Integrità 40 / 40",
+            "ko_KR": "내구도 40 / 40",
+            "pt_BR": "Durabilidade 40 / 40",
+            "ru_RU": "Прочность: 40 / 40",
+            "zh_CN": "耐久度 40 / 40",
+            "zh_TW": "耐久度 40 / 40"
+          }
         },
         "item_class": {
-          "id": 9,
+          "id": 4,
           "key": {
-            "href": "https://us.api.blizzard.com/data/wow/item-class/9?namespace=static-1.15.9_68185-classic1x-us"
+            "href": "https://us.api.blizzard.com/data/wow/item-class/4?namespace=static-1.15.9_68185-classic1x-us"
           },
           "name": {
-            "de_DE": "Rezept",
-            "en_GB": "Recipe",
-            "en_US": "Recipe",
-            "es_ES": "Receta",
-            "es_MX": "Receta",
-            "fr_FR": "Recette",
-            "it_IT": "Ricette",
-            "ko_KR": "제조법",
-            "pt_BR": "Receita",
-            "ru_RU": "Рецепты",
-            "zh_CN": "配方",
-            "zh_TW": "配方"
+            "de_DE": "Rüstung",
+            "en_GB": "Armor",
+            "en_US": "Armor",
+            "es_ES": "Armadura",
+            "es_MX": "Armadura",
+            "fr_FR": "Armure",
+            "it_IT": "Armature",
+            "ko_KR": "방어구",
+            "pt_BR": "Armadura",
+            "ru_RU": "Доспехи",
+            "zh_CN": "护甲",
+            "zh_TW": "護甲"
           }
         },
         "sell_price": {
-          "value": 1100,
+          "value": 36606,
           "display_strings": {
             "gold": {
-              "de_DE": "0",
-              "en_GB": "0",
-              "en_US": "0",
-              "es_ES": "0",
-              "es_MX": "0",
-              "fr_FR": "0",
-              "it_IT": "0",
-              "ko_KR": "0",
-              "pt_BR": "0",
-              "ru_RU": "0",
-              "zh_CN": "0",
-              "zh_TW": "0"
+              "de_DE": "3",
+              "en_GB": "3",
+              "en_US": "3",
+              "es_ES": "3",
+              "es_MX": "3",
+              "fr_FR": "3",
+              "it_IT": "3",
+              "ko_KR": "3",
+              "pt_BR": "3",
+              "ru_RU": "3",
+              "zh_CN": "3",
+              "zh_TW": "3"
             },
             "copper": {
-              "de_DE": "0",
-              "en_GB": "0",
-              "en_US": "0",
-              "es_ES": "0",
-              "es_MX": "0",
-              "fr_FR": "0",
-              "it_IT": "0",
-              "ko_KR": "0",
-              "pt_BR": "0",
-              "ru_RU": "0",
-              "zh_CN": "0",
-              "zh_TW": "0"
+              "de_DE": "6",
+              "en_GB": "6",
+              "en_US": "6",
+              "es_ES": "6",
+              "es_MX": "6",
+              "fr_FR": "6",
+              "it_IT": "6",
+              "ko_KR": "6",
+              "pt_BR": "6",
+              "ru_RU": "6",
+              "zh_CN": "6",
+              "zh_TW": "6"
             },
             "header": {
               "de_DE": "Verkaufspreis:",
@@ -1583,139 +1494,973 @@
               "zh_TW": "售價:"
             },
             "silver": {
-              "de_DE": "11",
-              "en_GB": "11",
-              "en_US": "11",
-              "es_ES": "11",
-              "es_MX": "11",
-              "fr_FR": "11",
-              "it_IT": "11",
-              "ko_KR": "11",
-              "pt_BR": "11",
-              "ru_RU": "11",
-              "zh_CN": "11",
-              "zh_TW": "11"
+              "de_DE": "66",
+              "en_GB": "66",
+              "en_US": "66",
+              "es_ES": "66",
+              "es_MX": "66",
+              "fr_FR": "66",
+              "it_IT": "66",
+              "ko_KR": "66",
+              "pt_BR": "66",
+              "ru_RU": "66",
+              "zh_CN": "66",
+              "zh_TW": "66"
             }
           }
         },
         "requirements": {
-          "skill": {
-            "level": 180,
-            "profession": {
-              "id": 164,
-              "key": {
-                "href": "https://us.api.blizzard.com/data/wow/profession/164?namespace=static-1.15.9_68185-classic1x-us"
-              },
-              "name": {
-                "de_DE": "Schmiedekunst",
-                "en_GB": "Blacksmithing",
-                "en_US": "Blacksmithing",
-                "es_ES": "Herrería",
-                "es_MX": "Herrería",
-                "fr_FR": "Forge",
-                "it_IT": "Forgiatura",
-                "ko_KR": "대장기술",
-                "pt_BR": "Ferraria",
-                "ru_RU": "Кузнечное дело",
-                "zh_CN": "锻造",
-                "zh_TW": "鍛造"
-              }
-            },
+          "level": {
+            "value": 60,
             "display_string": {
-              "de_DE": "Benötigt Schmiedekunst (180)",
-              "en_GB": "Requires Blacksmithing (180)",
-              "en_US": "Requires Blacksmithing (180)",
-              "es_ES": "Requiere Herrería (180)",
-              "es_MX": "Requiere Herrería (180)",
-              "fr_FR": "Forge (180) requis",
-              "it_IT": "Richiede: Forgiatura (180)",
-              "ko_KR": "요구 사항: 대장기술 (180)",
-              "pt_BR": "Requer Ferraria (180)",
-              "ru_RU": "Требуется: Кузнечное дело (180)",
-              "zh_CN": "需要锻造（180）",
-              "zh_TW": "需要鍛造（180）"
+              "de_DE": "Benötigt Stufe 60",
+              "en_GB": "Requires Level 60",
+              "en_US": "Requires Level 60",
+              "es_ES": "Necesitas ser de nivel 60",
+              "es_MX": "Necesitas ser de nivel 60",
+              "fr_FR": "Niveau 60 requis",
+              "it_IT": "Richiede il livello 60",
+              "ko_KR": "최소 요구 레벨 60",
+              "pt_BR": "Requer o Nível 60",
+              "ru_RU": "Требуется 60-й уровень",
+              "zh_CN": "需要等级 60",
+              "zh_TW": "需要等級 60"
+            }
+          },
+          "playable_classes": {
+            "links": [
+              {
+                "id": 11,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/playable-class/11?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Druide",
+                  "en_GB": "Druid",
+                  "en_US": "Druid",
+                  "es_ES": "Druida",
+                  "es_MX": "Druida",
+                  "fr_FR": "Druide",
+                  "ko_KR": "드루이드",
+                  "pt_BR": "Druida",
+                  "ru_RU": "Друид",
+                  "zh_CN": "德鲁伊",
+                  "zh_TW": "德魯伊"
+                }
+              }
+            ],
+            "display_string": {
+              "de_DE": "Klassen: Druide",
+              "en_GB": "Classes: Druid",
+              "en_US": "Classes: Druid",
+              "es_ES": "Clases: Druida",
+              "es_MX": "Clases: Druida",
+              "fr_FR": "Classes : Druide",
+              "it_IT": "Classi: ",
+              "ko_KR": "직업: 드루이드",
+              "pt_BR": "Classes: Druida",
+              "ru_RU": "Классы: Друид",
+              "zh_CN": "职业：德鲁伊",
+              "zh_TW": "職業：德魯伊"
             }
           }
         },
         "item_subclass": {
-          "id": 4,
+          "id": 2,
           "key": {
-            "href": "https://us.api.blizzard.com/data/wow/item-class/9/item-subclass/4?namespace=static-1.15.9_68185-classic1x-us"
+            "href": "https://us.api.blizzard.com/data/wow/item-class/4/item-subclass/2?namespace=static-1.15.9_68185-classic1x-us"
           },
           "name": {
-            "de_DE": "Schmiedekunst",
-            "en_GB": "Blacksmithing",
-            "en_US": "Blacksmithing",
-            "es_ES": "Herrería",
-            "es_MX": "Herrería",
-            "fr_FR": "Forge",
-            "it_IT": "Forgiatura",
-            "ko_KR": "대장기술",
-            "pt_BR": "Ferraria",
-            "ru_RU": "Кузнечное дело",
-            "zh_CN": "锻造",
-            "zh_TW": "鍛造"
+            "de_DE": "Leder",
+            "en_GB": "Leather",
+            "en_US": "Leather",
+            "es_ES": "Cuero",
+            "es_MX": "Cuero",
+            "fr_FR": "Cuir",
+            "it_IT": "Cuoio",
+            "ko_KR": "가죽",
+            "pt_BR": "Couro",
+            "ru_RU": "Кожа",
+            "zh_CN": "皮甲",
+            "zh_TW": "皮甲"
           }
         },
         "inventory_type": {
           "name": {
-            "de_DE": "Nicht anlegbar",
-            "en_GB": "Non-equippable",
-            "en_US": "Non-equippable",
-            "es_ES": "No se puede equipar",
-            "es_MX": "No equipable",
-            "fr_FR": "Objet hors équipement",
-            "it_IT": "Non equipaggiabile",
-            "ko_KR": "착용 불가",
-            "pt_BR": "Não equipável",
-            "ru_RU": "Неэкипируемое",
-            "zh_CN": "无法装备",
-            "zh_TW": "無法裝備"
+            "de_DE": "Handgelenke",
+            "en_GB": "Wrist",
+            "en_US": "Wrist",
+            "es_ES": "Muñeca",
+            "es_MX": "Muñeca",
+            "fr_FR": "Poignets",
+            "it_IT": "Polsi",
+            "ko_KR": "손목",
+            "pt_BR": "Pulsos",
+            "ru_RU": "Запястья",
+            "zh_CN": "手腕",
+            "zh_TW": "手腕"
           },
-          "type": "NON_EQUIP"
-        },
-        "is_subclass_hidden": true
+          "type": "WRIST"
+        }
       },
-      "is_equippable": false,
+      "is_equippable": true,
       "item_subclass": {
-        "id": 4,
+        "id": 2,
         "key": {
-          "href": "https://us.api.blizzard.com/data/wow/item-class/9/item-subclass/4?namespace=static-1.15.9_68185-classic1x-us"
+          "href": "https://us.api.blizzard.com/data/wow/item-class/4/item-subclass/2?namespace=static-1.15.9_68185-classic1x-us"
         },
         "name": {
-          "de_DE": "Schmiedekunst",
-          "en_GB": "Blacksmithing",
-          "en_US": "Blacksmithing",
-          "es_ES": "Herrería",
-          "es_MX": "Herrería",
-          "fr_FR": "Forge",
-          "it_IT": "Forgiatura",
-          "ko_KR": "대장기술",
-          "pt_BR": "Ferraria",
-          "ru_RU": "Кузнечное дело",
-          "zh_CN": "锻造",
-          "zh_TW": "鍛造"
+          "de_DE": "Leder",
+          "en_GB": "Leather",
+          "en_US": "Leather",
+          "es_ES": "Cuero",
+          "es_MX": "Cuero",
+          "fr_FR": "Cuir",
+          "it_IT": "Cuoio",
+          "ko_KR": "가죽",
+          "pt_BR": "Couro",
+          "ru_RU": "Кожа",
+          "zh_CN": "皮甲",
+          "zh_TW": "皮甲"
         }
       },
       "inventory_type": {
         "name": {
-          "de_DE": "Nicht anlegbar",
-          "en_GB": "Non-equippable",
-          "en_US": "Non-equippable",
-          "es_ES": "No se puede equipar",
-          "es_MX": "No equipable",
-          "fr_FR": "Objet hors équipement",
-          "it_IT": "Non equipaggiabile",
-          "ko_KR": "착용 불가",
-          "pt_BR": "Não equipável",
-          "ru_RU": "Неэкипируемое",
-          "zh_CN": "无法装备",
-          "zh_TW": "無法裝備"
+          "de_DE": "Handgelenke",
+          "en_GB": "Wrist",
+          "en_US": "Wrist",
+          "es_ES": "Muñeca",
+          "es_MX": "Muñeca",
+          "fr_FR": "Poignets",
+          "it_IT": "Polsi",
+          "ko_KR": "손목",
+          "pt_BR": "Pulsos",
+          "ru_RU": "Запястья",
+          "zh_CN": "手腕",
+          "zh_TW": "手腕"
         },
-        "type": "NON_EQUIP"
+        "type": "WRIST"
       },
-      "purchase_price": 4400,
-      "required_level": 0,
+      "purchase_price": 183030,
+      "required_level": 60,
+      "purchase_quantity": 1
+    }
+  },
+  {
+    "matchedName": "Stormrage Bracers",
+    "id": 232087,
+    "name": "Stormrage Bracers",
+    "source": "classic_api",
+    "verified": false,
+    "raw": {
+      "id": 232087,
+      "name": {
+        "de_DE": "Armschienen des Stormrage",
+        "en_GB": "Stormrage Bracers",
+        "en_US": "Stormrage Bracers",
+        "es_ES": "Brazales de Tempestira",
+        "es_MX": "Brazales de Tempestira",
+        "fr_FR": "Brassards de Hurlorage",
+        "it_IT": "Bracciali di Grantempesta",
+        "ko_KR": "성난폭풍 팔보호구",
+        "pt_BR": "Braçadeiras Tempesfúria",
+        "ru_RU": "Наручи Ярости Бури",
+        "zh_CN": "怒风护腕",
+        "zh_TW": "怒風護腕"
+      },
+      "level": 76,
+      "media": {
+        "id": 232087,
+        "key": {
+          "href": "https://us.api.blizzard.com/data/wow/media/item/232087?namespace=static-1.15.9_68185-classic1x-us"
+        }
+      },
+      "_links": {
+        "self": {
+          "href": "https://us.api.blizzard.com/data/wow/item/232087?namespace=static-1.15.9_68185-classic1x-us"
+        }
+      },
+      "quality": {
+        "name": {
+          "de_DE": "Episch",
+          "en_GB": "Epic",
+          "en_US": "Epic",
+          "es_ES": "Épico",
+          "es_MX": "Épico",
+          "fr_FR": "Epique",
+          "it_IT": "Epico",
+          "ko_KR": "영웅",
+          "pt_BR": "Épico",
+          "ru_RU": "Превосходное",
+          "zh_CN": "史诗",
+          "zh_TW": "史詩"
+        },
+        "type": "EPIC"
+      },
+      "max_count": 0,
+      "item_class": {
+        "id": 4,
+        "key": {
+          "href": "https://us.api.blizzard.com/data/wow/item-class/4?namespace=static-1.15.9_68185-classic1x-us"
+        },
+        "name": {
+          "de_DE": "Rüstung",
+          "en_GB": "Armor",
+          "en_US": "Armor",
+          "es_ES": "Armadura",
+          "es_MX": "Armadura",
+          "fr_FR": "Armure",
+          "it_IT": "Armature",
+          "ko_KR": "방어구",
+          "pt_BR": "Armadura",
+          "ru_RU": "Доспехи",
+          "zh_CN": "护甲",
+          "zh_TW": "護甲"
+        }
+      },
+      "sell_price": 36606,
+      "is_stackable": false,
+      "preview_item": {
+        "set": {
+          "items": [
+            {
+              "item": {
+                "id": 226650,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/226650?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Gürtel des Cenarius",
+                  "en_GB": "Cenarion Belt",
+                  "en_US": "Cenarion Belt",
+                  "es_ES": "Cinturón Cenarion",
+                  "es_MX": "Cinturón Cenarion",
+                  "fr_FR": "Ceinture cénarienne",
+                  "it_IT": "Cintura Cenariana",
+                  "ko_KR": "세나리온 허리띠",
+                  "pt_BR": "Cinto Cenariano",
+                  "ru_RU": "Кенарийский пояс",
+                  "zh_CN": "塞纳里奥腰带",
+                  "zh_TW": "塞納里奧腰帶"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 226645,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/226645?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Stiefel des Cenarius",
+                  "en_GB": "Cenarion Boots",
+                  "en_US": "Cenarion Boots",
+                  "es_ES": "Botas Cenarion",
+                  "es_MX": "Botas Cenarion",
+                  "fr_FR": "Bottes cénariennes",
+                  "it_IT": "Stivali Cenariani",
+                  "ko_KR": "세나리온 장화",
+                  "pt_BR": "Botas Cenarianas",
+                  "ru_RU": "Кенарийские сапоги",
+                  "zh_CN": "塞纳里奥长靴",
+                  "zh_TW": "塞納里奧長靴"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 226649,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/226649?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Armschienen des Cenarius",
+                  "en_GB": "Cenarion Bracers",
+                  "en_US": "Cenarion Bracers",
+                  "es_ES": "Brazales Cenarion",
+                  "es_MX": "Brazales Cenarion",
+                  "fr_FR": "Brassards cénariens",
+                  "it_IT": "Bracciali Cenariani",
+                  "ko_KR": "세나리온 팔보호구",
+                  "pt_BR": "Braçadeiras Cenarianas",
+                  "ru_RU": "Кенарийские наручи",
+                  "zh_CN": "塞纳里奥护腕",
+                  "zh_TW": "塞納里奧護腕"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 226648,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/226648?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Handschuhe des Cenarius",
+                  "en_GB": "Cenarion Gloves",
+                  "en_US": "Cenarion Gloves",
+                  "es_ES": "Guantes Cenarion",
+                  "es_MX": "Guantes Cenarion",
+                  "fr_FR": "Gants cénariens",
+                  "it_IT": "Guanti Cenariani",
+                  "ko_KR": "세나리온 장갑",
+                  "pt_BR": "Luvas Cenarianas",
+                  "ru_RU": "Кенарийские перчатки",
+                  "zh_CN": "塞纳里奥手套",
+                  "zh_TW": "塞納里奧手套"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 226647,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/226647?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Helm des Cenarius",
+                  "en_GB": "Cenarion Helm",
+                  "en_US": "Cenarion Helm",
+                  "es_ES": "Yelmo Cenarion",
+                  "es_MX": "Yelmo Cenarion",
+                  "fr_FR": "Casque cénarien",
+                  "it_IT": "Elmo Cenariano",
+                  "ko_KR": "세나리온 투구",
+                  "pt_BR": "Elmo Cenariano",
+                  "ru_RU": "Кенарийский шлем",
+                  "zh_CN": "塞纳里奥头盔",
+                  "zh_TW": "塞納里奧頭盔"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 226646,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/226646?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Gamaschen des Cenarius",
+                  "en_GB": "Cenarion Leggings",
+                  "en_US": "Cenarion Leggings",
+                  "es_ES": "Leotardos Cenarion",
+                  "es_MX": "Leotardos Cenarion",
+                  "fr_FR": "Jambières cénariennes",
+                  "it_IT": "Gambiere Cenariane",
+                  "ko_KR": "세나리온 다리보호구",
+                  "pt_BR": "Perneiras Cenarianas",
+                  "ru_RU": "Кенарийские поножи",
+                  "zh_CN": "塞纳里奥护腿",
+                  "zh_TW": "塞納里奧護腿"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 226644,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/226644?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Schiftung des Cenarius",
+                  "en_GB": "Cenarion Spaulders",
+                  "en_US": "Cenarion Spaulders",
+                  "es_ES": "Bufas Cenarion",
+                  "es_MX": "Bufas Cenarion",
+                  "fr_FR": "Spallières cénariennes",
+                  "it_IT": "Guardaspalle Cenariani",
+                  "ko_KR": "세나리온 어깨갑옷",
+                  "pt_BR": "Espaldares Cenarianos",
+                  "ru_RU": "Кенарийский наплеч",
+                  "zh_CN": "塞纳里奥肩甲",
+                  "zh_TW": "塞納里奧肩甲"
+                }
+              }
+            },
+            {
+              "item": {
+                "id": 221785,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/item/221785?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Gewand des Cenarius",
+                  "en_GB": "Cenarion Vestments",
+                  "en_US": "Cenarion Vestments",
+                  "es_ES": "Vestimentas Cenarion",
+                  "es_MX": "Vestimentas Cenarion",
+                  "fr_FR": "Habit cénarien",
+                  "ko_KR": "세나리온 예복",
+                  "pt_BR": "Vestimenta Cenariana",
+                  "ru_RU": "Кенарийское одеяние",
+                  "zh_CN": "塞纳里奥胸甲",
+                  "zh_TW": "塞納里奧法衣"
+                }
+              }
+            }
+          ],
+          "effects": [
+            {
+              "display_string": {
+                "de_DE": "(2) Set: Wenn Ihr 'Anregen' auf einen anderen Spielercharakter wirkt, ist auch Euer Charakter betroffen.",
+                "en_GB": "(2) Set: When you cast Innervate on another player, it is also cast on you.",
+                "en_US": "(2) Set: When you cast Innervate on another player, it is also cast on you.",
+                "es_ES": "(2) Bonif.: Cuando lanzas Estimular sobre otro jugador, también lo lanzas sobre ti mismo.",
+                "es_MX": "(2) Bonif.: Cuando lanzas Estimular sobre otro jugador, también se lanzará sobre ti.",
+                "fr_FR": "(2) Ensemble : Lorsque vous lancez Innervation sur un autre joueur, elle est également lancée sur vous.",
+                "it_IT": "Set (2): When you cast Innervate on another player, it is also cast on you.",
+                "ko_KR": "(2) 세트 효과: 다른 플레이어에게 정신 자극 시전 시 자신에게도 시전합니다.",
+                "pt_BR": "(2) Conjunto: Ao lançar Avivar em outro jogador, você também recebe um lançamento dele.",
+                "ru_RU": "Комплект (2 предмета): Когда вы применяете \"Озарение\" к другому игроку, вы также получаете этот эффект.",
+                "zh_CN": "(2) 套装：当你对其他玩家施放激活时，也会对你施放。",
+                "zh_TW": "(2) 套裝: 當你對另一名玩家施放啟動時，也對自己施放。"
+              },
+              "required_count": 2
+            },
+            {
+              "display_string": {
+                "de_DE": "(4) Set: Wenn Ihr Eure Zauber 'Heilende Berührung' oder 'Pflege' wirkt, erhaltet Ihr mit einer Chance von 25% Mana in Höhe von 35% der Grundkosten des Zaubers.",
+                "en_GB": "(4) Set: Casting your Healing Touch or Nourish spells gives you a 25% chance to gain Mana equal to 35% of the base cost of the spell.",
+                "en_US": "(4) Set: Casting your Healing Touch or Nourish spells gives you a 25% chance to gain Mana equal to 35% of the base cost of the spell.",
+                "es_ES": "(4) Bonif.: Al lanzar los hechizos Toque de sanación o Nutrir, tienes un 25% de probabilidades de obtener un 35% del total de maná consumido en el hechizo.",
+                "es_MX": "(4) Bonif.: Cuando lanzas tus hechizos de Toque de sanación o Nutrir, tienes un 25% de probabilidad de obtener una cantidad de maná equivalente al 35% del costo base del hechizo.",
+                "fr_FR": "(4) Ensemble : Le lancement de Toucher guérisseur ou Nourrir vous donne 25 % de chances de recevoir un montant de mana égal à 35 % du coût de base du sort.",
+                "it_IT": "Set (4): Casting your Healing Touch or Nourish spells gives you a 25% chance to gain Mana equal to 35% of the base cost of the spell.",
+                "ko_KR": "(4) 세트 효과: 치유의 손길 또는 육성 시전 시 25%의 확률로 해당 주문 기본 마나 소모량의 35%에 해당하는 마나를 회복합니다.",
+                "pt_BR": "(4) Conjunto: Lançar os feitiços Toque de Cura ou Nutrir concede a você 25% de chance de ganhar mana equivalente a 35% do custo básico do feitiço.",
+                "ru_RU": "Комплект (4 предмета): После применения \"Целительного прикосновения\" или \"Покровительства природы\" вы с вероятностью 25% восполняете ману в объеме 35% базовой стоимости заклинания.",
+                "zh_CN": "(4) 套装：施放治疗之触或滋养法术有25%的几率使你获得该法术所消耗的法力值的35%。",
+                "zh_TW": "(4) 套裝: 施放治療之觸或滋補術法術會使你有25%的機率獲得該法術所消耗法力的35%。"
+              },
+              "required_count": 4
+            },
+            {
+              "display_string": {
+                "de_DE": "(6) Set: Verringert die Abklingzeit von 'Gelassenheit' um 100% und erhöht ihre Heilung um 100%.",
+                "en_GB": "(6) Set: Reduces the cooldown on Tranquility by 100% and increases its healing by 100%.",
+                "en_US": "(6) Set: Reduces the cooldown on Tranquility by 100% and increases its healing by 100%.",
+                "es_ES": "(6) Bonif.: Reduce un 100% el tiempo de reutilización de Tranquilidad y aumenta un 100% su sanación.",
+                "es_MX": "(6) Bonif.: Reduce un 100% el tiempo de reutilización de Tranquilidad y aumenta un 100% su sanación.",
+                "fr_FR": "(6) Ensemble : Réduit le temps de recharge de Tranquillité de 100 % et en augmente les soins de 100 %.",
+                "it_IT": "Set (6): Reduces the cooldown on Tranquility by 100% and increases its healing by 100%.",
+                "ko_KR": "(6) 세트 효과: 평온의 재사용 대기시간이 100%만큼 감소하고 치유량은 100%만큼 증가합니다.",
+                "pt_BR": "(6) Conjunto: Reduz em 100% a recarga de Tranquilidade e aumenta em 100% a cura dela.",
+                "ru_RU": "Комплект (6 предметов): Сокращает время восстановления \"Безмятежности\" на 100%. \"Безмятежность\" восстанавливает на 100% больше здоровья.",
+                "zh_CN": "(6) 套装：宁静的冷却时间缩短100%，治疗效果提高100%。",
+                "zh_TW": "(6) 套裝: 使寧靜的冷卻時間縮短100%，使其治療效果提高100%。"
+              },
+              "required_count": 6
+            }
+          ],
+          "item_set": {
+            "id": 1700,
+            "key": {
+              "href": "https://us.api.blizzard.com/data/wow/item-set/1700?namespace=static-1.15.9_68185-classic1x-us"
+            },
+            "name": {
+              "de_DE": "Fülle des Cenarius",
+              "en_GB": "Cenarion Bounty",
+              "en_US": "Cenarion Bounty",
+              "es_ES": "Botín Cenarion",
+              "es_MX": "Botín Cenarion",
+              "fr_FR": "Manne cénarienne",
+              "ko_KR": "세나리온 은혜",
+              "pt_BR": "Recompensa Cenariana",
+              "ru_RU": "Щедрость Кенария",
+              "zh_CN": "塞纳里奥之慷慨",
+              "zh_TW": "塞納里奧恩惠"
+            }
+          },
+          "display_string": {
+            "de_DE": "Fülle des Cenarius (0/8)",
+            "en_GB": "Cenarion Bounty (0/8)",
+            "en_US": "Cenarion Bounty (0/8)",
+            "es_ES": "Botín Cenarion (0/8)",
+            "es_MX": "Botín Cenarion (0/8)",
+            "fr_FR": "Manne cénarienne (0/8)",
+            "it_IT": "Cenarion Bounty (0/8)",
+            "ko_KR": "세나리온 은혜 (0/8)",
+            "pt_BR": "Recompensa Cenariana (0/8)",
+            "ru_RU": "Щедрость Кенария (0/8)",
+            "zh_CN": "塞纳里奥之慷慨（0/8）",
+            "zh_TW": "塞納里奧恩惠（0/8）"
+          }
+        },
+        "item": {
+          "id": 232087,
+          "key": {
+            "href": "https://us.api.blizzard.com/data/wow/item/232087?namespace=static-1.15.9_68185-classic1x-us"
+          }
+        },
+        "name": {
+          "de_DE": "Armschienen des Stormrage",
+          "en_GB": "Stormrage Bracers",
+          "en_US": "Stormrage Bracers",
+          "es_ES": "Brazales de Tempestira",
+          "es_MX": "Brazales de Tempestira",
+          "fr_FR": "Brassards de Hurlorage",
+          "it_IT": "Bracciali di Grantempesta",
+          "ko_KR": "성난폭풍 팔보호구",
+          "pt_BR": "Braçadeiras Tempesfúria",
+          "ru_RU": "Наручи Ярости Бури",
+          "zh_CN": "怒风护腕",
+          "zh_TW": "怒風護腕"
+        },
+        "armor": {
+          "value": 98,
+          "display": {
+            "color": {
+              "a": 1,
+              "b": 255,
+              "g": 255,
+              "r": 255
+            },
+            "display_string": {
+              "de_DE": "98 Rüstung",
+              "en_GB": "98 Armor",
+              "en_US": "98 Armor",
+              "es_ES": "98 armadura",
+              "es_MX": "98 p. de armadura",
+              "fr_FR": "Armure : 98",
+              "it_IT": "98 Armor",
+              "ko_KR": "방어도 98",
+              "pt_BR": "98 de Armadura",
+              "ru_RU": "Броня: 98",
+              "zh_CN": "98点护甲",
+              "zh_TW": "98點護甲"
+            }
+          }
+        },
+        "media": {
+          "id": 232087,
+          "key": {
+            "href": "https://us.api.blizzard.com/data/wow/media/item/232087?namespace=static-1.15.9_68185-classic1x-us"
+          }
+        },
+        "stats": [
+          {
+            "type": {
+              "name": {
+                "de_DE": "Ausdauer",
+                "en_GB": "Stamina",
+                "en_US": "Stamina",
+                "es_ES": "aguante",
+                "es_MX": "Aguante",
+                "fr_FR": "Endurance",
+                "it_IT": "Tempra",
+                "ko_KR": "체력",
+                "pt_BR": "Vigor",
+                "ru_RU": "к выносливости",
+                "zh_CN": "耐力",
+                "zh_TW": "耐力"
+              },
+              "type": "STAMINA"
+            },
+            "value": 13,
+            "display": {
+              "color": {
+                "a": 1,
+                "b": 255,
+                "g": 255,
+                "r": 255
+              },
+              "display_string": {
+                "de_DE": "+13 Ausdauer",
+                "en_GB": "+13 Stamina",
+                "en_US": "+13 Stamina",
+                "es_ES": "+13 aguante",
+                "es_MX": "+13 Aguante",
+                "fr_FR": "+13 Endurance",
+                "it_IT": "+13 Tempra",
+                "ko_KR": "체력 +13",
+                "pt_BR": "+13 Vigor",
+                "ru_RU": "+13 к выносливости",
+                "zh_CN": "+13 耐力",
+                "zh_TW": "+13耐力"
+              }
+            }
+          },
+          {
+            "type": {
+              "name": {
+                "de_DE": "Intelligenz",
+                "en_GB": "Intellect",
+                "en_US": "Intellect",
+                "es_ES": "intelecto",
+                "es_MX": "Intelecto",
+                "fr_FR": "Intelligence",
+                "it_IT": "Intelletto",
+                "ko_KR": "지능",
+                "pt_BR": "Intelecto",
+                "ru_RU": "к интеллекту",
+                "zh_CN": "智力",
+                "zh_TW": "智力"
+              },
+              "type": "INTELLECT"
+            },
+            "value": 10,
+            "display": {
+              "color": {
+                "a": 1,
+                "b": 255,
+                "g": 255,
+                "r": 255
+              },
+              "display_string": {
+                "de_DE": "+10 Intelligenz",
+                "en_GB": "+10 Intellect",
+                "en_US": "+10 Intellect",
+                "es_ES": "+10 intelecto",
+                "es_MX": "+10 Intelecto",
+                "fr_FR": "+10 Intelligence",
+                "it_IT": "+10 Intelletto",
+                "ko_KR": "지능 +10",
+                "pt_BR": "+10 Intelecto",
+                "ru_RU": "+10 к интеллекту",
+                "zh_CN": "+10 智力",
+                "zh_TW": "+10智力"
+              }
+            }
+          }
+        ],
+        "spells": [
+          {
+            "spell": {
+              "id": 436239,
+              "key": {
+                "href": "https://us.api.blizzard.com/data/wow/spell/436239?namespace=static-1.15.9_68185-classic1x-us"
+              },
+              "name": {
+                "de_DE": "Kritisch 1 erhöht - Alle",
+                "en_GB": "Increased Critical 1 - All",
+                "en_US": "Increased Critical 1 - All",
+                "es_ES": "Golpe crítico aumentado 1 - Todos",
+                "es_MX": "Aumento en golpe crítico 1 - Todos",
+                "fr_FR": "Critique augmenté 1 - Tout",
+                "ko_KR": "치명타 및 극대화 증가 1 - 전체",
+                "pt_BR": "Crítico Aumentado 1 - Todos",
+                "ru_RU": "Усиление критического урона 1 – все",
+                "zh_CN": "爆击提高1 - 所有",
+                "zh_TW": "提高致命一擊1 - 全部"
+              }
+            },
+            "description": {
+              "de_DE": "Anlegen: Erhöht Eure kritische Trefferchance aller Eurer Angriffe und Zauber um 1%.",
+              "en_GB": "Equip: Improves your chance to get a critical strike with all spells and attacks by 1%.",
+              "en_US": "Equip: Improves your chance to get a critical strike with all spells and attacks by 1%.",
+              "es_ES": "Equipar: Mejora tu probabilidad de conseguir un golpe crítico con todos los hechizos y ataques un 1%.",
+              "es_MX": "Equipar: Mejora un 1% tu probabilidad de obtener un golpe crítico con todos tus hechizos y ataques.",
+              "fr_FR": "Equipé : Augmente de 1 % vos chances d’infliger un coup critique avec tous les sorts et attaques.",
+              "it_IT": "Equipaggia: Improves your chance to get a critical strike with all spells and attacks by 1%.",
+              "ko_KR": "착용 효과: 모든 주문과 공격의 주문 극대화 확률과 치명타 적중도가 1%만큼 증가합니다.",
+              "pt_BR": "Equipado: Aumenta em 1% sua chance de obter acerto crítico com todos os feitiços e ataques.",
+              "ru_RU": "Если на персонаже: Повышает вероятность критического эффекта атак и заклинаний на 1%.",
+              "zh_CN": "装备： 使你的所有法术和攻击的爆击几率提高1%。",
+              "zh_TW": "裝備： 使你的所有法術和攻擊造成致命一擊的機率提高1%。"
+            }
+          },
+          {
+            "spell": {
+              "id": 468621,
+              "key": {
+                "href": "https://us.api.blizzard.com/data/wow/spell/468621?namespace=static-1.15.9_68185-classic1x-us"
+              },
+              "name": {
+                "de_DE": "Hybrid - Heilung/Schadenszauber 31/11",
+                "en_GB": "Hybrid Healing/Spell Dam 31/11",
+                "en_US": "Hybrid Healing/Spell Dam 31/11",
+                "es_ES": "Híbrido daño con hechizos/sanación 31/11",
+                "es_MX": "Hybrid Healing/Spell Dam 31/11",
+                "fr_FR": "Hybrid Healing/Spell Dam 31/11",
+                "ko_KR": "혼합 치유량/주문 공격력 31/11",
+                "pt_BR": "Híbrido 31/11 de Cura/Dano Mágico",
+                "ru_RU": "Гибридный бонус к исцелению и урону от заклинаний 31/11",
+                "zh_CN": "混合治疗/法术伤害 31/11",
+                "zh_TW": "混合治療效果/法術傷害31/11"
+              }
+            },
+            "description": {
+              "de_DE": "Anlegen: Erhöht durch sämtliche Zauber und magische Effekte verursachte Heilung um bis zu 31 und den verursachten Schaden um bis zu 11.",
+              "en_GB": "Equip: Increases healing done by up to 31 and damage done by up to 11 for all magical spells and effects.",
+              "en_US": "Equip: Increases healing done by up to 31 and damage done by up to 11 for all magical spells and effects.",
+              "es_ES": "Equipar: Aumenta hasta 31 p. la sanación que aplicas y hasta 11 p. el daño que infliges con todos los hechizos y efectos mágicos.",
+              "es_MX": "Equipar: Aumenta hasta 31 p. la sanación realizada y hasta 11 p. el daño que infligen todos los efectos y hechizos mágicos.",
+              "fr_FR": "Equipé : Augmente les soins d’un maximum de 31 et les dégâts d’un maximum de 11 pour tous les sorts et effets magiques.",
+              "it_IT": "Equipaggia: Increases healing done by up to 31 and damage done by up to 11 for all magical spells and effects.",
+              "ko_KR": "착용 효과: 모든 주문 및 효과에 의한 치유량이 최대 31만큼, 공격력이 최대 11만큼 증가합니다.",
+              "pt_BR": "Equipado: Aumenta em 31 a cura realizada e em até 11 o dano causado por todos os feitiços e efeitos mágicos.",
+              "ru_RU": "Если на персонаже: Увеличивает силу исцеления магических эффектов и заклинаний максимум на 31 ед., а наносимый ими урон – максимум на 11 ед.",
+              "zh_CN": "装备： 使法术治疗提高最多31点，法术伤害提高最多11点。",
+              "zh_TW": "裝備： 使所有魔法法術和效果造成的治療效果最多提高31點，傷害最多提高11點。"
+            }
+          }
+        ],
+        "binding": {
+          "name": {
+            "de_DE": "Wird beim Aufheben gebunden",
+            "en_GB": "Binds when picked up",
+            "en_US": "Binds when picked up",
+            "es_ES": "Se liga al recogerlo",
+            "es_MX": "Se liga al recogerlo",
+            "fr_FR": "Lié quand ramassé",
+            "it_IT": "Vincola alla raccolta",
+            "ko_KR": "획득 시 귀속",
+            "pt_BR": "Vincula-se ao ser recolhido",
+            "ru_RU": "Становится персональным при поднятии",
+            "zh_CN": "拾取后绑定",
+            "zh_TW": "拾取後綁定"
+          },
+          "type": "ON_ACQUIRE"
+        },
+        "quality": {
+          "name": {
+            "de_DE": "Episch",
+            "en_GB": "Epic",
+            "en_US": "Epic",
+            "es_ES": "Épico",
+            "es_MX": "Épico",
+            "fr_FR": "Epique",
+            "it_IT": "Epico",
+            "ko_KR": "영웅",
+            "pt_BR": "Épico",
+            "ru_RU": "Превосходное",
+            "zh_CN": "史诗",
+            "zh_TW": "史詩"
+          },
+          "type": "EPIC"
+        },
+        "durability": {
+          "value": 40,
+          "display_string": {
+            "de_DE": "Haltbarkeit 40 / 40",
+            "en_GB": "Durability 40 / 40",
+            "en_US": "Durability 40 / 40",
+            "es_ES": "Durabilidad 40 / 40",
+            "es_MX": "Durabilidad 40 / 40",
+            "fr_FR": "Durabilité 40 / 40",
+            "it_IT": "Integrità 40 / 40",
+            "ko_KR": "내구도 40 / 40",
+            "pt_BR": "Durabilidade 40 / 40",
+            "ru_RU": "Прочность: 40 / 40",
+            "zh_CN": "耐久度 40 / 40",
+            "zh_TW": "耐久度 40 / 40"
+          }
+        },
+        "item_class": {
+          "id": 4,
+          "key": {
+            "href": "https://us.api.blizzard.com/data/wow/item-class/4?namespace=static-1.15.9_68185-classic1x-us"
+          },
+          "name": {
+            "de_DE": "Rüstung",
+            "en_GB": "Armor",
+            "en_US": "Armor",
+            "es_ES": "Armadura",
+            "es_MX": "Armadura",
+            "fr_FR": "Armure",
+            "it_IT": "Armature",
+            "ko_KR": "방어구",
+            "pt_BR": "Armadura",
+            "ru_RU": "Доспехи",
+            "zh_CN": "护甲",
+            "zh_TW": "護甲"
+          }
+        },
+        "sell_price": {
+          "value": 36606,
+          "display_strings": {
+            "gold": {
+              "de_DE": "3",
+              "en_GB": "3",
+              "en_US": "3",
+              "es_ES": "3",
+              "es_MX": "3",
+              "fr_FR": "3",
+              "it_IT": "3",
+              "ko_KR": "3",
+              "pt_BR": "3",
+              "ru_RU": "3",
+              "zh_CN": "3",
+              "zh_TW": "3"
+            },
+            "copper": {
+              "de_DE": "6",
+              "en_GB": "6",
+              "en_US": "6",
+              "es_ES": "6",
+              "es_MX": "6",
+              "fr_FR": "6",
+              "it_IT": "6",
+              "ko_KR": "6",
+              "pt_BR": "6",
+              "ru_RU": "6",
+              "zh_CN": "6",
+              "zh_TW": "6"
+            },
+            "header": {
+              "de_DE": "Verkaufspreis:",
+              "en_GB": "Sell Price:",
+              "en_US": "Sell Price:",
+              "es_ES": "Precio de venta:",
+              "es_MX": "Precio de venta:",
+              "fr_FR": "Prix de vente :",
+              "it_IT": "Prezzo di vendita:",
+              "ko_KR": "판매 가격:",
+              "pt_BR": "Preço de Venda:",
+              "ru_RU": "Цена продажи:",
+              "zh_CN": "卖价:",
+              "zh_TW": "售價:"
+            },
+            "silver": {
+              "de_DE": "66",
+              "en_GB": "66",
+              "en_US": "66",
+              "es_ES": "66",
+              "es_MX": "66",
+              "fr_FR": "66",
+              "it_IT": "66",
+              "ko_KR": "66",
+              "pt_BR": "66",
+              "ru_RU": "66",
+              "zh_CN": "66",
+              "zh_TW": "66"
+            }
+          }
+        },
+        "requirements": {
+          "level": {
+            "value": 60,
+            "display_string": {
+              "de_DE": "Benötigt Stufe 60",
+              "en_GB": "Requires Level 60",
+              "en_US": "Requires Level 60",
+              "es_ES": "Necesitas ser de nivel 60",
+              "es_MX": "Necesitas ser de nivel 60",
+              "fr_FR": "Niveau 60 requis",
+              "it_IT": "Richiede il livello 60",
+              "ko_KR": "최소 요구 레벨 60",
+              "pt_BR": "Requer o Nível 60",
+              "ru_RU": "Требуется 60-й уровень",
+              "zh_CN": "需要等级 60",
+              "zh_TW": "需要等級 60"
+            }
+          },
+          "playable_classes": {
+            "links": [
+              {
+                "id": 11,
+                "key": {
+                  "href": "https://us.api.blizzard.com/data/wow/playable-class/11?namespace=static-1.15.9_68185-classic1x-us"
+                },
+                "name": {
+                  "de_DE": "Druide",
+                  "en_GB": "Druid",
+                  "en_US": "Druid",
+                  "es_ES": "Druida",
+                  "es_MX": "Druida",
+                  "fr_FR": "Druide",
+                  "ko_KR": "드루이드",
+                  "pt_BR": "Druida",
+                  "ru_RU": "Друид",
+                  "zh_CN": "德鲁伊",
+                  "zh_TW": "德魯伊"
+                }
+              }
+            ],
+            "display_string": {
+              "de_DE": "Klassen: Druide",
+              "en_GB": "Classes: Druid",
+              "en_US": "Classes: Druid",
+              "es_ES": "Clases: Druida",
+              "es_MX": "Clases: Druida",
+              "fr_FR": "Classes : Druide",
+              "it_IT": "Classi: ",
+              "ko_KR": "직업: 드루이드",
+              "pt_BR": "Classes: Druida",
+              "ru_RU": "Классы: Друид",
+              "zh_CN": "职业：德鲁伊",
+              "zh_TW": "職業：德魯伊"
+            }
+          }
+        },
+        "item_subclass": {
+          "id": 2,
+          "key": {
+            "href": "https://us.api.blizzard.com/data/wow/item-class/4/item-subclass/2?namespace=static-1.15.9_68185-classic1x-us"
+          },
+          "name": {
+            "de_DE": "Leder",
+            "en_GB": "Leather",
+            "en_US": "Leather",
+            "es_ES": "Cuero",
+            "es_MX": "Cuero",
+            "fr_FR": "Cuir",
+            "it_IT": "Cuoio",
+            "ko_KR": "가죽",
+            "pt_BR": "Couro",
+            "ru_RU": "Кожа",
+            "zh_CN": "皮甲",
+            "zh_TW": "皮甲"
+          }
+        },
+        "inventory_type": {
+          "name": {
+            "de_DE": "Handgelenke",
+            "en_GB": "Wrist",
+            "en_US": "Wrist",
+            "es_ES": "Muñeca",
+            "es_MX": "Muñeca",
+            "fr_FR": "Poignets",
+            "it_IT": "Polsi",
+            "ko_KR": "손목",
+            "pt_BR": "Pulsos",
+            "ru_RU": "Запястья",
+            "zh_CN": "手腕",
+            "zh_TW": "手腕"
+          },
+          "type": "WRIST"
+        }
+      },
+      "is_equippable": true,
+      "item_subclass": {
+        "id": 2,
+        "key": {
+          "href": "https://us.api.blizzard.com/data/wow/item-class/4/item-subclass/2?namespace=static-1.15.9_68185-classic1x-us"
+        },
+        "name": {
+          "de_DE": "Leder",
+          "en_GB": "Leather",
+          "en_US": "Leather",
+          "es_ES": "Cuero",
+          "es_MX": "Cuero",
+          "fr_FR": "Cuir",
+          "it_IT": "Cuoio",
+          "ko_KR": "가죽",
+          "pt_BR": "Couro",
+          "ru_RU": "Кожа",
+          "zh_CN": "皮甲",
+          "zh_TW": "皮甲"
+        }
+      },
+      "inventory_type": {
+        "name": {
+          "de_DE": "Handgelenke",
+          "en_GB": "Wrist",
+          "en_US": "Wrist",
+          "es_ES": "Muñeca",
+          "es_MX": "Muñeca",
+          "fr_FR": "Poignets",
+          "it_IT": "Polsi",
+          "ko_KR": "손목",
+          "pt_BR": "Pulsos",
+          "ru_RU": "Запястья",
+          "zh_CN": "手腕",
+          "zh_TW": "手腕"
+        },
+        "type": "WRIST"
+      },
+      "purchase_price": 183030,
+      "required_level": 60,
       "purchase_quantity": 1
     }
   }

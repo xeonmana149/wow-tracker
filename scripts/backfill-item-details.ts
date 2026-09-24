@@ -60,7 +60,7 @@ async function main() {
   while (true) {
     const { data: rows, error } = await supabaseAdmin
       .from("items")
-      .select("id, raw, armor, damage_min, damage_max, weapon_speed, weapon_dps, binding, durability, spell_lines, profession_requirement, reagents_text, stats")
+      .select("id, raw, armor, damage_min, damage_max, weapon_speed, weapon_dps, binding, durability, spell_lines, profession_requirement, reagents_text, classes_text, item_set_line, item_set_pieces, item_set_bonuses, stats")
       .eq("source", "classic_api")
       .not("raw", "is", null)
       .range(from, from + PAGE - 1);
@@ -88,6 +88,10 @@ async function main() {
         spell_lines: details.spell_lines,
         profession_requirement: details.profession_requirement,
         reagents_text: details.reagents_text,
+        classes_text: details.classes_text,
+        item_set_line: details.item_set_line,
+        item_set_pieces: details.item_set_pieces,
+        item_set_bonuses: details.item_set_bonuses,
         stats: details.stats,
       };
 
@@ -104,6 +108,10 @@ async function main() {
         spell_lines: row.spell_lines,
         profession_requirement: row.profession_requirement,
         reagents_text: row.reagents_text,
+        classes_text: row.classes_text,
+        item_set_line: row.item_set_line,
+        item_set_pieces: row.item_set_pieces,
+        item_set_bonuses: row.item_set_bonuses,
         stats: row.stats,
       });
       if (before === JSON.stringify(update)) continue;

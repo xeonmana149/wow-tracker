@@ -97,6 +97,18 @@ export type ItemRow = {
   // e.g. "Requires Steel Bar (8), Strong Flux (2), ..." - only present on
   // recipes. Pre-formatted the same way as profession_requirement.
   reagents_text: string | null;
+  // e.g. "Classes: Druid" - only present on some class-restricted items
+  // (mostly tier sets); Blizzard's data has no such field at all for other
+  // class-restricted items like Atiesh's 4 versions (those need the
+  // hand-curated table in classRequirements.ts instead).
+  classes_text: string | null;
+  // e.g. "Stormrage Raiment (0/8)" - only present on tier-set pieces.
+  item_set_line: string | null;
+  // The set's OTHER pieces (this item's own name isn't included) - just
+  // names, e.g. ["Stormrage Belt", "Stormrage Boots", ...].
+  item_set_pieces: string[] | null;
+  // e.g. ["(3) Set: Allows 15% of your Mana regeneration...", "(5) Set: ...", "(8) Set: ..."]
+  item_set_bonuses: string[] | null;
   stats: unknown | null;
   sell_price: number | null;
   icon: number | null;
@@ -172,12 +184,27 @@ type BlizzardItemBody = {
       // requirement (e.g. "Requires Blacksmithing (180)" on a recipe) -
       // Blizzard nests it as requirements.skill, not requirements.level.
       skill?: { display_string?: { en_US?: string } };
+      // Class-restricted items (mostly tier sets) - confirmed present here
+      // for Stormrage Bracers ("Classes: Druid"), ready-formatted, though
+      // NOT present at all for every class-restricted item (Atiesh's 4
+      // versions have nothing here - see classRequirements.ts for that
+      // separate, hand-curated case).
+      playable_classes?: { display_string?: { en_US?: string } };
     };
     // Only present on recipe items (item_class "Recipe") - what it costs to
     // craft. Blizzard hands back a ready-made, already-localized summary
     // string here rather than making us build one from the itemized
     // reagents[] list, which is plenty for a tooltip line.
     recipe?: { reagents_display_string?: { en_US?: string } };
+    // Only present on tier-set pieces. Blizzard hands back ready-formatted
+    // strings for everything here too: the set name + progress ("Stormrage
+    // Raiment (0/8)"), each other piece's name, and each set-bonus tier's
+    // full text ("(3) Set: Allows 15% of your Mana regeneration...").
+    set?: {
+      display_string?: { en_US?: string };
+      items?: { item?: { name?: { en_US?: string } } }[];
+      effects?: { display_string?: { en_US?: string }; required_count?: number }[];
+    };
     // Blizzard nests the stat's actual identity two levels down (type.type
     // is a SCREAMING_CASE code like "STRENGTH"; type.name is its localized
     // display name) - stored as-is here, then flattened to the plain
@@ -245,6 +272,14 @@ export function extractPreviewItemDetails(previewItem: BlizzardItemBody["preview
     previewItem?.spells
       ?.map((s) => s.description?.en_US)
       .filter((line): line is string => !!line) ?? null;
+  const itemSetPieces =
+    previewItem?.set?.items
+      ?.map((i) => i.item?.name?.en_US)
+      .filter((name): name is string => !!name) ?? null;
+  const itemSetBonuses =
+    previewItem?.set?.effects
+      ?.map((e) => e.display_string?.en_US)
+      .filter((line): line is string => !!line) ?? null;
   return {
     armor: previewItem?.armor?.value ?? null,
     damage_min: weapon?.damage?.min_value ?? null,
@@ -259,6 +294,13 @@ export function extractPreviewItemDetails(previewItem: BlizzardItemBody["preview
     reagents_text: previewItem?.recipe?.reagents_display_string?.en_US
       ? `Requires ${previewItem.recipe.reagents_display_string.en_US}`
       : null,
+    // "Classes: Druid" - present for tier-set pieces like Stormrage Bracers,
+    // but NOT present at all for other class-restricted items (e.g. Atiesh's
+    // 4 versions) - those need the hand-curated table instead.
+    classes_text: previewItem?.requirements?.playable_classes?.display_string?.en_US ?? null,
+    item_set_line: previewItem?.set?.display_string?.en_US ?? null,
+    item_set_pieces: itemSetPieces && itemSetPieces.length > 0 ? itemSetPieces : null,
+    item_set_bonuses: itemSetBonuses && itemSetBonuses.length > 0 ? itemSetBonuses : null,
     stats: normalizeStats(previewItem?.stats),
   };
 }
@@ -286,6 +328,10 @@ function rowFromBlizzard(id: number, body: BlizzardItemBody): ItemRow {
     spell_lines: details.spell_lines,
     profession_requirement: details.profession_requirement,
     reagents_text: details.reagents_text,
+    classes_text: details.classes_text,
+    item_set_line: details.item_set_line,
+    item_set_pieces: details.item_set_pieces,
+    item_set_bonuses: details.item_set_bonuses,
     stats: details.stats,
     sell_price: body.sell_price ?? null,
     icon: null, // Blizzard doesn't give us the client-side fileID the rest
@@ -332,6 +378,10 @@ function placeholderRow(id: number, fallback: { name?: string; icon?: number | n
     spell_lines: null,
     profession_requirement: null,
     reagents_text: null,
+    classes_text: null,
+    item_set_line: null,
+    item_set_pieces: null,
+    item_set_bonuses: null,
     stats: null,
     sell_price: null,
     icon: fallback.icon ?? null,

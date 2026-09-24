@@ -171,11 +171,34 @@ async function pageSearch(
 // away the perfectly good (if capped-at-1000) subclass results first,
 // producing FEWER total items than just keeping the simple two-level
 // (class -> subclass) split (confirmed on a live run: Armor dropped from
-// 5491 items down to 1424 once this was added). Back to the simpler,
-// verified-correct approach: a handful of large subclasses (Consumable,
-// each Armor material, Quest, Junk) stay capped around 1000 each - anything
-// beyond that still gets captured for real the moment someone actually
-// scans one via a live tooltip (applyLiveObservation always wins anyway).
+// 5491 items down to 1424 once this was added).
+//
+// 2026-09-24: confirmed a real gap from that limitation - Stormrage Bracers
+// (Leather armor, id 16904) is genuinely in Blizzard's data but never made
+// it into the database, because Leather still exceeds ~1000 results even
+// after the class->subclass split, and nothing further was ever attempted.
+// This adds a THIRD level, but unlike the reverted id-range attempt, it
+// splits by `quality.type` (POOR/COMMON/UNCOMMON/.../LEGENDARY) - a real,
+// documented filter field, not a made-up one - and, critically, it only
+// ever ADDS ids on top of the subclass-level results already collected
+// (never discards them first the way the id-range version did), so even if
+// quality filtering turns out not to narrow things either, this can only
+// do as well as before, never worse.
+const QUALITY_TYPES = ["POOR", "COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY"];
+// 2026-09-24: tried a fourth level here splitting by item level range
+// (level.gte/level.lt) and it turned up 0 extra items on every bucket it
+// was tried on (Consumable/Common, Armor/Cloth/Uncommon) - same failure as
+// the id-range attempt. So Blizzard's search endpoint apparently only
+// supports exact-match/enum filters (item_class.id, item_subclass.id,
+// quality.type all demonstrably work), not numeric range operators at all.
+// Replaced with `inventory_type.type` instead - a real enum field like
+// quality, not a range, so there's a much better reason to expect it to
+// actually narrow results the way quality did.
+const INVENTORY_TYPES = [
+  "HEAD", "NECK", "SHOULDER", "BODY", "CHEST", "ROBE", "WAIST", "LEGS", "FEET",
+  "WRIST", "HAND", "HANDS", "FINGER", "TRINKET", "CLOAK", "BACK", "TABARD",
+  "SHIELD", "HOLDABLE", "NON_EQUIP",
+];
 
 async function collectIdsForClass(
   blizzardGet: BlizzardGet,
@@ -202,8 +225,40 @@ async function collectIdsForClass(
     for (const id of subResult.ids) ids.add(id);
     if (subResult.capped) {
       console.warn(
-        `    ${className} / ${subName} STILL over the cap - some items in this subclass may be missed. They'll still get captured for real the moment someone actually has one (a live tooltip always wins anyway).`
+        `    ${className} / ${subName} STILL over the cap - splitting further by quality...`
       );
+      for (const quality of QUALITY_TYPES) {
+        const qParams = { ...subParams, "quality.type": quality };
+        const qResult = await pageSearch(blizzardGet, region, namespace, qParams);
+        for (const id of qResult.ids) ids.add(id);
+        if (qResult.capped) {
+          console.warn(
+            `      ${className} / ${subName} / ${quality} STILL over the cap - splitting further by inventory type...`
+          );
+          // Measured AFTER merging qResult.ids above, so this only counts
+          // what this split itself adds on top of what quality alone
+          // already found.
+          const beforeInvSplit = ids.size;
+          for (const invType of INVENTORY_TYPES) {
+            const invResult = await pageSearch(blizzardGet, region, namespace, {
+              ...qParams,
+              "inventory_type.type": invType,
+            });
+            for (const id of invResult.ids) ids.add(id);
+            if (invResult.capped) {
+              console.warn(
+                `        ${className} / ${subName} / ${quality} / ${invType} STILL over the cap - some items here may still be missed.`
+              );
+            }
+          }
+          const gained = ids.size - beforeInvSplit;
+          if (gained < 50) {
+            console.warn(
+              `      ...splitting by inventory type only turned up ${gained} more items for ${className} / ${subName} / ${quality} - this filter may not be narrowing anything either. Worth flagging back if this keeps showing up.`
+            );
+          }
+        }
+      }
     }
   }
   return Array.from(ids);

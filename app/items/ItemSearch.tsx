@@ -42,6 +42,10 @@ type ItemResult = {
   spell_lines: string[] | null;
   profession_requirement: string | null;
   reagents_text: string | null;
+  classes_text: string | null;
+  item_set_line: string | null;
+  item_set_pieces: string[] | null;
+  item_set_bonuses: string[] | null;
   stats: { type: string; value: number }[] | null;
   sell_price: number | null;
   icon: number | null;
@@ -239,8 +243,8 @@ function ItemRow({
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <span className="truncate text-sm font-semibold" style={{ color }}>
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="text-xs font-semibold leading-tight" style={{ color }}>
             {item.name}
           </span>
           {item.verified ? (
@@ -262,6 +266,12 @@ function ItemRow({
         {dpsLine && <div className="text-xs text-gray-500">{dpsLine}</div>}
         {statsSummary && (
           <div className="truncate text-xs text-gray-300">{statsSummary}</div>
+        )}
+        {item.classes_text && (
+          <div className="truncate text-xs text-gray-300">{item.classes_text}</div>
+        )}
+        {item.item_set_line && (
+          <div className="truncate text-xs text-gray-400">{item.item_set_line}</div>
         )}
         {effectLines.map((line, i) => (
           <div key={i} className="truncate text-xs text-[#1eff00]">

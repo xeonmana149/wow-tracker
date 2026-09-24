@@ -35,11 +35,13 @@ function loadEnvLocal() {
 loadEnvLocal();
 
 // Add/remove names here if you want to check other items too - it's a
-// case-insensitive partial match against the item name. Just the recipe
-// this time (specifically "Plans:", not the weapon it makes) - that's the
-// one whose "Use:" text and profession-requirement field we still haven't
-// actually seen.
-const NAMES_TO_CHECK = ["Plans: Moonsteel Broadsword"];
+// case-insensitive partial match against the item name. Checking Stormrage
+// Bracers this time - a Druid tier-set piece whose real tooltip prints
+// "Classes: Druid" plus the full set name, set piece list, and set bonus
+// text. Atiesh (a weapon) had no class field at all in Blizzard's data, but
+// a tier-set piece may expose class restriction and set membership
+// differently - need to see the real shape before building anything.
+const NAMES_TO_CHECK = ["Stormrage Bracers"];
 
 // Writing to a file instead of console.log - the terminal itself was
 // truncating the output on the last run, cutting off the top of the JSON

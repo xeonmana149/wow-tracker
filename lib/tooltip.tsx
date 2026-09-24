@@ -49,6 +49,22 @@ export function isUseLine(line: string) {
   return /^Use:/i.test(line.trim());
 }
 
+// Tier-set "other piece" names render dim/indented in the real tooltip
+// (e.g. under "Stormrage Raiment (0/8)"). Using non-breaking spaces (not
+// plain spaces) as the indent so TwoColumnLine's "2+ plain spaces = two
+// columns" split (see below) doesn't mistake the indent for a column gap.
+const SET_PIECE_INDENT = "  ";
+
+export function isSetPieceLine(line: string) {
+  return line.startsWith(SET_PIECE_INDENT);
+}
+
+// "(3) Set: ..." / "(5) Set: ..." bonus tier lines - rendered green, same as
+// an Equip:/Use: effect, since that's how the real tooltip colors them.
+export function isSetBonusLine(line: string) {
+  return /^\(\d+\)\s*Set:/i.test(line.trim());
+}
+
 const MADE_BY_RE = /^<.*made by.*>$/i;
 const DURABILITY_RE = /^Durability \d+ \/ (\d+)$/;
 
@@ -258,6 +274,15 @@ export type FallbackTooltipItem = {
   spell_lines?: string[] | null;
   profession_requirement?: string | null;
   reagents_text?: string | null;
+  // "Classes: Druid" - only present on some class-restricted items (see
+  // lib/items.ts's classes_text comment for the Atiesh caveat).
+  classes_text?: string | null;
+  // "Stormrage Raiment (0/8)" - set name + how many pieces are equipped
+  // (always 0 for the shared item database, which isn't about any one
+  // character's actual gear).
+  item_set_line?: string | null;
+  item_set_pieces?: string[] | null;
+  item_set_bonuses?: string[] | null;
   stats: { type: string; value: number }[] | null;
   sell_price: number | null;
 };
@@ -268,10 +293,13 @@ export type FallbackTooltipItem = {
 // like a real tooltip instead of a bare data table. Returns [] when there's
 // nothing at all to show (a placeholder with only a name).
 //
-// Line order follows the real in-game tooltip (checked 2026-09-24 against
-// live examples): item level, binding, profession requirement (recipes),
-// slot/type, damage+speed+dps, armor, stats, Use:/Equip: text, durability,
-// required level, sell price, then a recipe's reagent cost last.
+// Line order follows the real in-game tooltip (checked 2026-09-24 against a
+// live Stormrage Bracers tooltip, a Druid Tier 3 set piece): item level,
+// binding, profession requirement (recipes), slot/type, damage+speed+dps,
+// armor, stats, durability, class restriction, required level, Use:/Equip:
+// text, then (if it's a set piece) a blank line, the set name/progress, the
+// other pieces indented underneath, a blank line, and the set's bonus
+// tiers - sell price and a recipe's reagent cost come last.
 export function buildFallbackTooltipLines(item: FallbackTooltipItem): string[] {
   const lines: string[] = [];
   if (item.level != null) {
@@ -301,14 +329,28 @@ export function buildFallbackTooltipLines(item: FallbackTooltipItem): string[] {
   if (item.stats) {
     for (const s of item.stats) lines.push(`+${s.value} ${s.type}`);
   }
-  if (item.spell_lines) {
-    for (const line of item.spell_lines) lines.push(line);
-  }
   if (item.durability != null) {
     lines.push(`Durability ${item.durability} / ${item.durability}`);
   }
+  if (item.classes_text) {
+    lines.push(item.classes_text);
+  }
   if (item.required_level != null) {
     lines.push(`Requires Level ${item.required_level}`);
+  }
+  if (item.spell_lines) {
+    for (const line of item.spell_lines) lines.push(line);
+  }
+  if (item.item_set_line) {
+    lines.push("");
+    lines.push(item.item_set_line);
+    if (item.item_set_pieces) {
+      for (const piece of item.item_set_pieces) lines.push(`${SET_PIECE_INDENT}${piece}`);
+    }
+    if (item.item_set_bonuses && item.item_set_bonuses.length > 0) {
+      lines.push("");
+      for (const bonus of item.item_set_bonuses) lines.push(bonus);
+    }
   }
   if (item.sell_price != null) {
     lines.push(formatSellPriceLine(item.sell_price));
@@ -371,8 +413,10 @@ export function ItemTooltipBox({
         .map((line, i) => {
           const override = lineColor?.(line);
           const defaultClass =
-            isCraftedByLine(line) || isEquipLine(line) || isUseLine(line)
+            isCraftedByLine(line) || isEquipLine(line) || isUseLine(line) || isSetBonusLine(line)
               ? "text-[#1eff00]"
+              : isSetPieceLine(line)
+              ? "text-gray-400"
               : "text-white";
           return (
             <TwoColumnLine
