@@ -72,7 +72,11 @@ export function isSetBonusLine(line: string) {
 // pops against the tooltip instead of blending in with a Rare item's own
 // blue name or the existing profession-suggestion sky-blue line.
 export function isKnownByLine(line: string) {
-  return /(knows this recipe|can craft this)$/i.test(line.trim());
+  // Matches both the bare "X can craft this" and the owner-tagged form
+  // "X can craft this (Jordan)" - the trailing "(Owner)" meant this never
+  // matched an end-of-string check, so any line with a known account name
+  // attached silently fell through to plain white.
+  return /(knows this recipe|can craft this)(\s*\([^)]*\))?$/i.test(line.trim());
 }
 
 // Deliberately not any of the six item-quality colors (gray/white/green/

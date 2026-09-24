@@ -349,7 +349,12 @@ function ItemRow({
 }) {
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const d = computeItemDisplay(item, character, allCharacters);
-  const craftedBy = useCraftedByOnDemand(item, hoverPos != null || selected);
+  // Always active, not just on hover/select - the card body's own
+  // "N characters can craft this" summary is always visible, so it needs
+  // the data right away rather than waiting for a hover to kick off the
+  // fetch (findCraftedBy's underlying query is a single cached table read
+  // shared by every row on the page, not one query per item).
+  const craftedBy = useCraftedByOnDemand(item, true);
   const knownByLines =
     craftedBy && craftedBy.crafters.length > 0 ? formatKnownByLines(craftedBy.crafters, item.item_class) : [];
   // The crafted item's OWN row never has reagent info from Blizzard (only
