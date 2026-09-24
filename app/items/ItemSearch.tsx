@@ -224,7 +224,7 @@ function computeItemDisplay(
         </div>
       )}
       {suggestedCharacter && profReq && (
-        <div className="text-sky-400">
+        <div className="text-teal-300">
           → {suggestedCharacter.name} can learn/craft this (
           {profReq.profession}{" "}
           {suggestedCharacter.professions.find(
@@ -443,7 +443,7 @@ function ItemRow({
           </div>
         )}
         {d.suggestedCharacter && (
-          <div className="text-xs text-sky-400">→ {d.suggestedCharacter.name} can make this</div>
+          <div className="text-xs text-teal-300">→ {d.suggestedCharacter.name} can make this</div>
         )}
         {knownByLines.length > 0 && (
           <div className={`text-xs ${KNOWN_BY_COLOR_CLASS}`}>
