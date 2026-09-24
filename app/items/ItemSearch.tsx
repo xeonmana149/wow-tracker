@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ItemTooltipBox, buildFallbackTooltipLines, genericizeTooltipLines } from "../../lib/tooltip";
+import {
+  ItemTooltipBox,
+  buildFallbackTooltipLines,
+  formatSlotLabel,
+  genericizeTooltipLines,
+} from "../../lib/tooltip";
 import { iconUrlForFileId } from "../../lib/icons";
 
 type ItemResult = {
@@ -33,6 +38,82 @@ const QUALITY_OPTIONS: { value: string; label: string; color: string }[] = [
   { value: "EPIC", label: "Epic", color: "#a335ee" },
   { value: "LEGENDARY", label: "Legendary", color: "#ff8000" },
 ];
+
+function formatMoneyShort(copper: number | null) {
+  if (copper == null) return null;
+  const gold = Math.floor(copper / 10000);
+  const silver = Math.floor((copper % 10000) / 100);
+  const cop = copper % 100;
+  if (gold > 0) return `${gold}g ${silver}s`;
+  if (silver > 0) return `${silver}s ${cop}c`;
+  return `${cop}c`;
+}
+
+function ItemRow({ item }: { item: ItemResult }) {
+  const iconSrc = iconUrlForFileId(item.icon);
+  const color = item.quality_color ? `#${item.quality_color}` : "#ffffff";
+  const hasRealTooltip = !!item.tooltip && item.tooltip.length > 0;
+  const tooltipLines = hasRealTooltip
+    ? genericizeTooltipLines(item.tooltip as string[])
+    : buildFallbackTooltipLines(item);
+  const note = hasRealTooltip
+    ? undefined
+    : tooltipLines.length > 0
+      ? "Unconfirmed - based on Blizzard's classic database, may differ in Forever"
+      : "No data captured yet - needs manual entry";
+
+  const slotLine = [formatSlotLabel(item.inventory_type), item.item_subclass]
+    .filter(Boolean)
+    .join(" · ");
+  const statSummary =
+    item.stats && item.stats.length > 0
+      ? item.stats.map((s) => `+${s.value} ${s.type}`).join("  ·  ")
+      : item.armor != null
+        ? `${item.armor} Armor`
+        : item.damage_min != null && item.damage_max != null
+          ? `${item.damage_min}-${item.damage_max} Dmg`
+          : null;
+
+  return (
+    <div className="group relative flex items-center gap-3 border-b border-neutral-800 px-3 py-2 last:border-b-0 hover:bg-neutral-800/60">
+      <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded border border-neutral-600 bg-neutral-800">
+        {iconSrc && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={iconSrc} alt="" className="h-full w-full object-cover" />
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="truncate text-sm font-semibold" style={{ color }}>
+            {item.name}
+          </span>
+          {!item.verified && (
+            <span className="whitespace-nowrap text-[10px] text-yellow-400">Unconfirmed</span>
+          )}
+        </div>
+        <div className="truncate text-xs text-gray-400">
+          {slotLine}
+          {statSummary && (
+            <span className="text-[#1eff00]">
+              {slotLine ? "  ·  " : ""}
+              {statSummary}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-shrink-0 text-right text-xs text-gray-400">
+        {item.required_level != null && <div>Req. {item.required_level}</div>}
+        {formatMoneyShort(item.sell_price) && <div>{formatMoneyShort(item.sell_price)}</div>}
+      </div>
+
+      <div className="pointer-events-none invisible absolute left-1/2 top-full z-50 mt-1 -translate-x-1/2 opacity-0 group-hover:visible group-hover:opacity-100">
+        <ItemTooltipBox name={item.name} qualityColor={item.quality_color} lines={tooltipLines} note={note} />
+      </div>
+    </div>
+  );
+}
 
 export default function ItemSearch() {
   const [query, setQuery] = useState("");
@@ -66,7 +147,7 @@ export default function ItemSearch() {
 
         const res = await fetch(`/api/items/search?${params.toString()}`);
         const data = await res.json();
-        if (thisRequest !== requestId.current) return; // a newer keystroke already fired
+        if (thisRequest !== requestId.current) return;
         if (!res.ok) {
           setError(data.error ?? "Search failed");
           setResults([]);
@@ -87,6 +168,8 @@ export default function ItemSearch() {
     return () => clearTimeout(handle);
   }, [query, quality, stat]);
 
+  const active = query.trim().length >= 2 || quality.length > 0 || stat.trim().length >= 2;
+
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
@@ -94,7 +177,7 @@ export default function ItemSearch() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Start typing an item name..."
+          placeholder="Search items..."
           className="w-full max-w-md rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-gray-500"
           autoFocus
         />
@@ -130,50 +213,32 @@ export default function ItemSearch() {
       )}
       {loading && <p className="mt-3 text-sm text-gray-500">Searching...</p>}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
-      {!loading &&
-        !error &&
-        (query.trim().length >= 2 || quality || stat.trim().length >= 2) &&
-        results.length === 0 && (
-          <p className="mt-3 text-sm text-gray-400">No items found matching those filters.</p>
-        )}
-      {!loading && !query && !quality && !stat && (
+      {!active && (
         <p className="mt-3 text-sm text-gray-400">
           Start typing a name, pick a quality, or filter by a stat to browse the item database.
         </p>
       )}
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {results.map((item) => {
-          const iconSrc = iconUrlForFileId(item.icon);
-          const hasRealTooltip = !!item.tooltip && item.tooltip.length > 0;
-          const lines = hasRealTooltip
-            ? genericizeTooltipLines(item.tooltip as string[])
-            : buildFallbackTooltipLines(item);
-          const note = hasRealTooltip
-            ? undefined
-            : lines.length > 0
-              ? "Unconfirmed - based on Blizzard's classic database, may differ in Forever"
-              : "No data captured yet - needs manual entry";
+      {active && !loading && !error && (
+        <p className="mt-4 text-xs text-gray-500">
+          {results.length} result{results.length === 1 ? "" : "s"}
+        </p>
+      )}
 
-          return (
-            <div key={item.id} className="flex items-start gap-3">
-              <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded border border-neutral-600 bg-neutral-800">
-                {iconSrc && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={iconSrc} alt="" className="h-full w-full object-cover" />
-                )}
-              </div>
-              <ItemTooltipBox
-                name={item.name}
-                qualityColor={item.quality_color}
-                lines={lines}
-                note={note}
-                className="flex-1"
-              />
-            </div>
-          );
-        })}
-      </div>
+      {active && !loading && !error && results.length > 0 && (
+        <div
+          className="mt-1 overflow-hidden rounded-md"
+          style={{ background: "#0c0c14", border: "1px solid #c8aa6e" }}
+        >
+          {results.map((item) => (
+            <ItemRow key={item.id} item={item} />
+          ))}
+        </div>
+      )}
+
+      {active && !loading && !error && results.length === 0 && (
+        <p className="mt-3 text-sm text-gray-400">No items found matching those filters.</p>
+      )}
     </div>
   );
 }

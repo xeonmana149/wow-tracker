@@ -38,10 +38,15 @@ export function isCraftedByLine(line: string) {
   return /^<.*made by.*>$/i.test(line.trim());
 }
 
-// "Equip: ..." proc/aura lines render green in the real game, same as a
-// crafted-by line - both use isCraftedByLine's green in ItemTooltipBox.
+// "Equip: ..." and "Use: ..." effect lines both render green in the real
+// game, same as a crafted-by line - all three share the green in
+// ItemTooltipBox.
 export function isEquipLine(line: string) {
   return /^Equip:/i.test(line.trim());
+}
+
+export function isUseLine(line: string) {
+  return /^Use:/i.test(line.trim());
 }
 
 const MADE_BY_RE = /^<.*made by.*>$/i;
@@ -166,7 +171,9 @@ export function ItemTooltipBox({
           <div
             key={i}
             className={
-              isCraftedByLine(line) || isEquipLine(line) ? "text-[#1eff00]" : "text-white"
+              isCraftedByLine(line) || isEquipLine(line) || isUseLine(line)
+                ? "text-[#1eff00]"
+                : "text-white"
             }
           >
             {renderTooltipLine(line)}
