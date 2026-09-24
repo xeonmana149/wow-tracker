@@ -81,11 +81,21 @@ export default function StatsCard({
     }
   }
 
+  // The addon pulls some of these straight off WoW's own API (crit chance,
+  // dodge, resistances, etc.), which routinely comes back as something like
+  // 5.4930000000000003 due to floating point - round to 1 decimal place for
+  // display, and drop the decimal entirely when it's a whole number so
+  // plain stats like Strength still just show "142".
+  function roundStat(n: number): string {
+    const rounded = Math.round(n * 10) / 10;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  }
+
   function show(def: StatDef) {
     if (def.keys.length === 2) {
-      return `${values[def.keys[0]]} - ${values[def.keys[1]]}`;
+      return `${roundStat(values[def.keys[0]])} - ${roundStat(values[def.keys[1]])}`;
     }
-    return `${values[def.keys[0]]}${def.suffix ?? ""}`;
+    return `${roundStat(values[def.keys[0]])}${def.suffix ?? ""}`;
   }
 
   function renderRow(def: StatDef) {
