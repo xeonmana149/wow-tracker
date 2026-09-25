@@ -47,9 +47,9 @@ export default function AchievementShowcase({
   return (
     <div className="mt-3 border-t border-neutral-700 pt-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+        <h3 className="rounded bg-neutral-950/70 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-amber-100">
           Achievements
-          <span className="ml-2 font-normal normal-case text-gray-500">
+          <span className="ml-2 font-normal normal-case text-gray-300">
             {earnedCount} / {totalCount} · {totalPoints.toLocaleString()} pts
           </span>
         </h3>
@@ -138,8 +138,12 @@ function ShowcaseBadge({ characterId, item }: { characterId: string; item: Achie
           <BadgePlaceholder tier={item.tier} label={item.name} size={size} />
         )}
       </span>
-      <span className="line-clamp-1 text-[11px] font-semibold text-gray-200">{item.name}</span>
-      {item.tier && <span className="text-[10px] text-gray-500">{item.tier}</span>}
+      <span className="line-clamp-1 rounded bg-neutral-950/70 px-1.5 py-0.5 text-[11px] font-semibold text-white">
+        {item.name}
+      </span>
+      {item.tier && (
+        <span className="rounded bg-neutral-950/70 px-1.5 py-0.5 text-[10px] text-gray-300">{item.tier}</span>
+      )}
 
       {hover && (
         <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-56 -translate-x-1/2 rounded-lg border border-amber-700/70 bg-neutral-950 p-2.5 text-left shadow-lg shadow-black/60">
