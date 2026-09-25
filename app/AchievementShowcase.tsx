@@ -97,6 +97,12 @@ function ShowcaseBadge({ characterId, item }: { characterId: string; item: Achie
 
   const iconSrc = item.localIcon ? localBadgeIconSrc(item.localIcon) : wowIconUrl(item.cdnIcon);
 
+  // Hover preview - blows the same art up big enough to actually see the
+  // detail in it, since even at 72px a hand-painted badge icon is small.
+  const previewSize = 180;
+  const previewInner = Math.round(previewSize * FRAME_HOLE_RATIO);
+  const previewInset = Math.round((previewSize - previewInner) / 2);
+
   return (
     <Link
       href={`/character/${characterId}/achievements#${item.key}`}
@@ -132,7 +138,31 @@ function ShowcaseBadge({ characterId, item }: { characterId: string; item: Achie
       {item.tier && <span className="text-[10px] text-gray-500">{item.tier}</span>}
 
       {hover && (
-        <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-48 -translate-x-1/2 rounded-lg border border-amber-700/70 bg-neutral-950 p-2.5 text-left shadow-lg shadow-black/60">
+        <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-56 -translate-x-1/2 rounded-lg border border-amber-700/70 bg-neutral-950 p-2.5 text-left shadow-lg shadow-black/60">
+          <span className="relative mx-auto mb-2 block" style={{ width: previewSize, height: previewSize }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={iconSrc}
+              alt=""
+              draggable={false}
+              className="absolute rounded object-cover"
+              style={
+                item.tier && item.localIcon
+                  ? { width: previewInner, height: previewInner, top: previewInset, left: previewInset }
+                  : { width: previewSize, height: previewSize, top: 0, left: 0 }
+              }
+            />
+            {item.tier && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={TIER_FRAME_SRC[item.tier]}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                className="pointer-events-none absolute inset-0 h-full w-full"
+              />
+            )}
+          </span>
           <div className="text-sm font-bold text-amber-100">{item.name}</div>
           {item.tier && <div className="text-xs font-semibold text-amber-400">{item.tier}</div>}
           <div className="mt-1 text-xs leading-snug text-gray-300">{item.description}</div>

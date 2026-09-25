@@ -292,6 +292,13 @@ function AchievementRow({
   // dots for every tier can sit at their real position along one bar.
   const maxThreshold = item.thresholds?.[item.thresholds.length - 1]?.value ?? 1;
 
+  // Hover preview - blows the same art up big enough to actually see the
+  // detail in it, since even at 80px a hand-painted badge icon is still
+  // pretty small.
+  const previewSize = 220;
+  const previewInner = Math.round(previewSize * FRAME_HOLE_RATIO);
+  const previewInset = Math.round((previewSize - previewInner) / 2);
+
   return (
     <div
       id={item.key}
@@ -299,7 +306,7 @@ function AchievementRow({
         item.earned ? "border-neutral-700 bg-neutral-900/40" : "border-neutral-800 bg-neutral-900/20 opacity-60"
       }`}
     >
-      <span className="relative inline-block shrink-0" style={{ width: size, height: size }}>
+      <span className="group/rowicon relative inline-block shrink-0" style={{ width: size, height: size }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={iconSrc}
@@ -322,6 +329,37 @@ function AchievementRow({
             className="pointer-events-none absolute inset-0 h-full w-full"
           />
         )}
+
+        {/* Hover-to-enlarge preview of the badge art. */}
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute left-0 top-full z-30 mt-2 scale-95 rounded-lg border border-amber-700/70 bg-neutral-950 p-2 opacity-0 shadow-lg shadow-black/60 transition-all duration-100 group-hover/rowicon:scale-100 group-hover/rowicon:opacity-100"
+        >
+          <span className="relative block" style={{ width: previewSize, height: previewSize }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={iconSrc}
+              alt=""
+              draggable={false}
+              className={`absolute rounded object-cover ${!item.earned ? "grayscale" : ""}`}
+              style={
+                item.tier && item.localIcon
+                  ? { width: previewInner, height: previewInner, top: previewInset, left: previewInset }
+                  : { width: previewSize, height: previewSize, top: 0, left: 0 }
+              }
+            />
+            {item.tier && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={TIER_FRAME_SRC[item.tier]}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                className="pointer-events-none absolute inset-0 h-full w-full"
+              />
+            )}
+          </span>
+        </span>
       </span>
 
       <div className="min-w-0 flex-1">
