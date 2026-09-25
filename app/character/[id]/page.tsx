@@ -169,7 +169,9 @@ export default async function CharacterPage({
     statRows: statisticRows ?? [],
     recipesCount,
   });
-  const showcaseItems = pickShowcaseItems(achievementItems);
+  const showcaseItems = pickShowcaseItems(achievementItems, {
+    pinnedKinds: character.showcase_kinds ?? null,
+  });
   const earnedAchievementCount = achievementItems.filter((i) => i.earned).length;
   const achievementPoints = achievementItems.reduce((sum, i) => sum + i.points, 0);
 
@@ -245,6 +247,7 @@ export default async function CharacterPage({
 
         <AchievementShowcase
           characterId={character.id}
+          ownerId={character.user_id}
           items={showcaseItems}
           earnedCount={earnedAchievementCount}
           totalCount={achievementItems.length}

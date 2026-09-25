@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { supabase } from "../lib/supabase";
 import { wowIconUrl } from "../lib/icons";
 import { localBadgeIconSrc } from "../lib/badgeFrames";
 import { TIER_FRAME_SRC, FRAME_HOLE_RATIO } from "../lib/badgeFrames";
@@ -17,18 +18,31 @@ import type { AchievementBoardItem } from "./achievementBoard";
 // Talents, Professions, Gear, Wishlist and Statistics competing for space.
 export default function AchievementShowcase({
   characterId,
+  ownerId,
   items,
   earnedCount,
   totalCount,
   totalPoints,
 }: {
   characterId: string;
+  ownerId?: string | null;
   items: AchievementBoardItem[]; // already picked down to what should show (see pickShowcaseItems)
   earnedCount: number;
   totalCount: number;
   totalPoints: number;
 }) {
-  if (items.length === 0) return null;
+  const [isOwner, setIsOwner] = useState(false);
+
+  useEffect(() => {
+    if (!ownerId) return;
+    supabase.auth.getUser().then(({ data }) => {
+      setIsOwner(data.user?.id === ownerId);
+    });
+  }, [ownerId]);
+
+  // Only the owner gets a reason to visit an empty showcase (to pick
+  // something to show off) - everyone else just sees nothing here yet.
+  if (items.length === 0 && !isOwner) return null;
 
   return (
     <div className="mt-3 border-t border-neutral-700 pt-3">
@@ -39,26 +53,45 @@ export default function AchievementShowcase({
             {earnedCount} / {totalCount} · {totalPoints.toLocaleString()} pts
           </span>
         </h3>
-        <Link
-          href={`/character/${characterId}/achievements`}
-          className="text-xs font-semibold text-sky-400 hover:underline"
-        >
-          View All →
-        </Link>
+        <div className="flex items-center gap-3">
+          {isOwner && (
+            <Link
+              href={`/character/${characterId}/achievements`}
+              className="text-xs font-semibold text-amber-400 hover:underline"
+            >
+              Choose showcase →
+            </Link>
+          )}
+          <Link
+            href={`/character/${characterId}/achievements`}
+            className="text-xs font-semibold text-sky-400 hover:underline"
+          >
+            View All →
+          </Link>
+        </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-3">
-        {items.map((item) => (
-          <ShowcaseBadge key={item.key} characterId={characterId} item={item} />
-        ))}
-      </div>
+      {items.length === 0 ? (
+        <p className="mt-2 text-xs text-gray-500">
+          Nothing pinned yet - pick a few earned achievements to show off here.
+        </p>
+      ) : (
+        <div className="mt-2 flex flex-wrap gap-3">
+          {items.map((item) => (
+            <ShowcaseBadge key={item.key} characterId={characterId} item={item} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 function ShowcaseBadge({ characterId, item }: { characterId: string; item: AchievementBoardItem }) {
   const [hover, setHover] = useState(false);
-  const size = 40;
+  // Bigger than the old 40px now that the badges have proper hand-picked
+  // art (2026-09-25) instead of generic WoW CDN icons - worth the extra
+  // room to actually read the artwork at a glance.
+  const size = 56;
   const innerSize = Math.round(size * FRAME_HOLE_RATIO);
   const inset = Math.round((size - innerSize) / 2);
 
@@ -67,7 +100,7 @@ function ShowcaseBadge({ characterId, item }: { characterId: string; item: Achie
   return (
     <Link
       href={`/character/${characterId}/achievements#${item.key}`}
-      className="group/badge relative flex w-16 flex-col items-center gap-1 text-center"
+      className="group/badge relative flex w-20 flex-col items-center gap-1 text-center"
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >

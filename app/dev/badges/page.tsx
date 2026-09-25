@@ -267,9 +267,9 @@ export default function BadgeTesterPage() {
                     }`}
                   >
                     {localIcon ? (
-                      <GameIcon src={localBadgeIconSrc(localIcon)} label={badge.label} size={22} round />
+                      <GameIcon src={localBadgeIconSrc(localIcon)} label={badge.label} size={26} round />
                     ) : (
-                      <GameIcon src={wowIconUrl(badge.icon)} label={badge.label} size={22} round />
+                      <GameIcon src={wowIconUrl(badge.icon)} label={badge.label} size={26} round />
                     )}
                     {kind}
                   </button>
@@ -309,12 +309,12 @@ export default function BadgeTesterPage() {
                           } ${localIcon ? "" : fallbackSet?.[tier].ring ?? ""}`}
                         >
                           {localIcon ? (
-                            <TierFramedIcon icon={localIcon} tier={tier} label={label} size={22} />
+                            <TierFramedIcon icon={localIcon} tier={tier} label={label} size={26} />
                           ) : (
                             <GameIcon
                               src={wowIconUrl(fallbackSet?.[tier].icon ?? "inv_misc_questionmark")}
                               label={label}
-                              size={22}
+                              size={26}
                               round
                             />
                           )}

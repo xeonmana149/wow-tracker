@@ -133,7 +133,7 @@ export default function CharacterRow({ c }: { c: CardCharacter }) {
                   const localIcon = TIERED_LOCAL_ICONS.gold;
                   if (!localIcon) return null;
                   return (
-                    <TierFramedIcon key="gold" icon={localIcon} tier={a.tier} label={GOLD_TIER_LABEL[a.tier]} size={18} />
+                    <TierFramedIcon key="gold" icon={localIcon} tier={a.tier} label={GOLD_TIER_LABEL[a.tier]} size={22} />
                   );
                 }
                 const ringBadge = RING_TIER_BADGES[a.kind as TieredAchievementKind];
@@ -141,19 +141,19 @@ export default function CharacterRow({ c }: { c: CardCharacter }) {
                   const meta = ringBadge[a.tier];
                   const localIcon = TIERED_LOCAL_ICONS[a.kind as TieredAchievementKind];
                   if (localIcon) {
-                    return <TierFramedIcon key={a.kind} icon={localIcon} tier={a.tier} label={meta.label} size={18} />;
+                    return <TierFramedIcon key={a.kind} icon={localIcon} tier={a.tier} label={meta.label} size={22} />;
                   }
-                  return <GameIcon key={a.kind} src={wowIconUrl(meta.icon)} label={meta.label} size={18} round />;
+                  return <GameIcon key={a.kind} src={wowIconUrl(meta.icon)} label={meta.label} size={22} round />;
                 }
                 const badge = ACHIEVEMENT_BADGES[a.kind as AchievementKind];
                 if (!badge) return null;
                 const flatLocalIcon = FLAT_LOCAL_ICONS[a.kind as AchievementKind];
                 if (flatLocalIcon) {
                   return (
-                    <GameIcon key={a.kind} src={localBadgeIconSrc(flatLocalIcon)} label={badge.label} size={18} round />
+                    <GameIcon key={a.kind} src={localBadgeIconSrc(flatLocalIcon)} label={badge.label} size={22} round />
                   );
                 }
-                return <GameIcon key={a.kind} src={wowIconUrl(badge.icon)} label={badge.label} size={18} round />;
+                return <GameIcon key={a.kind} src={wowIconUrl(badge.icon)} label={badge.label} size={22} round />;
               })}
             </span>
           )}

@@ -107,12 +107,40 @@ export function buildAchievementItems({
   return items;
 }
 
-// Picks what the character-page showcase should feature: earned items only,
+// How many achievements the character-page showcase can hold - shared by
+// the auto-pick fallback below and by CharacterAchievementsPage's pin UI, so
+// the cap can never drift between "what the player picked" and "how many
+// the showcase strip actually has room for".
+export const SHOWCASE_LIMIT = 8;
+
+// Picks what the character-page showcase should feature.
+//
+// If the player has pinned specific achievements (characters.showcase_kinds,
+// set from the "Choose showcase" picker on the full achievements page),
+// those are shown, in the order the player pinned them - a pin that's no
+// longer earned (e.g. a stat category got reset) is silently dropped rather
+// than shown as a hole.
+//
+// Otherwise, falls back to the old automatic pick: earned items only,
 // highest tier first (Platinum > Gold > Silver > Copper > flat), ties
 // broken by most-recently-earned/progressed. No player input needed.
 const TIER_RANK: Record<AchievementTier, number> = { Platinum: 3, Gold: 2, Silver: 1, Copper: 0 };
 
-export function pickShowcaseItems(items: AchievementBoardItem[], limit = 8): AchievementBoardItem[] {
+export function pickShowcaseItems(
+  items: AchievementBoardItem[],
+  options?: { pinnedKinds?: string[] | null; limit?: number }
+): AchievementBoardItem[] {
+  const limit = options?.limit ?? SHOWCASE_LIMIT;
+  const pinnedKinds = options?.pinnedKinds;
+
+  if (pinnedKinds && pinnedKinds.length > 0) {
+    const byKey = new Map(items.map((i) => [i.key, i]));
+    return pinnedKinds
+      .map((kind) => byKey.get(kind))
+      .filter((i): i is AchievementBoardItem => !!i && i.earned)
+      .slice(0, limit);
+  }
+
   return items
     .filter((i) => i.earned)
     .sort((a, b) => {

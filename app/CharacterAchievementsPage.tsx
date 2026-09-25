@@ -6,7 +6,7 @@ import { supabase } from "../lib/supabase";
 import { wowIconUrl } from "../lib/icons";
 import { localBadgeIconSrc, TIER_FRAME_SRC, FRAME_HOLE_RATIO } from "../lib/badgeFrames";
 import { FAMILY_META, type AchievementFamily, type AchievementTier } from "../lib/achievements";
-import { buildAchievementItems, type AchievementBoardItem } from "./achievementBoard";
+import { buildAchievementItems, SHOWCASE_LIMIT, type AchievementBoardItem } from "./achievementBoard";
 
 // The full achievement browser for one character - everything the compact
 // header showcase (AchievementShowcase.tsx) deliberately leaves out:
@@ -32,17 +32,29 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
   const [family, setFamily] = useState<AchievementFamily | "all">("all");
   const [sort, setSort] = useState<SortMode>("category");
 
+  // Showcase pinning - which earned achievements show up in the compact
+  // strip on the character page (AchievementShowcase.tsx / pickShowcaseItems
+  // in achievementBoard.ts). Lives on characters.showcase_kinds as a plain
+  // array of kind strings, in display order; empty/null falls back to the
+  // automatic highest-tier-first pick there.
+  const [isOwner, setIsOwner] = useState(false);
+  const [pinned, setPinned] = useState<string[]>([]);
+  const [pinMessage, setPinMessage] = useState("");
+
   useEffect(() => {
     async function load() {
-      const [{ data: character }, { data: achievementRows }, { data: statRows }, { data: professionRows }] =
+      const [{ data: character }, { data: achievementRows }, { data: statRows }, { data: professionRows }, { data: userData }] =
         await Promise.all([
-          supabase.from("characters").select("name").eq("id", characterId).single(),
+          supabase.from("characters").select("name, user_id, showcase_kinds").eq("id", characterId).single(),
           supabase.from("achievements").select("kind, tier, earned_at").eq("character_id", characterId),
           supabase.from("character_statistics").select("category, name, value").eq("character_id", characterId),
           supabase.from("character_professions").select("recipes").eq("character_id", characterId),
+          supabase.auth.getUser(),
         ]);
 
       setCharacterName(character?.name ?? "");
+      setIsOwner(!!character?.user_id && userData.user?.id === character.user_id);
+      setPinned((character?.showcase_kinds as string[] | null) ?? []);
 
       const recipesCount = (professionRows ?? []).reduce(
         (sum: number, p: { recipes: unknown[] | null }) => sum + (Array.isArray(p.recipes) ? p.recipes.length : 0),
@@ -64,6 +76,28 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
     }
     load();
   }, [characterId]);
+
+  async function togglePin(kind: string) {
+    const isPinned = pinned.includes(kind);
+    if (!isPinned && pinned.length >= SHOWCASE_LIMIT) {
+      setPinMessage(`Showcase is full - unpin one first (max ${SHOWCASE_LIMIT}).`);
+      return;
+    }
+
+    const next = isPinned ? pinned.filter((k) => k !== kind) : [...pinned, kind];
+    setPinned(next);
+    setPinMessage("Saving...");
+
+    const { error } = await supabase.from("characters").update({ showcase_kinds: next }).eq("id", characterId);
+
+    if (error) {
+      setPinMessage(error.message);
+      setPinned(pinned); // roll back the optimistic update
+    } else {
+      setPinMessage("Saved");
+      setTimeout(() => setPinMessage(""), 1500);
+    }
+  }
 
   const totalPoints = useMemo(() => items.reduce((sum, i) => sum + i.points, 0), [items]);
   const tierCounts = useMemo(() => {
@@ -157,6 +191,18 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
         </div>
       </div>
 
+      {isOwner && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-700/40 bg-amber-950/20 p-3 text-sm">
+          <span className="text-amber-200">
+            ⭐ Click the star on any earned achievement to pin it to your character page showcase.
+            <span className="ml-2 text-amber-400/80">
+              {pinned.length} / {SHOWCASE_LIMIT} pinned
+            </span>
+          </span>
+          {pinMessage && <span className="text-xs text-gray-400">{pinMessage}</span>}
+        </div>
+      )}
+
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -208,7 +254,13 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
             )}
             <div className="flex flex-col gap-2">
               {group.items.map((item) => (
-                <AchievementRow key={item.key} item={item} />
+                <AchievementRow
+                  key={item.key}
+                  item={item}
+                  isOwner={isOwner}
+                  pinned={pinned.includes(item.key)}
+                  onTogglePin={() => togglePin(item.key)}
+                />
               ))}
             </div>
           </div>
@@ -218,8 +270,21 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
   );
 }
 
-function AchievementRow({ item }: { item: AchievementBoardItem }) {
-  const size = 48;
+function AchievementRow({
+  item,
+  isOwner,
+  pinned,
+  onTogglePin,
+}: {
+  item: AchievementBoardItem;
+  isOwner: boolean;
+  pinned: boolean;
+  onTogglePin: () => void;
+}) {
+  // Bigger than the old 48px now that the badges have proper hand-picked
+  // art (2026-09-25) instead of generic WoW CDN icons - worth the extra
+  // room to actually read the artwork here, where it's the main visual.
+  const size = 64;
   const innerSize = Math.round(size * FRAME_HOLE_RATIO);
   const inset = Math.round((size - innerSize) / 2);
   const iconSrc = item.localIcon ? localBadgeIconSrc(item.localIcon) : wowIconUrl(item.cdnIcon);
@@ -291,6 +356,19 @@ function AchievementRow({ item }: { item: AchievementBoardItem }) {
           <div className="mt-1 text-[11px] text-gray-500">{item.earned ? "Earned" : "Not yet earned"}</div>
         )}
       </div>
+
+      {isOwner && item.earned && (
+        <button
+          type="button"
+          onClick={onTogglePin}
+          title={pinned ? "Remove from character page showcase" : "Pin to character page showcase"}
+          className={`shrink-0 text-xl leading-none transition-colors ${
+            pinned ? "text-amber-400" : "text-neutral-600 hover:text-amber-300"
+          }`}
+        >
+          {pinned ? "★" : "☆"}
+        </button>
+      )}
 
       <span className="shrink-0 text-sm font-bold text-[#c9a566]">
         {item.earned ? `+${item.points}` : "—"} pts
