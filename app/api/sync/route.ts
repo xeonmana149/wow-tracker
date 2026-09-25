@@ -57,8 +57,8 @@ export async function POST(req: NextRequest) {
     }
     const userId = userTokenRow.user_id;
 
-    const name = parsed.basic?.name;
-    if (!name) {
+    const gameName = parsed.basic?.name;
+    if (!gameName) {
       return NextResponse.json(
         { error: "Export is missing a character name - update the addon and try again." },
         { status: 400 }
@@ -66,29 +66,48 @@ export async function POST(req: NextRequest) {
     }
     const realm = parsed.basic?.realm ?? null;
 
-    // Try an exact name+realm match first (the normal case once a
+    // The site's `characters.name` column is required (by a DB check
+    // constraint, characters_name_two_words) to be exactly two
+    // whitespace-separated words - the convention here is
+    // "<CharacterName> <Realm>" (e.g. "Xeon Mana"), not just the bare
+    // in-game name. The addon only ever knows the real, one-word game name,
+    // so every lookup below matches on a PREFIX ("Xeon %") rather than
+    // equality against the full two-word name - equality would never match
+    // an existing character and would fall through to trying to create a
+    // duplicate with just the one-word name, which fails that same
+    // constraint (this was the actual bug: a real character already
+    // existed as "Xeon Mana" but the exact-match query looked for a
+    // character literally named "Xeon").
+    const namePrefix = `${gameName} %`;
+
+    // Try a name-prefix + realm match first (the normal case once a
     // character has synced at least once before).
-    const { data: exactMatch } = await supabaseAdmin
-      .from("characters")
-      .select("id, realm")
-      .eq("user_id", userId)
-      .ilike("name", name)
-      .eq("realm", realm)
-      .maybeSingle();
+    let exactMatch: { id: string; realm: string | null } | null = null;
+    if (realm) {
+      const { data } = await supabaseAdmin
+        .from("characters")
+        .select("id, realm")
+        .eq("user_id", userId)
+        .ilike("name", namePrefix)
+        .eq("realm", realm)
+        .maybeSingle();
+      exactMatch = data;
+    }
 
     if (exactMatch) {
       characterId = exactMatch.id;
     } else {
-      // Fall back to a name-only match against a character that has no
+      // Fall back to a name-prefix match against a character that has no
       // realm saved yet - this is what an existing, manually-created
-      // character looks like before its first auto-sync. Treat it as the
-      // same character and fill in its realm, instead of creating a
-      // duplicate.
+      // character looks like before its first auto-sync (its two-word name
+      // was typed in by hand, e.g. "Xeon Mana", but the separate `realm`
+      // column was never filled in). Treat it as the same character and
+      // fill in its realm, instead of creating a duplicate.
       const { data: legacyMatch } = await supabaseAdmin
         .from("characters")
         .select("id, realm")
         .eq("user_id", userId)
-        .ilike("name", name)
+        .ilike("name", namePrefix)
         .is("realm", null)
         .maybeSingle();
 
@@ -97,12 +116,26 @@ export async function POST(req: NextRequest) {
         if (realm) {
           await supabaseAdmin.from("characters").update({ realm }).eq("id", legacyMatch.id);
         }
+      } else if (!realm) {
+        // No existing character to fall back to, and nothing to make a
+        // valid two-word name out of - refuse rather than guess at a fake
+        // second word.
+        return NextResponse.json(
+          {
+            error:
+              "Could not create character: no realm reported by the addon, and no existing character to match against. Update the addon and sync again.",
+          },
+          { status: 400 }
+        );
       } else {
+        // realm is guaranteed non-null here (the !realm branch above
+        // already returned) - safe to build the required two-word name.
+        const twoWordName = `${gameName} ${realm}`;
         const { data: created, error: createError } = await supabaseAdmin
           .from("characters")
           .insert({
             user_id: userId,
-            name,
+            name: twoWordName,
             race: parsed.basic?.race || "Unknown",
             class: parsed.basic?.class || "Unknown",
             faction: parsed.basic?.faction ?? null,
@@ -144,7 +177,7 @@ export async function POST(req: NextRequest) {
             character_id: characterId,
             user_id: userId,
             kind: "character_created",
-            message: `${name} joined the roster`,
+            message: `${twoWordName} joined the roster`,
           });
         } catch {
           // ignored on purpose
