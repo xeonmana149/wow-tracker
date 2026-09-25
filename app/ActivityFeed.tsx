@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { classIcon } from "../lib/icons";
 import GameIcon from "./GameIcon";
+import ActivityAchievementIcon from "./ActivityAchievementIcon";
+import type { AchievementTier } from "../lib/achievements";
 
 type ActivityKind =
   | "level_up"
@@ -20,6 +22,12 @@ type Event = {
   kind: ActivityKind;
   message: string;
   created_at: string;
+  // Which specific achievement this row is about, and its tier if tiered -
+  // only ever set when kind is "achievement_earned" (2026-09-25, so the
+  // feed can show the actual badge art instead of a generic icon). Null on
+  // every other kind, and on achievement rows logged before this existed.
+  achievement_kind: string | null;
+  achievement_tier: AchievementTier | null;
   characters: { class: string } | null;
 };
 
@@ -39,7 +47,7 @@ const KIND_ICON: Record<ActivityKind, string> = {
 // so the feed never grows without bound while the page is open.
 const FEED_LIMIT = 30;
 
-const SELECT_COLUMNS = "id, kind, message, created_at, characters(class)";
+const SELECT_COLUMNS = "id, kind, message, created_at, achievement_kind, achievement_tier, characters(class)";
 
 function timeAgo(iso: string) {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -50,6 +58,31 @@ function timeAgo(iso: string) {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+// The icon shown per row - an earned achievement gets its actual badge art
+// (with the same hover-to-enlarge preview used everywhere else the badge
+// system renders), falling back to the class icon or generic kind emoji
+// for everything else, same as before.
+function EventIcon({ e }: { e: Event }) {
+  if (e.kind === "achievement_earned" && e.achievement_kind) {
+    return (
+      <ActivityAchievementIcon
+        kind={e.achievement_kind}
+        tier={e.achievement_tier}
+        label={e.message}
+        size={28}
+      />
+    );
+  }
+  if (e.characters?.class) {
+    return <GameIcon name={classIcon(e.characters.class)} label={e.characters.class} size={28} round />;
+  }
+  return (
+    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-neutral-700 text-sm">
+      {KIND_ICON[e.kind]}
+    </span>
+  );
 }
 
 export default function ActivityFeed({
@@ -141,18 +174,7 @@ export default function ActivityFeed({
               key={e.id}
               className="flex items-center gap-3 rounded bg-neutral-800 px-3 py-2"
             >
-              {e.characters?.class ? (
-                <GameIcon
-                  name={classIcon(e.characters.class)}
-                  label={e.characters.class}
-                  size={28}
-                  round
-                />
-              ) : (
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-neutral-700 text-sm">
-                  {KIND_ICON[e.kind]}
-                </span>
-              )}
+              <EventIcon e={e} />
               <span className="min-w-0 flex-1 text-sm text-white">{e.message}</span>
               <span className="shrink-0 text-xs text-gray-500">{timeAgo(e.created_at)}</span>
             </li>

@@ -430,6 +430,8 @@ export default function BadgeTesterPage() {
           character_id: selectedCharacter,
           user_id: userId,
           kind: "achievement_earned",
+          achievement_kind: kind,
+          achievement_tier: tier,
           message,
         });
       }
@@ -448,6 +450,8 @@ export default function BadgeTesterPage() {
           character_id: selectedCharacter,
           user_id: userId,
           kind: "achievement_earned",
+          achievement_kind: badge.kind,
+          achievement_tier: null,
           message,
         });
       }

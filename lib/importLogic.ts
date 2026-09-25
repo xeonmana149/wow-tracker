@@ -9,6 +9,9 @@ import {
   computeCounter,
   TIERED_ACHIEVEMENT_KINDS,
   PERSONALITY_BADGES,
+  type AchievementKind,
+  type TieredAchievementKind,
+  type AchievementTier,
 } from "./achievements";
 import { checkAccountAchievements } from "./accountAchievements";
 import { applyLiveObservation, ensureItemsExist } from "./items";
@@ -200,6 +203,14 @@ type ActivityEvent = {
     | "pvp_rank_up"
     | "achievement_earned";
   message: string;
+  // Which specific achievement this row is about, and its tier if tiered -
+  // only set on "achievement_earned" rows (2026-09-25), so the Activity
+  // sidebar and Recent Activity can render the real badge art instead of a
+  // generic icon. Left undefined (-> null in the DB) for every other kind,
+  // and for the account-wide achievements below, which checkAccountAchievements
+  // reports as plain strings with no achievement kind to attach.
+  achievement_kind?: TieredAchievementKind | AchievementKind;
+  achievement_tier?: AchievementTier | null;
 };
 
 // Epic and Legendary item-link quality colors (RRGGBB, as extractItemColor
@@ -262,6 +273,8 @@ export async function applyImport(
         character_id: characterId,
         user_id: before.user_id,
         kind: "achievement_earned",
+        achievement_kind: "founding_member",
+        achievement_tier: null,
         message: ACHIEVEMENT_MESSAGE.founding_member(before.name),
       });
     }
@@ -313,6 +326,8 @@ export async function applyImport(
           character_id: characterId,
           user_id: before.user_id,
           kind: "achievement_earned",
+          achievement_kind: "max_level",
+          achievement_tier: null,
           message: ACHIEVEMENT_MESSAGE.max_level(before.name),
         });
       }
@@ -411,6 +426,8 @@ export async function applyImport(
             character_id: characterId,
             user_id: before.user_id,
             kind: "achievement_earned",
+            achievement_kind: "maxed_profession",
+            achievement_tier: null,
             message: ACHIEVEMENT_MESSAGE.maxed_profession(before.name),
           });
         }
@@ -437,6 +454,8 @@ export async function applyImport(
             character_id: characterId,
             user_id: before.user_id,
             kind: "achievement_earned",
+            achievement_kind: "maxed_profession",
+            achievement_tier: null,
             message: ACHIEVEMENT_MESSAGE.maxed_profession(before.name),
           });
         }
@@ -459,6 +478,8 @@ export async function applyImport(
         character_id: characterId,
         user_id: before.user_id,
         kind: "achievement_earned",
+        achievement_kind: "renaissance",
+        achievement_tier: null,
         message: ACHIEVEMENT_MESSAGE.renaissance(before.name),
       });
     }
@@ -484,6 +505,8 @@ export async function applyImport(
         character_id: characterId,
         user_id: before.user_id,
         kind: "achievement_earned",
+        achievement_kind: "recipes",
+        achievement_tier: tier,
         message: tierMessage("recipes", before.name, tier),
       });
     }
@@ -575,6 +598,8 @@ export async function applyImport(
         character_id: characterId,
         user_id: before.user_id,
         kind: "achievement_earned",
+        achievement_kind: "legendary_item",
+        achievement_tier: null,
         message: ACHIEVEMENT_MESSAGE.legendary_item(before.name),
       });
     }
@@ -734,6 +759,8 @@ export async function applyImport(
           character_id: characterId,
           user_id: before.user_id,
           kind: "achievement_earned",
+          achievement_kind: kind,
+          achievement_tier: tier,
           message: tierMessage(kind, before.name, tier),
         });
       }
@@ -756,6 +783,8 @@ export async function applyImport(
           character_id: characterId,
           user_id: before.user_id,
           kind: "achievement_earned",
+          achievement_kind: badge.kind,
+          achievement_tier: null,
           message: ACHIEVEMENT_MESSAGE[badge.kind](before.name),
         });
       }
