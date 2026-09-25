@@ -57,12 +57,15 @@ const news = (
   </Icon>
 );
 
-// A magnifying glass over a small box, for the Items search/browse tab.
+// A satchel/inventory bag for the Items search + Crafting Directory tab -
+// reads as "items" at a glance the way WoW's own bag icon does, instead of
+// the generic magnifying-glass-over-a-box it replaces.
 const items = (
   <Icon>
-    <rect x="4" y="4" width="10" height="10" rx="1.5" />
-    <circle cx="17" cy="17" r="3.2" />
-    <path d="M19.3 19.3L22 22" />
+    <path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8" />
+    <path d="M5.5 8h13l-1.1 11.3a2 2 0 0 1-2 1.7H8.6a2 2 0 0 1-2-1.7L5.5 8z" />
+    <path d="M9.5 11.5v2" />
+    <path d="M14.5 11.5v2" />
   </Icon>
 );
 
