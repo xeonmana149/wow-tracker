@@ -25,6 +25,11 @@ export const FLAT_ACHIEVEMENT_FAMILY: Record<AchievementKind, AchievementFamily>
   cant_swim: "character",
   gravity_challenged: "character",
   identity_crisis: "character",
+  level_10: "character",
+  level_20: "character",
+  level_30: "character",
+  level_40: "character",
+  level_50: "character",
 };
 
 // ACHIEVEMENT_BADGES' "label" field (in CharacterCard.tsx) is really a
@@ -49,6 +54,11 @@ export const FLAT_ACHIEVEMENT_NAME: Record<AchievementKind, string> = {
   cant_swim: "Can't Swim",
   gravity_challenged: "Gravity Challenged",
   identity_crisis: "Identity Crisis",
+  level_10: "Novice",
+  level_20: "Apprentice",
+  level_30: "Journeyman",
+  level_40: "Veteran",
+  level_50: "Elite",
 };
 
 // Flat achievements are one-off, not leveled like the tiered ones (no

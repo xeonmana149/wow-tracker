@@ -48,6 +48,15 @@ export const ACHIEVEMENT_BADGES: Record<AchievementKind, { icon: string; label: 
   cant_swim: { icon: "spell_frost_frostbolt02", label: "Can't Swim - drowned 10+ times" },
   gravity_challenged: { icon: "spell_magic_featherfall", label: "Gravity Challenged - died from falling 10+ times" },
   identity_crisis: { icon: "spell_nature_polymorph", label: "Identity Crisis - respec'd 10+ times" },
+  // Level milestones (2026-09-25) - one-off callouts every 10 levels short
+  // of the cap. `icon` is legacy/unused now that badge rendering no longer
+  // falls back to a WoW CDN icon (see the 2026-09-25 "remove the old wow
+  // icon badges" change) - kept filled in for documentation, not display.
+  level_10: { icon: "achievement_level_10", label: "Novice - reached level 10" },
+  level_20: { icon: "achievement_level_20", label: "Apprentice - reached level 20" },
+  level_30: { icon: "achievement_level_30", label: "Journeyman - reached level 30" },
+  level_40: { icon: "achievement_level_40", label: "Veteran - reached level 40" },
+  level_50: { icon: "achievement_level_50", label: "Elite - reached level 50" },
 };
 
 // Deep Pockets labels per tier. Used to be a set of 4 different coin icons

@@ -27,7 +27,17 @@ export type AchievementKind =
   | "hoggers_plaything"
   | "cant_swim"
   | "gravity_challenged"
-  | "identity_crisis";
+  | "identity_crisis"
+  // Level milestones (2026-09-25) - one-off callouts every 10 levels on
+  // the way to the cap, so leveling up feels like it's earning something
+  // the whole way rather than only at max_level (60). Awarded the same way
+  // as every other flat achievement - see MAX_CHARACTER_LEVEL/LEVEL_MILESTONES
+  // in importLogic.ts for where these actually get checked.
+  | "level_10"
+  | "level_20"
+  | "level_30"
+  | "level_40"
+  | "level_50";
 
 // The tiered (Copper/Silver/Gold/Platinum) achievements - the "curated ~30
 // counters on top of 159 raw stats" system from the 2026-09-25 leaderboards
@@ -430,7 +440,25 @@ export const ACHIEVEMENT_MESSAGE: Record<AchievementKind, (name: string) => stri
   cant_swim: (name) => `${name} has drowned 10+ times - Can't Swim!`,
   gravity_challenged: (name) => `${name} has died from falling 10+ times - Gravity Challenged!`,
   identity_crisis: (name) => `${name} has respec'd 10+ times - Identity Crisis!`,
+  level_10: (name) => `${name} reached level 10!`,
+  level_20: (name) => `${name} reached level 20!`,
+  level_30: (name) => `${name} reached level 30!`,
+  level_40: (name) => `${name} reached level 40!`,
+  level_50: (name) => `${name} reached level 50!`,
 };
+
+// Level milestones (2026-09-25) - awarded in applyImport (lib/importLogic.ts)
+// alongside the existing level-up event and the level-cap max_level check.
+// Kept here (not just inline in importLogic.ts) so the kind<->level mapping
+// has one home other code can read too if it ever needs it. Deliberately
+// stops short of MAX_CHARACTER_LEVEL (60) - that's what max_level is for.
+export const LEVEL_MILESTONES: { level: number; kind: AchievementKind }[] = [
+  { level: 10, kind: "level_10" },
+  { level: 20, kind: "level_20" },
+  { level: 30, kind: "level_30" },
+  { level: 40, kind: "level_40" },
+  { level: 50, kind: "level_50" },
+];
 
 // One-off "personality badges" - single threshold, no tiers, sourced from
 // individual Social-pane stats (not the combined "social" counter above,

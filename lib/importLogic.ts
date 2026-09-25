@@ -9,6 +9,7 @@ import {
   computeCounter,
   TIERED_ACHIEVEMENT_KINDS,
   PERSONALITY_BADGES,
+  LEVEL_MILESTONES,
   type AchievementKind,
   type TieredAchievementKind,
   type AchievementTier,
@@ -330,6 +331,31 @@ export async function applyImport(
           achievement_tier: null,
           message: ACHIEVEMENT_MESSAGE.max_level(before.name),
         });
+      }
+    }
+
+    // Level milestones - one-off callouts every 10 levels short of the cap
+    // (2026-09-25), same "crossed a threshold this sync" shape as the gold
+    // milestones below, but these ARE real achievements (via awardAchievement,
+    // not just activity-feed narration), since the point is leveling up
+    // feeling like it earns something the whole way to 60, not just at the
+    // cap. awardAchievement's own (character_id, kind) conflict handling
+    // means a sync that jumps straight past several milestones at once
+    // (e.g. a rested-XP dungeon run taking someone from 8 to 24) still
+    // correctly awards every one crossed, not just the highest.
+    for (const milestone of LEVEL_MILESTONES) {
+      if (before.level < milestone.level && parsed.basic.level >= milestone.level) {
+        const milestoneEarned = await awardAchievement(supabase, characterId, milestone.kind);
+        if (milestoneEarned) {
+          events.push({
+            character_id: characterId,
+            user_id: before.user_id,
+            kind: "achievement_earned",
+            achievement_kind: milestone.kind,
+            achievement_tier: null,
+            message: ACHIEVEMENT_MESSAGE[milestone.kind](before.name),
+          });
+        }
       }
     }
   }
