@@ -19,8 +19,6 @@ import { awardAchievement, ACHIEVEMENT_MESSAGE } from "../lib/achievements";
 import type { AccountAchievementKind } from "../lib/accountAchievements";
 import { loadBadgeIconOverrides, type BadgeIconOverrides } from "../lib/badgeIconOverrides";
 import { LATEST_VERSIONS } from "../lib/versions";
-import LeaderboardsCard from "./LeaderboardsCard";
-import { getLeaderboards, type Leaderboard } from "../lib/leaderboards";
 
 const PRIMARY = [
   "Alchemy",
@@ -133,7 +131,6 @@ export default function Dashboard({
   const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([]);
   const [syncOpenSignal, setSyncOpenSignal] = useState(0);
   const [nextTab, setNextTab] = useState<string>("");
-  const [leaderboards, setLeaderboards] = useState<Leaderboard[]>([]);
   const [myVersions, setMyVersions] = useState<{ addon: string | null; tray: string | null }>({
     addon: null,
     tray: null,
@@ -149,14 +146,14 @@ export default function Dashboard({
       }
       setUserId(userData.user.id);
 
-      // None of these seven requests depend on each other's results - they
+      // None of these six requests depend on each other's results - they
       // all just need the user id we already have - so they're fired off
       // together with Promise.all instead of one at a time. Sequentially,
       // each await sits and waits on its own round-trip before the next one
-      // even starts; six (now seven) round-trips stacked up before this
-      // page could even render is the main reason every click into the
-      // dashboard felt slow. Run together, the wait is roughly whichever
-      // single request is slowest, not the sum of all seven.
+      // even starts; six round-trips stacked up before this page could even
+      // render is the main reason every click into the dashboard felt slow.
+      // Run together, the wait is roughly whichever single request is
+      // slowest, not the sum of all six.
       const [
         { data, error },
         { data: achievementRows },
@@ -164,7 +161,6 @@ export default function Dashboard({
         { data: accountAchievementRows },
         { data: activityRows },
         overrides,
-        leaderboardRows,
       ] = await Promise.all([
         supabase
           .from("characters")
@@ -197,11 +193,6 @@ export default function Dashboard({
           .order("created_at", { ascending: false })
           .limit(6),
         loadBadgeIconOverrides(supabase),
-        // Group-wide leaderboards (2026-09-25) - not scoped to this user at
-        // all (character_statistics is visible to everyone in the group,
-        // same as achievements), so it's the one request here that doesn't
-        // depend on userData.user.id.
-        getLeaderboards(supabase),
       ]);
 
       if (error) {
@@ -243,8 +234,6 @@ export default function Dashboard({
       setRecentActivity((activityRows ?? []) as ActivityEvent[]);
 
       setIconOverrides(overrides);
-
-      setLeaderboards(leaderboardRows);
 
       setStatus("ready");
     }
@@ -565,12 +554,6 @@ export default function Dashboard({
             <AccountBadges kinds={accountAchievements} size="md" iconOverrides={iconOverrides} />
           </div>
         </section>
-      )}
-
-      {leaderboards.length > 0 && (
-        <div className="mt-4">
-          <LeaderboardsCard leaderboards={leaderboards} />
-        </div>
       )}
 
       {error && <p className="mt-4 text-red-400">{error}</p>}
