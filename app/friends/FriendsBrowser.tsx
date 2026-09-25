@@ -4,14 +4,16 @@ import { useState } from "react";
 import { classIcon } from "../../lib/icons";
 import CharacterCard, { type CardCharacter } from "../CharacterCard";
 import GameIcon from "../GameIcon";
-import AccountBadges from "../AccountBadges";
 import type { AccountAchievementKind } from "../../lib/accountAchievements";
-import type { BadgeIconOverrides } from "../../lib/badgeIconOverrides";
 
 export type FriendPlayer = {
   id: string;
   name: string;
   characters: CardCharacter[];
+  // Kept on the type (populated or not) so callers that still fetch this
+  // don't need changing - the account-wide achievements DISPLAY is what's
+  // off for now (2026-09-25), via the removed <AccountBadges> below. May
+  // come back later.
   accountAchievements?: AccountAchievementKind[];
 };
 
@@ -19,12 +21,10 @@ export default function FriendsBrowser({
   players,
   treeNames,
   specIcons,
-  iconOverrides = {},
 }: {
   players: FriendPlayer[];
   treeNames: Record<string, string[]>;
   specIcons: Record<string, string>;
-  iconOverrides?: BadgeIconOverrides;
 }) {
   const [selected, setSelected] = useState("all");
 
@@ -99,18 +99,8 @@ export default function FriendsBrowser({
                     />
                   ))}
                 </span>
-                {/* Stacked instead of sharing one line with the name, so a
-                    growing row of account badges can never crowd out the
-                    name itself - the name always gets its own full-width
-                    line, and badges just wrap onto as many lines as they
-                    need below it. */}
                 <span className="min-w-0 flex-1 text-left">
                   <span className="block truncate font-bold">{p.name}</span>
-                  {(p.accountAchievements?.length ?? 0) > 0 && (
-                    <span className="mt-1 flex flex-wrap gap-1">
-                      <AccountBadges kinds={p.accountAchievements ?? []} iconOverrides={iconOverrides} />
-                    </span>
-                  )}
                   <span className="sub mt-1 block truncate text-xs text-gray-400">
                     {p.characters.length}{" "}
                     {p.characters.length === 1 ? "character" : "characters"} · highest level{" "}
@@ -126,13 +116,6 @@ export default function FriendsBrowser({
       <section className="min-w-0 flex-1">
         <div className="mb-3 flex flex-wrap items-baseline gap-x-3">
           <h2 className="text-xl font-bold">{current ? current.name : "Everyone"}</h2>
-          {current && (
-            <AccountBadges
-              kinds={current.accountAchievements ?? []}
-              size="md"
-              iconOverrides={iconOverrides}
-            />
-          )}
           <p className="text-sm text-gray-400">
             {shown.length} {shown.length === 1 ? "character" : "characters"}
             {!current && " · highest level first"}
@@ -147,7 +130,6 @@ export default function FriendsBrowser({
                 c={c}
                 treeNames={treeNames[c.class]}
                 specIcons={specIcons}
-                iconOverrides={iconOverrides}
                 showNeedsAttention={false}
               />
             </div>

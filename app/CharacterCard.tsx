@@ -12,7 +12,6 @@ import {
 } from "../lib/icons";
 import { characterBars } from "../lib/progress";
 import type { AchievementKind, GoldTier, TieredAchievementKind } from "../lib/achievements";
-import { resolvedIcon, type BadgeIconOverrides } from "../lib/badgeIconOverrides";
 import { localBadgeIconSrc } from "../lib/badgeFrames";
 import GameIcon from "./GameIcon";
 import TierFramedIcon from "./TierFramedIcon";
@@ -55,11 +54,16 @@ export const ACHIEVEMENT_BADGES: Record<AchievementKind, { icon: string; label: 
   identity_crisis: { icon: "spell_nature_polymorph", label: "Identity Crisis - respec'd 10+ times" },
 };
 
-export const GOLD_TIER_BADGE: Record<GoldTier, { icon: string; label: string }> = {
-  Copper: { icon: "inv_misc_coin_01", label: "Deep Pockets - Copper tier - 50g+" },
-  Silver: { icon: "inv_misc_coin_03", label: "Deep Pockets - Silver tier - 500g+" },
-  Gold: { icon: "inv_misc_coin_05", label: "Deep Pockets - Gold tier - 5,000g+" },
-  Platinum: { icon: "inv_misc_coin_06", label: "Deep Pockets - Platinum tier - 25,000g+" },
+// Deep Pockets labels per tier. Used to be a set of 4 different coin icons
+// (the old per-tier-icon "gold badge" system, from before border frames
+// existed) - now the actual art comes from TIERED_LOCAL_ICONS.gold
+// ("deep-pockets") + the matching tier frame via TierFramedIcon, so this is
+// just the label text.
+export const GOLD_TIER_LABEL: Record<GoldTier, string> = {
+  Copper: "Deep Pockets - Copper tier - 50g+",
+  Silver: "Deep Pockets - Silver tier - 500g+",
+  Gold: "Deep Pockets - Gold tier - 5,000g+",
+  Platinum: "Deep Pockets - Platinum tier - 25,000g+",
 };
 
 // Epic-gear (Well-Equipped) tier reuses one gem icon for every tier (there's
@@ -236,10 +240,10 @@ export const AUCTION_GOLD_TIER_BADGE = ringBadge(
 );
 
 // One lookup covering every ring-style tiered badge (everything except
-// "gold", which uses a different icon per tier instead of a ring - see
-// GOLD_TIER_BADGE above) so the render below doesn't need a growing
-// if/else chain every time a new tiered badge is added.
-const RING_TIER_BADGES: Partial<Record<TieredAchievementKind, TierRingBadge>> = {
+// "gold", which is handled separately above via GOLD_TIER_LABEL) so the
+// render below doesn't need a growing if/else chain every time a new
+// tiered badge is added.
+export const RING_TIER_BADGES: Partial<Record<TieredAchievementKind, TierRingBadge>> = {
   epic_gear: EPIC_TIER_META,
   recipes: RECIPE_TIER_BADGE,
   honorable_kills: HONORABLE_KILLS_TIER_BADGE,
@@ -444,7 +448,6 @@ export default function CharacterCard({
   treeNames,
   specIcons,
   compact = false,
-  iconOverrides = {},
   defaultExpanded = false,
   showNeedsAttention = true,
 }: {
@@ -452,10 +455,6 @@ export default function CharacterCard({
   treeNames: string[] | undefined;
   specIcons: Record<string, string>;
   compact?: boolean;
-  // Lets any badge icon be swapped at runtime via the badge_icons table
-  // (edited from the /dev/badges tester page) instead of needing a code
-  // change. Defaults to {} so passing nothing just uses every default.
-  iconOverrides?: BadgeIconOverrides;
   // Starts a card already open. Used on the character's own page, where
   // there's only ever one card and hiding its details would be pointless.
   defaultExpanded?: boolean;
@@ -532,16 +531,16 @@ export default function CharacterCard({
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 {(c.achievements ?? []).map((a) => {
                   if (a.kind === "gold" && a.tier) {
-                    const badge = GOLD_TIER_BADGE[a.tier];
                     const localIcon = TIERED_LOCAL_ICONS.gold;
-                    if (localIcon) {
-                      return <TierFramedIcon key="gold" icon={localIcon} tier={a.tier} label={badge.label} size={28} />;
-                    }
-                    const icon = resolvedIcon(iconOverrides, `gold:${a.tier}`, badge.icon);
+                    if (!localIcon) return null;
                     return (
-                      <span key="gold" className="inline-block rounded-full ring-2 ring-amber-500/70">
-                        <GameIcon src={wowIconUrl(icon)} label={badge.label} size={28} round />
-                      </span>
+                      <TierFramedIcon
+                        key="gold"
+                        icon={localIcon}
+                        tier={a.tier}
+                        label={GOLD_TIER_LABEL[a.tier]}
+                        size={28}
+                      />
                     );
                   }
                   const ringBadge = RING_TIER_BADGES[a.kind as TieredAchievementKind];
@@ -551,10 +550,9 @@ export default function CharacterCard({
                     if (localIcon) {
                       return <TierFramedIcon key={a.kind} icon={localIcon} tier={a.tier} label={meta.label} size={28} />;
                     }
-                    const icon = resolvedIcon(iconOverrides, `${a.kind}:${a.tier}`, meta.icon);
                     return (
                       <span key={a.kind} className={`inline-block rounded-full ${meta.ring}`}>
-                        <GameIcon src={wowIconUrl(icon)} label={meta.label} size={28} round />
+                        <GameIcon src={wowIconUrl(meta.icon)} label={meta.label} size={28} round />
                       </span>
                     );
                   }
@@ -572,12 +570,11 @@ export default function CharacterCard({
                       />
                     );
                   }
-                  const icon = resolvedIcon(iconOverrides, a.kind, badge.icon);
-                  return <GameIcon key={a.kind} src={wowIconUrl(icon)} label={badge.label} size={28} round />;
+                  return <GameIcon key={a.kind} src={wowIconUrl(badge.icon)} label={badge.label} size={28} round />;
                 })}
                 {createdLabel && (
                   <GameIcon
-                    src={wowIconUrl(resolvedIcon(iconOverrides, CREATED_DATE_ICON_KEY, CREATED_DATE_ICON))}
+                    src={wowIconUrl(CREATED_DATE_ICON)}
                     label={`Created ${createdLabel}`}
                     size={28}
                     round

@@ -14,10 +14,7 @@ import GameIcon from "./GameIcon";
 import NextList, { type NextListItem } from "./NextList";
 import { MoneyDisplay } from "./MoneyIcons";
 import AccountSyncSetup from "./AccountSyncSetup";
-import AccountBadges from "./AccountBadges";
 import { awardAchievement, ACHIEVEMENT_MESSAGE } from "../lib/achievements";
-import type { AccountAchievementKind } from "../lib/accountAchievements";
-import { loadBadgeIconOverrides, type BadgeIconOverrides } from "../lib/badgeIconOverrides";
 import { LATEST_VERSIONS } from "../lib/versions";
 
 const PRIMARY = [
@@ -126,8 +123,6 @@ export default function Dashboard({
   const [editingLegacy, setEditingLegacy] = useState(false);
   const [legacyDraft, setLegacyDraft] = useState("0");
   const [legacyMessage, setLegacyMessage] = useState("");
-  const [accountAchievements, setAccountAchievements] = useState<AccountAchievementKind[]>([]);
-  const [iconOverrides, setIconOverrides] = useState<BadgeIconOverrides>({});
   const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([]);
   const [syncOpenSignal, setSyncOpenSignal] = useState(0);
   const [nextTab, setNextTab] = useState<string>("");
@@ -146,54 +141,43 @@ export default function Dashboard({
       }
       setUserId(userData.user.id);
 
-      // None of these six requests depend on each other's results - they
+      // None of these five requests depend on each other's results - they
       // all just need the user id we already have - so they're fired off
       // together with Promise.all instead of one at a time. Sequentially,
       // each await sits and waits on its own round-trip before the next one
-      // even starts; six round-trips stacked up before this page could even
+      // even starts; five round-trips stacked up before this page could even
       // render is the main reason every click into the dashboard felt slow.
       // Run together, the wait is roughly whichever single request is
-      // slowest, not the sum of all six.
-      const [
-        { data, error },
-        { data: achievementRows },
-        { data: profile },
-        { data: accountAchievementRows },
-        { data: activityRows },
-        overrides,
-      ] = await Promise.all([
-        supabase
-          .from("characters")
-          .select(
-            "*, character_professions(profession, skill, recipes), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained), equipped_gear(slot, item_id, items(required_level, required_level_scanned))"
-          )
-          .eq("user_id", userData.user.id)
-          .order("level", { ascending: false }),
-        // Achievements are per-character now (not a server-wide "first"),
-        // but there still aren't many rows total for a small friend group,
-        // so it's simplest to just grab them all and match them up.
-        supabase.from("achievements").select("kind, tier, character_id"),
-        supabase
-          .from("profiles")
-          .select("display_name, legacy_points, addon_version, tray_version")
-          .eq("id", userData.user.id)
-          .single(),
-        supabase
-          .from("account_achievements")
-          .select("kind")
-          .eq("user_id", userData.user.id),
-        // Recent Activity panel - the same activity_events rows the sync
-        // route and this page's own Legacy save already write to, just
-        // read back here instead of only ever appearing in the floating
-        // activity sidebar.
-        supabase
-          .from("activity_events")
-          .select("id, character_id, kind, message, created_at")
-          .eq("user_id", userData.user.id)
-          .order("created_at", { ascending: false })
-          .limit(6),
-        loadBadgeIconOverrides(supabase),
-      ]);
+      // slowest, not the sum of all five.
+      const [{ data, error }, { data: achievementRows }, { data: profile }, { data: activityRows }] =
+        await Promise.all([
+          supabase
+            .from("characters")
+            .select(
+              "*, character_professions(profession, skill, recipes), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained), equipped_gear(slot, item_id, items(required_level, required_level_scanned))"
+            )
+            .eq("user_id", userData.user.id)
+            .order("level", { ascending: false }),
+          // Achievements are per-character now (not a server-wide "first"),
+          // but there still aren't many rows total for a small friend group,
+          // so it's simplest to just grab them all and match them up.
+          supabase.from("achievements").select("kind, tier, character_id"),
+          supabase
+            .from("profiles")
+            .select("display_name, legacy_points, addon_version, tray_version")
+            .eq("id", userData.user.id)
+            .single(),
+          // Recent Activity panel - the same activity_events rows the sync
+          // route and this page's own Legacy save already write to, just
+          // read back here instead of only ever appearing in the floating
+          // activity sidebar.
+          supabase
+            .from("activity_events")
+            .select("id, character_id, kind, message, created_at")
+            .eq("user_id", userData.user.id)
+            .order("created_at", { ascending: false })
+            .limit(6),
+        ]);
 
       if (error) {
         setError(error.message);
@@ -227,13 +211,7 @@ export default function Dashboard({
         tray: profile?.tray_version ?? null,
       });
 
-      setAccountAchievements(
-        (accountAchievementRows ?? []).map((r) => r.kind as AccountAchievementKind)
-      );
-
       setRecentActivity((activityRows ?? []) as ActivityEvent[]);
-
-      setIconOverrides(overrides);
 
       setStatus("ready");
     }
@@ -541,21 +519,6 @@ export default function Dashboard({
 
       <AccountSyncSetup openSignal={syncOpenSignal} />
 
-      {accountAchievements.length > 0 && (
-        <section className="mt-4 rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
-            Account achievements
-          </h2>
-          <p className="mt-1 text-xs text-gray-500">
-            Earned by your account as a whole, not any one character. Hover a badge to see what
-            it's for.
-          </p>
-          <div className="mt-3">
-            <AccountBadges kinds={accountAchievements} size="md" iconOverrides={iconOverrides} />
-          </div>
-        </section>
-      )}
-
       {error && <p className="mt-4 text-red-400">{error}</p>}
 
       <div className="mt-6 grid gap-4 xl:grid-cols-3">
@@ -603,7 +566,7 @@ export default function Dashboard({
                   </h3>
                   <div className="flex flex-col gap-2">
                     {list.map((c) => (
-                      <CharacterRow key={c.id} c={c} iconOverrides={iconOverrides} />
+                      <CharacterRow key={c.id} c={c} />
                     ))}
                   </div>
                 </div>

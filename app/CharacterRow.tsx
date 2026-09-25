@@ -2,17 +2,20 @@
 
 import Link from "next/link";
 import { PRIMARY_PROFESSIONS, PROFESSION_ICONS, RACE_ICONS, classIcon, wowIconUrl } from "../lib/icons";
-import { resolvedIcon, type BadgeIconOverrides } from "../lib/badgeIconOverrides";
+import { localBadgeIconSrc } from "../lib/badgeFrames";
 import GameIcon from "./GameIcon";
+import TierFramedIcon from "./TierFramedIcon";
 import {
   ACHIEVEMENT_BADGES,
-  GOLD_TIER_BADGE,
-  EPIC_TIER_META,
-  RECIPE_TIER_BADGE,
+  RING_TIER_BADGES,
+  TIERED_LOCAL_ICONS,
+  FLAT_LOCAL_ICONS,
+  GOLD_TIER_LABEL,
   characterTypeStyle,
   type AchievementKind,
   type CardCharacter,
 } from "./CharacterCard";
+import type { TieredAchievementKind } from "../lib/achievements";
 
 // The game's own class-name colors, used for the ring around each
 // character's portrait icon here - not used anywhere else on the site, so
@@ -55,13 +58,13 @@ function ChevronRight() {
 // longer character list at a glance matters more than seeing every detail
 // inline - talents, gear and wishlist are a click away on the character's
 // own page either way.
-export default function CharacterRow({
-  c,
-  iconOverrides = {},
-}: {
-  c: CardCharacter;
-  iconOverrides?: BadgeIconOverrides;
-}) {
+//
+// 2026-09-25: badge rendering rewritten to go through the same
+// RING_TIER_BADGES/TIERED_LOCAL_ICONS/FLAT_LOCAL_ICONS lookups CharacterCard
+// uses, instead of a hand-written gold/epic_gear/recipes-only check - this
+// row was quietly missing every batch-2 tiered badge (boss kills, gold
+// earned from auctions, etc.) before, since nothing here knew they existed.
+export default function CharacterRow({ c }: { c: CardCharacter }) {
   const typeStyle = characterTypeStyle(c.character_type);
 
   // Live XP within the CURRENT level, from the addon (v1.5.0+) via
@@ -127,24 +130,30 @@ export default function CharacterRow({
             <span className="flex items-center gap-1">
               {(c.achievements ?? []).map((a) => {
                 if (a.kind === "gold" && a.tier) {
-                  const badge = GOLD_TIER_BADGE[a.tier];
-                  const icon = resolvedIcon(iconOverrides, `gold:${a.tier}`, badge.icon);
-                  return <GameIcon key="gold" src={wowIconUrl(icon)} label={badge.label} size={18} round />;
+                  const localIcon = TIERED_LOCAL_ICONS.gold;
+                  if (!localIcon) return null;
+                  return (
+                    <TierFramedIcon key="gold" icon={localIcon} tier={a.tier} label={GOLD_TIER_LABEL[a.tier]} size={18} />
+                  );
                 }
-                if (a.kind === "epic_gear" && a.tier) {
-                  const meta = EPIC_TIER_META[a.tier];
-                  const icon = resolvedIcon(iconOverrides, "epic_gear", meta.icon);
-                  return <GameIcon key="epic_gear" src={wowIconUrl(icon)} label={meta.label} size={18} round />;
-                }
-                if (a.kind === "recipes" && a.tier) {
-                  const meta = RECIPE_TIER_BADGE[a.tier];
-                  const icon = resolvedIcon(iconOverrides, `recipes:${a.tier}`, meta.icon);
-                  return <GameIcon key="recipes" src={wowIconUrl(icon)} label={meta.label} size={18} round />;
+                const ringBadge = RING_TIER_BADGES[a.kind as TieredAchievementKind];
+                if (ringBadge && a.tier) {
+                  const meta = ringBadge[a.tier];
+                  const localIcon = TIERED_LOCAL_ICONS[a.kind as TieredAchievementKind];
+                  if (localIcon) {
+                    return <TierFramedIcon key={a.kind} icon={localIcon} tier={a.tier} label={meta.label} size={18} />;
+                  }
+                  return <GameIcon key={a.kind} src={wowIconUrl(meta.icon)} label={meta.label} size={18} round />;
                 }
                 const badge = ACHIEVEMENT_BADGES[a.kind as AchievementKind];
                 if (!badge) return null;
-                const icon = resolvedIcon(iconOverrides, a.kind, badge.icon);
-                return <GameIcon key={a.kind} src={wowIconUrl(icon)} label={badge.label} size={18} round />;
+                const flatLocalIcon = FLAT_LOCAL_ICONS[a.kind as AchievementKind];
+                if (flatLocalIcon) {
+                  return (
+                    <GameIcon key={a.kind} src={localBadgeIconSrc(flatLocalIcon)} label={badge.label} size={18} round />
+                  );
+                }
+                return <GameIcon key={a.kind} src={wowIconUrl(badge.icon)} label={badge.label} size={18} round />;
               })}
             </span>
           )}

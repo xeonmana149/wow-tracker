@@ -1,7 +1,6 @@
 import { supabase } from "../../lib/supabase";
 import { loadCardData } from "../../lib/server-data";
 import type { CardCharacter } from "../CharacterCard";
-import { loadBadgeIconOverrides } from "../../lib/badgeIconOverrides";
 import FriendsBrowser, { type FriendPlayer } from "./FriendsBrowser";
 
 export const dynamic = "force-dynamic";
@@ -9,17 +8,12 @@ export const dynamic = "force-dynamic";
 type FriendCharacter = CardCharacter & { user_id: string | null };
 
 export default async function Friends() {
-  // These four requests don't depend on each other, so they're fired off
+  // These two requests don't depend on each other, so they're fired off
   // together with Promise.all rather than one at a time - same fix as the
   // other pages. Sequentially, each await waits on its own round-trip
   // before the next one starts; run together, the wait is roughly
-  // whichever single one is slowest, not the sum of all four.
-  const [
-    { data, error },
-    { specIcons, treeNames },
-    { data: accountAchievementRows },
-    iconOverrides,
-  ] = await Promise.all([
+  // whichever single one is slowest, not the sum of both.
+  const [{ data, error }, { specIcons, treeNames }] = await Promise.all([
     supabase
       .from("characters")
       .select(
@@ -27,19 +21,9 @@ export default async function Friends() {
       )
       .order("level", { ascending: false }),
     loadCardData(),
-    // Account-wide achievements live on the user, not any one character, so
-    // they're fetched separately and matched up by user_id below.
-    supabase.from("account_achievements").select("user_id, kind"),
-    loadBadgeIconOverrides(supabase),
   ]);
 
   const characters = (data ?? []) as unknown as FriendCharacter[];
-  const accountAchievementsByUser: Record<string, string[]> = {};
-  for (const row of (accountAchievementRows ?? []) as { user_id: string; kind: string }[]) {
-    const list = accountAchievementsByUser[row.user_id] ?? [];
-    list.push(row.kind);
-    accountAchievementsByUser[row.user_id] = list;
-  }
 
   const byPlayer: Record<string, FriendPlayer> = {};
   for (const c of characters) {
@@ -49,7 +33,6 @@ export default async function Friends() {
         id: key,
         name: c.profiles?.display_name ?? "Unknown",
         characters: [],
-        accountAchievements: (accountAchievementsByUser[key] ?? []) as FriendPlayer["accountAchievements"],
       };
     }
     byPlayer[key].characters.push(c);
@@ -74,12 +57,7 @@ export default async function Friends() {
       )}
 
       {players.length > 0 && (
-        <FriendsBrowser
-          players={players}
-          treeNames={treeNames}
-          specIcons={specIcons}
-          iconOverrides={iconOverrides}
-        />
+        <FriendsBrowser players={players} treeNames={treeNames} specIcons={specIcons} />
       )}
     </main>
   );
