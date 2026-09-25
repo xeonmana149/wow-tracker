@@ -18,7 +18,16 @@ export type AchievementKind =
   | "comedian"
   | "drama_queen"
   | "tiny_violinist"
-  | "greeter";
+  | "greeter"
+  // "Feats" (2026-09-25 batch 2) - fun, one-off, sourced from a single
+  // real Statistics-pane stat each, same pattern as the personality
+  // badges above (grouped separately below in FEAT_THRESHOLDS since they
+  // came from a different brainstorm, but mechanically identical).
+  | "standing_in_fire"
+  | "hoggers_plaything"
+  | "cant_swim"
+  | "gravity_challenged"
+  | "identity_crisis";
 
 // The tiered (Copper/Silver/Gold/Platinum) achievements - the "curated ~30
 // counters on top of 159 raw stats" system from the 2026-09-25 leaderboards
@@ -41,7 +50,23 @@ export type TieredAchievementKind =
   | "boss_kills" // "Slayer"
   | "consumables" // "Well Supplied"
   | "travel" // "Wayfarer"
-  | "social"; // "Social Butterfly"
+  | "social" // "Social Butterfly"
+  // Batch 2 (2026-09-25), added after getting the real distinct
+  // (category, name) list from character_statistics - every one of these
+  // is a confirmed real stat, not a guess.
+  | "bg_wins" // "Battlemaster"
+  | "duels_won" // "Duelist"
+  | "damage_done" // "Juggernaut"
+  | "healing_done" // "Lifebringer"
+  | "dungeons_entered" // "Dungeon Delver"
+  | "raids_entered" // "Raider"
+  | "exalted_factions" // "Diplomat"
+  | "mounts_owned" // "Stablemaster"
+  | "pets_owned" // "Pet Collector"
+  | "loot_rolls" // "Loot Goblin"
+  | "fish_caught" // "Angler"
+  | "auctions_posted" // "Auctioneer"
+  | "auction_gold"; // "Trader"
 
 export type AchievementTier = "Copper" | "Silver" | "Gold" | "Platinum";
 // Kept as an alias so older code that still says GoldTier keeps working -
@@ -229,6 +254,162 @@ const TIER_DEFS: Record<TieredAchievementKind, TierDef> = {
     ],
     format: (name, tier, value) => `${name} has performed ${value.toLocaleString()}+ social emotes - ${tier} tier!`,
   },
+  bg_wins: {
+    label: "Battlemaster",
+    description: "Battlegrounds won.",
+    family: "pvp",
+    thresholds: [
+      { tier: "Platinum", value: 300 },
+      { tier: "Gold", value: 100 },
+      { tier: "Silver", value: 25 },
+      { tier: "Copper", value: 5 },
+    ],
+    format: (name, tier, value) => `${name} has won ${value}+ battlegrounds - ${tier} tier!`,
+  },
+  duels_won: {
+    label: "Duelist",
+    description: "Duels won against other players.",
+    family: "pvp",
+    thresholds: [
+      { tier: "Platinum", value: 500 },
+      { tier: "Gold", value: 200 },
+      { tier: "Silver", value: 50 },
+      { tier: "Copper", value: 10 },
+    ],
+    format: (name, tier, value) => `${name} has won ${value}+ duels - ${tier} tier!`,
+  },
+  damage_done: {
+    label: "Juggernaut",
+    description: "Total damage done, lifetime.",
+    family: "combat",
+    thresholds: [
+      { tier: "Platinum", value: 50000000 },
+      { tier: "Gold", value: 10000000 },
+      { tier: "Silver", value: 1000000 },
+      { tier: "Copper", value: 100000 },
+    ],
+    format: (name, tier, value) => `${name} has done ${value.toLocaleString()}+ damage - ${tier} tier!`,
+  },
+  healing_done: {
+    label: "Lifebringer",
+    description: "Total healing done, lifetime.",
+    family: "combat",
+    thresholds: [
+      { tier: "Platinum", value: 25000000 },
+      { tier: "Gold", value: 5000000 },
+      { tier: "Silver", value: 500000 },
+      { tier: "Copper", value: 50000 },
+    ],
+    format: (name, tier, value) => `${name} has healed ${value.toLocaleString()}+ - ${tier} tier!`,
+  },
+  dungeons_entered: {
+    label: "Dungeon Delver",
+    description: "5-player dungeons entered.",
+    family: "adventure",
+    thresholds: [
+      { tier: "Platinum", value: 400 },
+      { tier: "Gold", value: 150 },
+      { tier: "Silver", value: 50 },
+      { tier: "Copper", value: 10 },
+    ],
+    format: (name, tier, value) => `${name} has entered ${value}+ dungeons - ${tier} tier!`,
+  },
+  raids_entered: {
+    label: "Raider",
+    description: "10, 20 and 40-player raids entered, combined.",
+    family: "adventure",
+    thresholds: [
+      { tier: "Platinum", value: 200 },
+      { tier: "Gold", value: 75 },
+      { tier: "Silver", value: 25 },
+      { tier: "Copper", value: 5 },
+    ],
+    format: (name, tier, value) => `${name} has entered ${value}+ raids - ${tier} tier!`,
+  },
+  exalted_factions: {
+    label: "Diplomat",
+    description: "Factions reached Exalted reputation.",
+    family: "character",
+    thresholds: [
+      { tier: "Platinum", value: 20 },
+      { tier: "Gold", value: 10 },
+      { tier: "Silver", value: 5 },
+      { tier: "Copper", value: 1 },
+    ],
+    format: (name, tier, value) => `${name} has ${value}+ Exalted factions - ${tier} tier!`,
+  },
+  mounts_owned: {
+    label: "Stablemaster",
+    description: "Mounts owned.",
+    family: "character",
+    thresholds: [
+      { tier: "Platinum", value: 10 },
+      { tier: "Gold", value: 6 },
+      { tier: "Silver", value: 3 },
+      { tier: "Copper", value: 1 },
+    ],
+    format: (name, tier, value) => `${name} owns ${value}+ mounts - ${tier} tier!`,
+  },
+  pets_owned: {
+    label: "Pet Collector",
+    description: "Vanity pets owned.",
+    family: "character",
+    thresholds: [
+      { tier: "Platinum", value: 10 },
+      { tier: "Gold", value: 6 },
+      { tier: "Silver", value: 3 },
+      { tier: "Copper", value: 1 },
+    ],
+    format: (name, tier, value) => `${name} owns ${value}+ vanity pets - ${tier} tier!`,
+  },
+  loot_rolls: {
+    label: "Loot Goblin",
+    description: "Need and Greed rolls made on loot, combined.",
+    family: "character",
+    thresholds: [
+      { tier: "Platinum", value: 2500 },
+      { tier: "Gold", value: 1000 },
+      { tier: "Silver", value: 500 },
+      { tier: "Copper", value: 100 },
+    ],
+    format: (name, tier, value) => `${name} has made ${value.toLocaleString()}+ loot rolls - ${tier} tier!`,
+  },
+  fish_caught: {
+    label: "Angler",
+    description: "Fish caught.",
+    family: "professions",
+    thresholds: [
+      { tier: "Platinum", value: 2000 },
+      { tier: "Gold", value: 750 },
+      { tier: "Silver", value: 250 },
+      { tier: "Copper", value: 50 },
+    ],
+    format: (name, tier, value) => `${name} has caught ${value.toLocaleString()}+ fish - ${tier} tier!`,
+  },
+  auctions_posted: {
+    label: "Auctioneer",
+    description: "Auctions posted.",
+    family: "wealth",
+    thresholds: [
+      { tier: "Platinum", value: 300 },
+      { tier: "Gold", value: 100 },
+      { tier: "Silver", value: 25 },
+      { tier: "Copper", value: 5 },
+    ],
+    format: (name, tier, value) => `${name} has posted ${value}+ auctions - ${tier} tier!`,
+  },
+  auction_gold: {
+    label: "Trader",
+    description: "Gold earned from auctions, lifetime.",
+    family: "wealth",
+    thresholds: [
+      { tier: "Platinum", value: 50000 },
+      { tier: "Gold", value: 10000 },
+      { tier: "Silver", value: 1000 },
+      { tier: "Copper", value: 100 },
+    ],
+    format: (name, tier, value) => `${name} has earned ${value.toLocaleString()}+ gold from auctions - ${tier} tier!`,
+  },
 };
 
 export const ACHIEVEMENT_MESSAGE: Record<AchievementKind, (name: string) => string> = {
@@ -244,6 +425,11 @@ export const ACHIEVEMENT_MESSAGE: Record<AchievementKind, (name: string) => stri
   drama_queen: (name) => `${name} has facepalmed 100+ times - Drama Queen!`,
   tiny_violinist: (name) => `${name} has played the world's smallest violin 100+ times - Tiny Violinist!`,
   greeter: (name) => `${name} has waved 250+ times - Greeter!`,
+  standing_in_fire: (name) => `${name} has died to fire or lava 10+ times - Standing in Fire!`,
+  hoggers_plaything: (name) => `${name} has died to Hogger - Hogger's Plaything!`,
+  cant_swim: (name) => `${name} has drowned 10+ times - Can't Swim!`,
+  gravity_challenged: (name) => `${name} has died from falling 10+ times - Gravity Challenged!`,
+  identity_crisis: (name) => `${name} has respec'd 10+ times - Identity Crisis!`,
 };
 
 // One-off "personality badges" - single threshold, no tiers, sourced from
@@ -266,6 +452,13 @@ export const PERSONALITY_BADGES: {
     threshold: 100,
   },
   { kind: "greeter", category: "Social", name: "Total waves", threshold: 250 },
+  // Batch 2 "feats" - same one-stat-crosses-threshold mechanism, just
+  // sourced from World/Character categories instead of Social.
+  { kind: "standing_in_fire", category: "World", name: "Deaths from fire and lava", threshold: 10 },
+  { kind: "hoggers_plaything", category: "World", name: "Deaths from Hogger", threshold: 1 },
+  { kind: "cant_swim", category: "World", name: "Deaths from drowning", threshold: 10 },
+  { kind: "gravity_challenged", category: "World", name: "Deaths from falling", threshold: 10 },
+  { kind: "identity_crisis", category: "Character", name: "Talent tree respecs", threshold: 10 },
 ];
 
 // Which character_statistics rows feed each tiered achievement's counter.
@@ -314,6 +507,26 @@ export const TIER_COUNTERS: Record<TieredAchievementKind, StatSelector[]> = {
     { category: "Social", name: "Total times playing world's smallest violin" },
     { category: "Social", name: "Total waves" },
   ],
+  bg_wins: [{ category: "Battlegrounds", name: "Battlegrounds won" }],
+  duels_won: [{ category: "World", name: "Duels won" }],
+  damage_done: [{ category: "Combat", name: "Total damage done" }],
+  healing_done: [{ category: "Combat", name: "Total healing done" }],
+  dungeons_entered: [{ category: "Dungeons & Raids", name: "Total 5-player dungeons entered" }],
+  raids_entered: [
+    { category: "Dungeons & Raids", name: "Total 10-player raids entered" },
+    { category: "Dungeons & Raids", name: "Total 20-player raids entered" },
+    { category: "Dungeons & Raids", name: "Total 40-player raids entered" },
+  ],
+  exalted_factions: [{ category: "Reputation", name: "Most factions at Exalted" }],
+  mounts_owned: [{ category: "Gear", name: "Mounts owned" }],
+  pets_owned: [{ category: "Gear", name: "Vanity pets owned" }],
+  loot_rolls: [
+    { category: "Gear", name: "Need rolls made on loot" },
+    { category: "Gear", name: "Greed rolls made on loot" },
+  ],
+  fish_caught: [{ category: "Secondary Skills", name: "Fish caught" }],
+  auctions_posted: [{ category: "Wealth", name: "Auctions posted" }],
+  auction_gold: [{ category: "Wealth", name: "Gold earned from auctions" }],
 };
 
 // Sums whichever raw stats feed a given tiered kind, out of an arbitrary
@@ -415,6 +628,19 @@ export const TIERED_ACHIEVEMENT_KINDS: TieredAchievementKind[] = [
   "consumables",
   "travel",
   "social",
+  "bg_wins",
+  "duels_won",
+  "damage_done",
+  "healing_done",
+  "dungeons_entered",
+  "raids_entered",
+  "exalted_factions",
+  "mounts_owned",
+  "pets_owned",
+  "loot_rolls",
+  "fish_caught",
+  "auctions_posted",
+  "auction_gold",
 ];
 
 export function tierLabel(kind: TieredAchievementKind): string {

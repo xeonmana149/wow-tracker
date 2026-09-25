@@ -44,6 +44,13 @@ export const ACHIEVEMENT_BADGES: Record<AchievementKind, { icon: string; label: 
     label: "Tiny Violinist - played the world's smallest violin 100+ times",
   },
   greeter: { icon: "ability_hunter_beastcall", label: "Greeter - waved 250+ times" },
+  // Batch 2 feats (2026-09-25) - one-off, sourced from real death/character
+  // stats. Icons are close-enough stand-ins, swappable from /dev/badges.
+  standing_in_fire: { icon: "spell_fire_selfdestruct", label: "Standing in Fire - died to fire or lava 10+ times" },
+  hoggers_plaything: { icon: "inv_misc_head_dog_01", label: "Hogger's Plaything - died to Hogger" },
+  cant_swim: { icon: "spell_frost_frostbolt02", label: "Can't Swim - drowned 10+ times" },
+  gravity_challenged: { icon: "spell_magic_featherfall", label: "Gravity Challenged - died from falling 10+ times" },
+  identity_crisis: { icon: "spell_nature_polymorph", label: "Identity Crisis - respec'd 10+ times" },
 };
 
 export const GOLD_TIER_BADGE: Record<GoldTier, { icon: string; label: string }> = {
@@ -168,6 +175,63 @@ export const SOCIAL_TIER_BADGE = ringBadge(
   (tier) =>
     `Social Butterfly - ${tier} tier - ${{ Copper: 50, Silver: 250, Gold: 1000, Platinum: 4000 }[tier]}+ social emotes`
 );
+export const BG_WINS_TIER_BADGE = ringBadge(
+  "achievement_bg_winwsg",
+  (tier) => `Battlemaster - ${tier} tier - ${{ Copper: 5, Silver: 25, Gold: 100, Platinum: 300 }[tier]}+ battlegrounds won`
+);
+export const DUELS_WON_TIER_BADGE = ringBadge(
+  "ability_warrior_challange",
+  (tier) => `Duelist - ${tier} tier - ${{ Copper: 10, Silver: 50, Gold: 200, Platinum: 500 }[tier]}+ duels won`
+);
+export const DAMAGE_DONE_TIER_BADGE = ringBadge(
+  "ability_warrior_savageblow",
+  (tier) =>
+    `Juggernaut - ${tier} tier - ${{ Copper: 100000, Silver: 1000000, Gold: 10000000, Platinum: 50000000 }[tier].toLocaleString()}+ damage done`
+);
+export const HEALING_DONE_TIER_BADGE = ringBadge(
+  "spell_holy_flashheal",
+  (tier) =>
+    `Lifebringer - ${tier} tier - ${{ Copper: 50000, Silver: 500000, Gold: 5000000, Platinum: 25000000 }[tier].toLocaleString()}+ healing done`
+);
+export const DUNGEONS_ENTERED_TIER_BADGE = ringBadge(
+  "inv_misc_key_03",
+  (tier) => `Dungeon Delver - ${tier} tier - ${{ Copper: 10, Silver: 50, Gold: 150, Platinum: 400 }[tier]}+ dungeons entered`
+);
+export const RAIDS_ENTERED_TIER_BADGE = ringBadge(
+  "achievement_boss_illidan",
+  (tier) => `Raider - ${tier} tier - ${{ Copper: 5, Silver: 25, Gold: 75, Platinum: 200 }[tier]}+ raids entered`
+);
+export const EXALTED_FACTIONS_TIER_BADGE = ringBadge(
+  "inv_misc_tournaments_banner_orc",
+  (tier) => `Diplomat - ${tier} tier - ${{ Copper: 1, Silver: 5, Gold: 10, Platinum: 20 }[tier]}+ Exalted factions`
+);
+export const MOUNTS_OWNED_TIER_BADGE = ringBadge(
+  "ability_mount_ridinghorse",
+  (tier) => `Stablemaster - ${tier} tier - ${{ Copper: 1, Silver: 3, Gold: 6, Platinum: 10 }[tier]}+ mounts owned`
+);
+export const PETS_OWNED_TIER_BADGE = ringBadge(
+  "inv_box_petcarrier_01",
+  (tier) => `Pet Collector - ${tier} tier - ${{ Copper: 1, Silver: 3, Gold: 6, Platinum: 10 }[tier]}+ vanity pets owned`
+);
+export const LOOT_ROLLS_TIER_BADGE = ringBadge(
+  "inv_misc_bag_10",
+  (tier) =>
+    `Loot Goblin - ${tier} tier - ${{ Copper: 100, Silver: 500, Gold: 1000, Platinum: 2500 }[tier].toLocaleString()}+ loot rolls`
+);
+export const FISH_CAUGHT_TIER_BADGE = ringBadge(
+  "trade_fishing",
+  (tier) =>
+    `Angler - ${tier} tier - ${{ Copper: 50, Silver: 250, Gold: 750, Platinum: 2000 }[tier].toLocaleString()}+ fish caught`
+);
+export const AUCTIONS_POSTED_TIER_BADGE = ringBadge(
+  "inv_misc_note_01",
+  (tier) => `Auctioneer - ${tier} tier - ${{ Copper: 5, Silver: 25, Gold: 100, Platinum: 300 }[tier]}+ auctions posted`
+);
+export const AUCTION_GOLD_TIER_BADGE = ringBadge(
+  "inv_misc_coin_02",
+  (tier) =>
+    `Trader - ${tier} tier - ${{ Copper: 100, Silver: 1000, Gold: 10000, Platinum: 50000 }[tier].toLocaleString()}+ gold from auctions`
+);
 
 // One lookup covering every ring-style tiered badge (everything except
 // "gold", which uses a different icon per tier instead of a ring - see
@@ -184,6 +248,19 @@ const RING_TIER_BADGES: Partial<Record<TieredAchievementKind, TierRingBadge>> = 
   consumables: CONSUMABLES_TIER_BADGE,
   travel: TRAVEL_TIER_BADGE,
   social: SOCIAL_TIER_BADGE,
+  bg_wins: BG_WINS_TIER_BADGE,
+  duels_won: DUELS_WON_TIER_BADGE,
+  damage_done: DAMAGE_DONE_TIER_BADGE,
+  healing_done: HEALING_DONE_TIER_BADGE,
+  dungeons_entered: DUNGEONS_ENTERED_TIER_BADGE,
+  raids_entered: RAIDS_ENTERED_TIER_BADGE,
+  exalted_factions: EXALTED_FACTIONS_TIER_BADGE,
+  mounts_owned: MOUNTS_OWNED_TIER_BADGE,
+  pets_owned: PETS_OWNED_TIER_BADGE,
+  loot_rolls: LOOT_ROLLS_TIER_BADGE,
+  fish_caught: FISH_CAUGHT_TIER_BADGE,
+  auctions_posted: AUCTIONS_POSTED_TIER_BADGE,
+  auction_gold: AUCTION_GOLD_TIER_BADGE,
 };
 
 // The 📅 created-date badge isn't a real achievement, but gets the same
