@@ -24,7 +24,13 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
   const [loading, setLoading] = useState(true);
   const [characterName, setCharacterName] = useState("");
   const [items, setItems] = useState<AchievementBoardItem[]>([]);
-  const [family, setFamily] = useState<AchievementFamily | "all">("all");
+  // "oneOff" is a filter dimension separate from family (2026-09-25) - the
+  // one-off/flat achievements (max_level, level milestones, personality
+  // badges, etc.) are already scattered across several families (character,
+  // social, pvp, professions) rather than having one of their own, so this
+  // is a cross-cutting filter ("show me every non-tiered achievement")
+  // rather than another entry in the family list.
+  const [family, setFamily] = useState<AchievementFamily | "all" | "oneOff">("all");
   const [sort, setSort] = useState<SortMode>("category");
 
   // Showcase pinning - which earned achievements show up in the compact
@@ -108,10 +114,13 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
     return Array.from(set);
   }, [items]);
 
-  const filtered = useMemo(
-    () => (family === "all" ? items : items.filter((i) => i.family === family)),
-    [items, family]
-  );
+  const oneOffCount = useMemo(() => items.filter((i) => !i.tiered).length, [items]);
+
+  const filtered = useMemo(() => {
+    if (family === "all") return items;
+    if (family === "oneOff") return items.filter((i) => !i.tiered);
+    return items.filter((i) => i.family === family);
+  }, [items, family]);
 
   const sorted = useMemo(() => {
     const list = [...filtered];
@@ -210,6 +219,16 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
         >
           All
         </button>
+        <button
+          type="button"
+          onClick={() => setFamily("oneOff")}
+          title="Achievements that are earned once, with no Copper/Silver/Gold/Platinum tiers"
+          className={`rounded px-3 py-1.5 text-sm font-semibold ${
+            family === "oneOff" ? "bg-red-700 text-white" : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
+          }`}
+        >
+          🎖️ One-Off <span className="font-normal text-gray-400">({oneOffCount})</span>
+        </button>
         {familiesPresent.map((f) => (
           <button
             key={f}
@@ -302,7 +321,7 @@ function AchievementRow({
     <div
       id={item.key}
       className={`flex items-center gap-3 rounded-lg border p-3 ${
-        item.earned ? "border-neutral-700 bg-neutral-900/40" : "border-neutral-800 bg-neutral-900/20 opacity-60"
+        item.earned ? "border-neutral-700 bg-neutral-900/40" : "border-neutral-800 bg-neutral-900/20"
       }`}
     >
       <span className="group/rowicon relative inline-block shrink-0" style={{ width: size, height: size }}>
@@ -375,11 +394,20 @@ function AchievementRow({
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-2">
-          <span className="font-bold text-white">{item.name}</span>
+          <span className={`font-bold ${item.earned ? "text-white" : "text-gray-500"}`}>{item.name}</span>
           {item.tier && (
-            <span className="flex items-center gap-1 text-xs font-semibold text-amber-400">
+            <span
+              className={`flex items-center gap-1 text-xs font-semibold ${
+                item.earned ? "text-amber-400" : "text-gray-500"
+              }`}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={TIER_MEDAL_SRC[item.tier]} alt="" draggable={false} className="h-5 w-5 object-contain" />
+              <img
+                src={TIER_MEDAL_SRC[item.tier]}
+                alt=""
+                draggable={false}
+                className={`h-5 w-5 object-contain ${item.earned ? "" : "grayscale opacity-70"}`}
+              />
               {item.tier}
             </span>
           )}
@@ -422,7 +450,7 @@ function AchievementRow({
         </button>
       )}
 
-      <span className="shrink-0 text-sm font-bold text-[#c9a566]">
+      <span className={`shrink-0 text-sm font-bold ${item.earned ? "text-[#c9a566]" : "text-gray-600"}`}>
         {item.earned ? `+${item.points}` : "—"} pts
       </span>
     </div>
