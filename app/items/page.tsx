@@ -14,8 +14,16 @@ export const revalidate = 30;
 export default async function ItemsPage({
   searchParams,
 }: {
-  searchParams?: { tab?: string };
+  // Next.js 15 passes searchParams as a Promise on async Server Component
+  // pages, same as params elsewhere in this app (see character/[id]/page.tsx)
+  // - it was typed and read here as a plain object, so `searchParams?.tab`
+  // was reading a property off a Promise (always undefined). That's why the
+  // dashboard's "Open Crafting Directory" button (?tab=crafting) silently
+  // always landed on the Item Search tab instead.
+  searchParams?: Promise<{ tab?: string }>;
 }) {
+  const resolvedSearchParams = await searchParams;
+
   const { data, error } = await supabase
     .from("characters")
     .select("id, name, class, user_id, profiles(display_name), character_professions(profession, skill, recipes)")
@@ -36,7 +44,7 @@ export default async function ItemsPage({
   }
   const players = Object.values(byPlayer).sort((a, b) => a.name.localeCompare(b.name));
 
-  const initialTab = searchParams?.tab === "crafting" ? "crafting" : "search";
+  const initialTab = resolvedSearchParams?.tab === "crafting" ? "crafting" : "search";
 
   return (
     <main className="mx-auto max-w-[1500px] p-4 md:p-6">
