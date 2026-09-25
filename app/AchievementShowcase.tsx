@@ -53,21 +53,18 @@ export default function AchievementShowcase({
             {earnedCount} / {totalCount} · {totalPoints.toLocaleString()} pts
           </span>
         </h3>
-        <div className="flex items-center gap-2">
+        {/* "hero-actions" is the same wrapper class the character page's
+            header buttons (Talent planner, Edit Character, Delete
+            Character) use - whatever global CSS gives those their
+            maroon/gold button look is keyed off this class, so reusing it
+            here (rather than guessing the colors in Tailwind) keeps these
+            two buttons visually identical to "the rest of the site"
+            without hardcoding a color that could drift out of sync. */}
+        <div className="hero-actions flex items-center gap-2 text-xs">
           {isOwner && (
-            <Link
-              href={`/character/${characterId}/achievements`}
-              className="rounded border border-amber-700/60 px-2.5 py-1 text-xs font-semibold text-amber-300 hover:bg-amber-500/10"
-            >
-              Choose showcase →
-            </Link>
+            <Link href={`/character/${characterId}/achievements`}>Choose showcase →</Link>
           )}
-          <Link
-            href={`/character/${characterId}/achievements`}
-            className="rounded border border-neutral-600 px-2.5 py-1 text-xs font-semibold text-gray-200 hover:bg-neutral-700"
-          >
-            View All →
-          </Link>
+          <Link href={`/character/${characterId}/achievements`}>View All →</Link>
         </div>
       </div>
 
