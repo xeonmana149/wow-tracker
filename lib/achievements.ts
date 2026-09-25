@@ -37,7 +37,14 @@ export type AchievementKind =
   | "level_20"
   | "level_30"
   | "level_40"
-  | "level_50";
+  | "level_50"
+  // Character Created (2026-09-25) - a proper one-off achievement now,
+  // replacing the old always-shown "Created <date>" decorative badge that
+  // lived only in CharacterCard.tsx (hardcoded WoW CDN pocketwatch icon,
+  // no achievements-table row, no points, couldn't be filtered/pinned).
+  // Every character earns this automatically - see the retroactive award
+  // in importLogic.ts.
+  | "character_created";
 
 // The tiered (Copper/Silver/Gold/Platinum) achievements - the "curated ~30
 // counters on top of 159 raw stats" system from the 2026-09-25 leaderboards
@@ -445,6 +452,7 @@ export const ACHIEVEMENT_MESSAGE: Record<AchievementKind, (name: string) => stri
   level_30: (name) => `${name} reached level 30!`,
   level_40: (name) => `${name} reached level 40!`,
   level_50: (name) => `${name} reached level 50!`,
+  character_created: (name) => `${name} was created!`,
 };
 
 // Level milestones (2026-09-25) - awarded in applyImport (lib/importLogic.ts)
@@ -595,12 +603,17 @@ export function computeCounter(
 export async function awardAchievement(
   supabase: SupabaseClient,
   characterId: string,
-  kind: AchievementKind
+  kind: AchievementKind,
+  // Defaults to now, same as always - only ever overridden by
+  // "character_created" (2026-09-25), which backdates this to the
+  // character's real creation date instead of whenever it happened to get
+  // backfilled, so sorting/showing "when earned" for it stays meaningful.
+  earnedAt?: string
 ): Promise<boolean> {
   const { data, error } = await supabase
     .from("achievements")
     .upsert(
-      { character_id: characterId, kind, earned_at: new Date().toISOString() },
+      { character_id: characterId, kind, earned_at: earnedAt ?? new Date().toISOString() },
       { onConflict: "character_id,kind", ignoreDuplicates: true }
     )
     .select("kind");

@@ -30,6 +30,7 @@ export const FLAT_ACHIEVEMENT_FAMILY: Record<AchievementKind, AchievementFamily>
   level_30: "character",
   level_40: "character",
   level_50: "character",
+  character_created: "character",
 };
 
 // ACHIEVEMENT_BADGES' "label" field (in CharacterCard.tsx) is really a
@@ -59,6 +60,7 @@ export const FLAT_ACHIEVEMENT_NAME: Record<AchievementKind, string> = {
   level_30: "Journeyman",
   level_40: "Veteran",
   level_50: "Elite",
+  character_created: "Character Created",
 };
 
 // Flat achievements are one-off, not leveled like the tiered ones (no

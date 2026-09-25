@@ -57,6 +57,13 @@ export const ACHIEVEMENT_BADGES: Record<AchievementKind, { icon: string; label: 
   level_30: { icon: "achievement_level_30", label: "Journeyman - reached level 30" },
   level_40: { icon: "achievement_level_40", label: "Veteran - reached level 40" },
   level_50: { icon: "achievement_level_50", label: "Elite - reached level 50" },
+  // Character Created (2026-09-25) - was a decorative, always-shown badge
+  // hardcoded directly in CharacterCard.tsx (see the removed
+  // CREATED_DATE_ICON/CREATED_DATE_ICON_KEY constants above); now a real
+  // one-off achievement every character earns automatically, so it shows
+  // up on the achievements page, counts for points, and can be pinned.
+  // `icon` is legacy/unused, same as everything else here now.
+  character_created: { icon: "inv_misc_pocketwatch_01", label: "Marks when this character was created" },
 };
 
 // Deep Pockets labels per tier. Used to be a set of 4 different coin icons
@@ -273,11 +280,6 @@ export const RING_TIER_BADGES: Partial<Record<TieredAchievementKind, TierRingBad
   auctions_posted: AUCTIONS_POSTED_TIER_BADGE,
   auction_gold: AUCTION_GOLD_TIER_BADGE,
 };
-
-// The 📅 created-date badge isn't a real achievement, but gets the same
-// icon treatment for visual consistency with the ones that are.
-export const CREATED_DATE_ICON = "inv_misc_pocketwatch_01";
-export const CREATED_DATE_ICON_KEY = "created_date";
 
 // Local custom artwork (2026-09-25) - icon slugs live at
 // /public/badge-icons/<slug>.png and get layered with the matching tier's

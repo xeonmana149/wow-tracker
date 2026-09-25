@@ -281,6 +281,40 @@ export async function applyImport(
     }
   }
 
+  // Character Created (2026-09-25) - replaces the old always-shown, always-
+  // WoW-CDN-icon "Created <date>" badge that lived only in CharacterCard.tsx
+  // with a real one-off achievement, so it goes through the same local-art/
+  // BadgePlaceholder rendering as everything else and shows up on the
+  // achievements page. Every character earns this, so it's unconditional -
+  // same retroactive-on-every-sync pattern as Founding Member above, but
+  // backdated to the character's REAL created_at (not whenever it happened
+  // to get backfilled) so "when earned" stays meaningful. Only logged to
+  // the activity feed for a character that was JUST created (within the
+  // last few minutes) - otherwise backfilling every existing character the
+  // first time they sync after this shipped would flood Recent Activity
+  // with "was created!" events for characters that are actually old.
+  if (before.created_at) {
+    const createdEarned = await awardAchievement(
+      supabase,
+      characterId,
+      "character_created",
+      before.created_at
+    );
+    if (createdEarned) {
+      const justCreated = Date.now() - new Date(before.created_at).getTime() < 5 * 60 * 1000;
+      if (justCreated) {
+        events.push({
+          character_id: characterId,
+          user_id: before.user_id,
+          kind: "achievement_earned",
+          achievement_kind: "character_created",
+          achievement_tier: null,
+          message: ACHIEVEMENT_MESSAGE.character_created(before.name),
+        });
+      }
+    }
+  }
+
   // 1. Character-level fields.
   const charUpdate: Record<string, number | string> = {};
   if (typeof parsed.basic?.level === "number") charUpdate.level = parsed.basic.level;

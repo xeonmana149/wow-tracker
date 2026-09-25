@@ -68,6 +68,13 @@ function ChevronRight() {
 export default function CharacterRow({ c }: { c: CardCharacter }) {
   const typeStyle = characterTypeStyle(c.character_type);
 
+  // Same "show the real date" override CharacterCard uses for the
+  // character_created achievement's tooltip (2026-09-25) - the achievements
+  // table doesn't carry that text, c.created_at already has it.
+  const createdLabel = c.created_at
+    ? new Date(c.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+    : null;
+
   // Live XP within the CURRENT level, from the addon (v1.5.0+) via
   // UnitXP/UnitXPMax. xp_max comes back 0 at the level cap (no bar left to
   // fill) and on anything that hasn't synced since this was added - rather
@@ -148,13 +155,15 @@ export default function CharacterRow({ c }: { c: CardCharacter }) {
                 }
                 const badge = ACHIEVEMENT_BADGES[a.kind as AchievementKind];
                 if (!badge) return null;
+                const label =
+                  a.kind === "character_created" && createdLabel ? `Created ${createdLabel}` : badge.label;
                 const flatLocalIcon = FLAT_LOCAL_ICONS[a.kind as AchievementKind];
                 if (flatLocalIcon) {
                   return (
-                    <GameIcon key={a.kind} src={localBadgeIconSrc(flatLocalIcon)} label={badge.label} size={28} round />
+                    <GameIcon key={a.kind} src={localBadgeIconSrc(flatLocalIcon)} label={label} size={28} round />
                   );
                 }
-                return <BadgePlaceholder key={a.kind} label={badge.label} size={28} round />;
+                return <BadgePlaceholder key={a.kind} label={label} size={28} round />;
               })}
             </span>
           )}

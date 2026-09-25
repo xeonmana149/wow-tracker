@@ -3,13 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { RACE_FACTION } from "../lib/options";
-import {
-  PRIMARY_PROFESSIONS,
-  PROFESSION_ICONS,
-  RACE_ICONS,
-  classIcon,
-  wowIconUrl,
-} from "../lib/icons";
+import { PRIMARY_PROFESSIONS, PROFESSION_ICONS, RACE_ICONS, classIcon } from "../lib/icons";
 import { characterBars } from "../lib/progress";
 import type { AchievementKind, GoldTier, TieredAchievementKind } from "../lib/achievements";
 import { localBadgeIconSrc } from "../lib/badgeFrames";
@@ -59,8 +53,6 @@ import {
   AUCTIONS_POSTED_TIER_BADGE,
   AUCTION_GOLD_TIER_BADGE,
   RING_TIER_BADGES,
-  CREATED_DATE_ICON,
-  CREATED_DATE_ICON_KEY,
   TIERED_LOCAL_ICONS,
   FLAT_LOCAL_ICONS,
 } from "../lib/achievementBadges";
@@ -95,8 +87,6 @@ export {
   AUCTIONS_POSTED_TIER_BADGE,
   AUCTION_GOLD_TIER_BADGE,
   RING_TIER_BADGES,
-  CREATED_DATE_ICON,
-  CREATED_DATE_ICON_KEY,
   TIERED_LOCAL_ICONS,
   FLAT_LOCAL_ICONS,
 };
@@ -313,7 +303,7 @@ export default function CharacterCard({
                 Level {c.level} {c.race} {c.class}
               </span>
             </div>
-            {((c.achievements ?? []).length > 0 || createdLabel) && (
+            {(c.achievements ?? []).length > 0 && (
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 {(c.achievements ?? []).map((a) => {
                   if (a.kind === "gold" && a.tier) {
@@ -340,28 +330,29 @@ export default function CharacterCard({
                   }
                   const badge = ACHIEVEMENT_BADGES[a.kind as AchievementKind];
                   if (!badge) return null;
+                  // "character_created" shows the real creation date in its
+                  // tooltip (kept from the old decorative badge this
+                  // replaced) rather than the generic label every other
+                  // flat badge uses - the achievements table doesn't need
+                  // to carry that text, c.created_at already has it.
+                  const label =
+                    a.kind === "character_created" && createdLabel
+                      ? `Created ${createdLabel}`
+                      : badge.label;
                   const flatLocalIcon = FLAT_LOCAL_ICONS[a.kind as AchievementKind];
                   if (flatLocalIcon) {
                     return (
                       <GameIcon
                         key={a.kind}
                         src={localBadgeIconSrc(flatLocalIcon)}
-                        label={badge.label}
+                        label={label}
                         size={46}
                         round
                       />
                     );
                   }
-                  return <BadgePlaceholder key={a.kind} label={badge.label} size={46} round />;
+                  return <BadgePlaceholder key={a.kind} label={label} size={46} round />;
                 })}
-                {createdLabel && (
-                  <GameIcon
-                    src={wowIconUrl(CREATED_DATE_ICON)}
-                    label={`Created ${createdLabel}`}
-                    size={46}
-                    round
-                  />
-                )}
               </div>
             )}
           </div>
