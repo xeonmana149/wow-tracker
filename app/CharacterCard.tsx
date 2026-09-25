@@ -324,7 +324,7 @@ export default function CharacterCard({
                         icon={localIcon}
                         tier={a.tier}
                         label={GOLD_TIER_LABEL[a.tier]}
-                        size={36}
+                        size={46}
                       />
                     );
                   }
@@ -333,11 +333,11 @@ export default function CharacterCard({
                     const meta = ringBadge[a.tier];
                     const localIcon = TIERED_LOCAL_ICONS[a.kind as TieredAchievementKind];
                     if (localIcon) {
-                      return <TierFramedIcon key={a.kind} icon={localIcon} tier={a.tier} label={meta.label} size={36} />;
+                      return <TierFramedIcon key={a.kind} icon={localIcon} tier={a.tier} label={meta.label} size={46} />;
                     }
                     return (
                       <span key={a.kind} className={`inline-block rounded-full ${meta.ring}`}>
-                        <GameIcon src={wowIconUrl(meta.icon)} label={meta.label} size={36} round />
+                        <GameIcon src={wowIconUrl(meta.icon)} label={meta.label} size={46} round />
                       </span>
                     );
                   }
@@ -350,18 +350,18 @@ export default function CharacterCard({
                         key={a.kind}
                         src={localBadgeIconSrc(flatLocalIcon)}
                         label={badge.label}
-                        size={36}
+                        size={46}
                         round
                       />
                     );
                   }
-                  return <GameIcon key={a.kind} src={wowIconUrl(badge.icon)} label={badge.label} size={36} round />;
+                  return <GameIcon key={a.kind} src={wowIconUrl(badge.icon)} label={badge.label} size={46} round />;
                 })}
                 {createdLabel && (
                   <GameIcon
                     src={wowIconUrl(CREATED_DATE_ICON)}
                     label={`Created ${createdLabel}`}
-                    size={36}
+                    size={46}
                     round
                   />
                 )}

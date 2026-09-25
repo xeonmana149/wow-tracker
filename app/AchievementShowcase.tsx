@@ -88,10 +88,10 @@ export default function AchievementShowcase({
 
 function ShowcaseBadge({ characterId, item }: { characterId: string; item: AchievementBoardItem }) {
   const [hover, setHover] = useState(false);
-  // Bigger than the old 40px now that the badges have proper hand-picked
-  // art (2026-09-25) instead of generic WoW CDN icons - worth the extra
-  // room to actually read the artwork at a glance.
-  const size = 56;
+  // Bumped again (2026-09-25) - 40px -> 56px -> 72px, now that the badges
+  // have proper hand-picked art instead of generic WoW CDN icons. Worth the
+  // extra room to actually read the artwork at a glance.
+  const size = 72;
   const innerSize = Math.round(size * FRAME_HOLE_RATIO);
   const inset = Math.round((size - innerSize) / 2);
 
@@ -100,7 +100,7 @@ function ShowcaseBadge({ characterId, item }: { characterId: string; item: Achie
   return (
     <Link
       href={`/character/${characterId}/achievements#${item.key}`}
-      className="group/badge relative flex w-20 flex-col items-center gap-1 text-center"
+      className="group/badge relative flex w-24 flex-col items-center gap-1 text-center"
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >

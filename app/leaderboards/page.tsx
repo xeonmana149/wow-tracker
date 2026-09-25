@@ -287,12 +287,12 @@ function RankBadge({ rank }: { rank: number }) {
         src={medalSrc}
         alt={`Rank ${rank}`}
         draggable={false}
-        className="w-8 shrink-0 object-contain"
+        className="w-10 shrink-0 object-contain"
       />
     );
   }
   return (
-    <span className="w-8 shrink-0 text-center text-lg font-bold text-gray-400">{rank}</span>
+    <span className="w-10 shrink-0 text-center text-lg font-bold text-gray-400">{rank}</span>
   );
 }
 
@@ -385,7 +385,7 @@ function TierCountsRow({ counts }: { counts: Record<AchievementTier, number> }) 
       {TIER_ORDER.map((t) => (
         <span key={t} title={`${t} tier badges`} className="flex items-center gap-1">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={TIER_MEDAL_SRC[t]} alt={t} draggable={false} className="h-5 w-5 object-contain" />
+          <img src={TIER_MEDAL_SRC[t]} alt={t} draggable={false} className="h-6 w-6 object-contain" />
           {counts[t]}
         </span>
       ))}
@@ -518,14 +518,14 @@ function AchievementsBoard({
           </select>
         </div>
         <div className="flex flex-1 items-start gap-3">
-          <AchievementKindIcon kind={achievementKind} tier={null} size={44} />
+          <AchievementKindIcon kind={achievementKind} tier={null} size={56} />
           <div>
             <p className="text-sm font-semibold text-gray-200">{tierLabel(achievementKind)}</p>
             <p className="text-xs text-gray-500">{tierDescription(achievementKind)}</p>
             <div className="mt-2 flex flex-wrap gap-3">
               {thresholds.map((t) => (
                 <span key={t.tier} className="flex items-center gap-1.5 text-xs text-gray-400">
-                  <AchievementKindIcon kind={achievementKind} tier={t.tier} size={24} />
+                  <AchievementKindIcon kind={achievementKind} tier={t.tier} size={28} />
                   {t.tier} {t.value.toLocaleString()}
                 </span>
               ))}
@@ -602,7 +602,7 @@ function ProgressRow({
     <div className="rounded-lg border border-neutral-700 bg-neutral-900/40 p-3">
       <div className="flex flex-wrap items-center gap-3">
         <RankBadge rank={rank} />
-        <AchievementKindIcon kind={achievementKind} tier={tier} size={40} dim={!tier} />
+        <AchievementKindIcon kind={achievementKind} tier={tier} size={48} dim={!tier} />
         <div className="min-w-0 flex-1">
           {href ? (
             <Link href={href} className="font-semibold text-white hover:underline">

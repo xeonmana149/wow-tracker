@@ -180,7 +180,7 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
             {TIER_ORDER.map((t) => (
               <span key={t} className="flex items-center gap-1.5 text-gray-300">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={TIER_MEDAL_SRC[t]} alt={t} draggable={false} className="h-5 w-5 object-contain" />
+                <img src={TIER_MEDAL_SRC[t]} alt={t} draggable={false} className="h-6 w-6 object-contain" />
                 {t} <span className="font-bold text-white">{tierCounts[t]}</span>
               </span>
             ))}
@@ -278,10 +278,11 @@ function AchievementRow({
   pinned: boolean;
   onTogglePin: () => void;
 }) {
-  // Bigger than the old 48px now that the badges have proper hand-picked
-  // art (2026-09-25) instead of generic WoW CDN icons - worth the extra
-  // room to actually read the artwork here, where it's the main visual.
-  const size = 64;
+  // Bumped again (2026-09-25) - 48px -> 64px -> 80px, now that the badges
+  // have proper hand-picked art instead of generic WoW CDN icons. Worth the
+  // extra room to actually read the artwork here, where it's the main
+  // visual on the row.
+  const size = 80;
   const innerSize = Math.round(size * FRAME_HOLE_RATIO);
   const inset = Math.round((size - innerSize) / 2);
   const iconSrc = item.localIcon ? localBadgeIconSrc(item.localIcon) : wowIconUrl(item.cdnIcon);
@@ -329,7 +330,7 @@ function AchievementRow({
           {item.tier && (
             <span className="flex items-center gap-1 text-xs font-semibold text-amber-400">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={TIER_MEDAL_SRC[item.tier]} alt="" draggable={false} className="h-4 w-4 object-contain" />
+              <img src={TIER_MEDAL_SRC[item.tier]} alt="" draggable={false} className="h-5 w-5 object-contain" />
               {item.tier}
             </span>
           )}
