@@ -33,95 +33,140 @@ export const ACHIEVEMENT_BADGES: Record<AchievementKind, { icon: string; label: 
   maxed_legacy: { icon: "inv_misc_rune_01", label: "Maxed the account's Legacy points" },
   top_pvp_rank: { icon: "achievement_pvp_rank_grandmarshal", label: "Reached the top PvP rank" },
   founding_member: { icon: "inv_misc_map_01", label: "Founding Member - created during launch week" },
+  // Personality badges (2026-09-25) - one-off, no tiers, sourced from a
+  // single Social-pane stat each. Icons are close-enough stand-ins (can be
+  // swapped from the /dev/badges tester with no code change).
+  hugger: { icon: "spell_holy_layonhands", label: "Hugger - given 100+ hugs" },
+  comedian: { icon: "spell_shadow_charm", label: "Comedian - LOL'd 100+ times" },
+  drama_queen: { icon: "spell_shadow_possession", label: "Drama Queen - facepalmed 100+ times" },
+  tiny_violinist: {
+    icon: "inv_misc_idol_04",
+    label: "Tiny Violinist - played the world's smallest violin 100+ times",
+  },
+  greeter: { icon: "ability_hunter_beastcall", label: "Greeter - waved 250+ times" },
 };
 
 export const GOLD_TIER_BADGE: Record<GoldTier, { icon: string; label: string }> = {
-  Bronze: { icon: "inv_misc_coin_01", label: "Bronze wealth tier - 50g+" },
-  Silver: { icon: "inv_misc_coin_03", label: "Silver wealth tier - 500g+" },
-  Gold: { icon: "inv_misc_coin_05", label: "Gold wealth tier - 5000g+" },
+  Copper: { icon: "inv_misc_coin_01", label: "Deep Pockets - Copper tier - 50g+" },
+  Silver: { icon: "inv_misc_coin_03", label: "Deep Pockets - Silver tier - 500g+" },
+  Gold: { icon: "inv_misc_coin_05", label: "Deep Pockets - Gold tier - 5,000g+" },
+  Platinum: { icon: "inv_misc_coin_06", label: "Deep Pockets - Platinum tier - 25,000g+" },
 };
 
-// Epic-gear tier reuses one gem icon for all three tiers (there's no great
-// distinct bronze/silver/gold gem in the game's icon set) and shows the
+// Epic-gear (Well-Equipped) tier reuses one gem icon for every tier (there's
+// no great distinct 4-tier gem set in the game's icon set) and shows the
 // tier via a colored ring around it instead.
 export const EPIC_TIER_META: Record<GoldTier, { icon: string; ring: string; label: string }> = {
-  Bronze: {
+  Copper: {
     icon: "inv_misc_gem_amethyst_02",
     ring: "ring-2 ring-amber-700",
-    label: "Equipped 1+ Epic items - Bronze tier",
+    label: "Well-Equipped - Copper tier - 1+ Epic items",
   },
   Silver: {
     icon: "inv_misc_gem_amethyst_02",
     ring: "ring-2 ring-gray-300",
-    label: "Equipped 3+ Epic items - Silver tier",
+    label: "Well-Equipped - Silver tier - 3+ Epic items",
   },
   Gold: {
     icon: "inv_misc_gem_amethyst_02",
     ring: "ring-2 ring-yellow-400",
-    label: "Equipped 5+ Epic items - Gold tier",
+    label: "Well-Equipped - Gold tier - 5+ Epic items",
+  },
+  Platinum: {
+    icon: "inv_misc_gem_amethyst_02",
+    ring: "ring-2 ring-cyan-300",
+    label: "Well-Equipped - Platinum tier - 10+ Epic items",
   },
 };
 
-// Recipes-known tier uses a recipe/schematic-styled icon for all three
-// tiers (mirroring epic_gear's one-icon-plus-ring approach), so it reads as
-// a different achievement family from the coin icons used for wealth.
+// Recipes-known (Artisan) tier uses a recipe/schematic-styled icon for
+// every tier (mirroring epic_gear's one-icon-plus-ring approach), so it
+// reads as a different achievement family from the coin icons used for
+// wealth.
 export const RECIPE_TIER_BADGE: Record<GoldTier, { icon: string; ring: string; label: string }> = {
-  Bronze: {
+  Copper: {
     icon: "inv_scroll_03",
     ring: "ring-2 ring-amber-700",
-    label: "Knows 50+ recipes - Bronze tier",
+    label: "Artisan - Copper tier - 50+ recipes known",
   },
   Silver: {
     icon: "inv_scroll_03",
     ring: "ring-2 ring-gray-300",
-    label: "Knows 250+ recipes - Silver tier",
+    label: "Artisan - Silver tier - 150+ recipes known",
   },
   Gold: {
     icon: "inv_scroll_03",
     ring: "ring-2 ring-yellow-400",
-    label: "Knows 500+ recipes - Gold tier",
+    label: "Artisan - Gold tier - 350+ recipes known",
+  },
+  Platinum: {
+    icon: "inv_scroll_03",
+    ring: "ring-2 ring-cyan-300",
+    label: "Artisan - Platinum tier - 750+ recipes known",
   },
 };
 
-// The five badges added in the 2026-09-25 Statistics-based rework (see
-// lib/achievements.ts) - one fixed icon per kind, with the tier communicated
-// by a colored ring, same convention as epic_gear/recipes above rather than
-// needing 15 distinct tier icons.
+// Every other tiered badge added since the 2026-09-25 Statistics-based
+// rework - one fixed icon per kind, with the tier communicated by a
+// colored ring, same convention as epic_gear/recipes above rather than
+// needing a distinct icon per tier for each one.
 type TierRingBadge = Record<GoldTier, { icon: string; ring: string; label: string }>;
 
 const RING_BY_TIER: Record<GoldTier, string> = {
-  Bronze: "ring-2 ring-amber-700",
+  Copper: "ring-2 ring-amber-700",
   Silver: "ring-2 ring-gray-300",
   Gold: "ring-2 ring-yellow-400",
+  Platinum: "ring-2 ring-cyan-300",
 };
 
 function ringBadge(icon: string, labelFor: (tier: GoldTier) => string): TierRingBadge {
   return {
-    Bronze: { icon, ring: RING_BY_TIER.Bronze, label: labelFor("Bronze") },
+    Copper: { icon, ring: RING_BY_TIER.Copper, label: labelFor("Copper") },
     Silver: { icon, ring: RING_BY_TIER.Silver, label: labelFor("Silver") },
     Gold: { icon, ring: RING_BY_TIER.Gold, label: labelFor("Gold") },
+    Platinum: { icon, ring: RING_BY_TIER.Platinum, label: labelFor("Platinum") },
   };
 }
 
 export const HONORABLE_KILLS_TIER_BADGE = ringBadge(
   "ability_warrior_savageblow",
-  (tier) => `${tier} tier - ${{ Bronze: 10, Silver: 50, Gold: 200 }[tier]}+ Honorable Kills`
+  (tier) =>
+    `Gladiator - ${tier} tier - ${{ Copper: 10, Silver: 50, Gold: 200, Platinum: 1000 }[tier]}+ Honorable Kills`
 );
 export const CREATURES_KILLED_TIER_BADGE = ringBadge(
   "inv_misc_monsterclaw_04",
-  (tier) => `${tier} tier - ${{ Bronze: 250, Silver: 1000, Gold: 5000 }[tier]}+ creatures killed`
+  (tier) =>
+    `Monster Hunter - ${tier} tier - ${{ Copper: 250, Silver: 1000, Gold: 5000, Platinum: 20000 }[tier]}+ creatures killed`
 );
 export const QUESTS_COMPLETED_TIER_BADGE = ringBadge(
   "achievement_quests_completed_08",
-  (tier) => `${tier} tier - ${{ Bronze: 25, Silver: 75, Gold: 150 }[tier]}+ quests completed`
+  (tier) =>
+    `Adventurer - ${tier} tier - ${{ Copper: 50, Silver: 200, Gold: 500, Platinum: 1000 }[tier]}+ quests completed`
 );
 export const KILLING_BLOWS_TIER_BADGE = ringBadge(
   "ability_rogue_ambush",
-  (tier) => `${tier} tier - ${{ Bronze: 25, Silver: 150, Gold: 500 }[tier]}+ Killing Blows`
+  (tier) =>
+    `Executioner - ${tier} tier - ${{ Copper: 25, Silver: 150, Gold: 500, Platinum: 1500 }[tier]}+ Killing Blows`
 );
 export const BOSS_KILLS_TIER_BADGE = ringBadge(
   "achievement_boss_ragnaros",
-  (tier) => `${tier} tier - ${{ Bronze: 10, Silver: 50, Gold: 150 }[tier]}+ boss kills`
+  (tier) =>
+    `Slayer - ${tier} tier - ${{ Copper: 10, Silver: 50, Gold: 150, Platinum: 500 }[tier]}+ boss kills`
+);
+export const CONSUMABLES_TIER_BADGE = ringBadge(
+  "inv_misc_food_15",
+  (tier) =>
+    `Well Supplied - ${tier} tier - ${{ Copper: 100, Silver: 500, Gold: 2000, Platinum: 8000 }[tier]}+ consumables used`
+);
+export const TRAVEL_TIER_BADGE = ringBadge(
+  "ability_hunter_pathfinding",
+  (tier) =>
+    `Wayfarer - ${tier} tier - ${{ Copper: 50, Silver: 250, Gold: 1000, Platinum: 4000 }[tier]}+ fast travels`
+);
+export const SOCIAL_TIER_BADGE = ringBadge(
+  "inv_misc_horn_04",
+  (tier) =>
+    `Social Butterfly - ${tier} tier - ${{ Copper: 50, Silver: 250, Gold: 1000, Platinum: 4000 }[tier]}+ social emotes`
 );
 
 // One lookup covering every ring-style tiered badge (everything except
@@ -136,6 +181,9 @@ const RING_TIER_BADGES: Partial<Record<TieredAchievementKind, TierRingBadge>> = 
   quests_completed: QUESTS_COMPLETED_TIER_BADGE,
   killing_blows: KILLING_BLOWS_TIER_BADGE,
   boss_kills: BOSS_KILLS_TIER_BADGE,
+  consumables: CONSUMABLES_TIER_BADGE,
+  travel: TRAVEL_TIER_BADGE,
+  social: SOCIAL_TIER_BADGE,
 };
 
 // The 📅 created-date badge isn't a real achievement, but gets the same
