@@ -7,6 +7,7 @@ import { wowIconUrl } from "../lib/icons";
 import { localBadgeIconSrc, TIER_FRAME_SRC, FRAME_HOLE_RATIO } from "../lib/badgeFrames";
 import { FAMILY_META, type AchievementFamily, type AchievementTier } from "../lib/achievements";
 import { buildAchievementItems, SHOWCASE_LIMIT, type AchievementBoardItem } from "./achievementBoard";
+import MilestoneBar from "./MilestoneBar";
 
 // The full achievement browser for one character - everything the compact
 // header showcase (AchievementShowcase.tsx) deliberately leaves out:
@@ -289,14 +290,10 @@ function AchievementRow({
   const inset = Math.round((size - innerSize) / 2);
   const iconSrc = item.localIcon ? localBadgeIconSrc(item.localIcon) : wowIconUrl(item.cdnIcon);
 
-  const percent =
-    item.tiered && item.value !== null
-      ? item.nextThreshold
-        ? Math.min(100, Math.round((item.value / item.nextThreshold) * 100))
-        : 100
-      : item.earned
-      ? 100
-      : 0;
+  // The bar now runs the FULL Copper -> Platinum range (previously it reset
+  // to 0-100% of just "progress toward the next tier"), so the milestone
+  // dots for every tier can sit at their real position along one bar.
+  const maxThreshold = item.thresholds?.[item.thresholds.length - 1]?.value ?? 1;
 
   return (
     <div
@@ -339,9 +336,12 @@ function AchievementRow({
 
         {item.tiered ? (
           <>
-            <div className="mt-1.5 h-1.5 w-full max-w-sm overflow-hidden rounded-full bg-neutral-800">
-              <div className="h-full rounded-full bg-[#c9a566]" style={{ width: `${percent}%` }} />
-            </div>
+            <MilestoneBar
+              value={item.value ?? 0}
+              maxValue={maxThreshold}
+              thresholds={item.thresholds ?? []}
+              className="w-full max-w-sm"
+            />
             <div className="mt-1 text-[11px] text-gray-500">
               {(item.value ?? 0).toLocaleString()}
               {item.nextThreshold !== null ? ` / ${item.nextThreshold.toLocaleString()}` : " (maxed)"}

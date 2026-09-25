@@ -8,6 +8,7 @@ import { localBadgeIconSrc, TIER_FRAME_SRC, FRAME_HOLE_RATIO } from "../../lib/b
 import { TIERED_LOCAL_ICONS, RING_TIER_BADGES } from "../../lib/achievementBadges";
 import GameIcon from "../GameIcon";
 import TierFramedIcon from "../TierFramedIcon";
+import MilestoneBar from "../MilestoneBar";
 import {
   TIERED_ACHIEVEMENT_KINDS,
   tierLabel,
@@ -592,7 +593,6 @@ function ProgressRow({
   thresholds: { tier: AchievementTier; value: number }[];
   href?: string;
 }) {
-  const percent = Math.min(100, Math.round((value / maxThreshold) * 100));
   return (
     <div className="rounded-lg border border-neutral-700 bg-neutral-900/40 p-3">
       <div className="flex flex-wrap items-center gap-3">
@@ -611,9 +611,7 @@ function ProgressRow({
         <span className="shrink-0 text-sm font-semibold text-gray-300">{tier ?? "Untiered"}</span>
         <span className="shrink-0 text-lg font-bold text-[#c9a566]">{value.toLocaleString()}</span>
       </div>
-      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
-        <div className="h-full rounded-full bg-[#c9a566]" style={{ width: `${percent}%` }} />
-      </div>
+      <MilestoneBar value={value} maxValue={maxThreshold} thresholds={thresholds} />
       <div className="mt-1 flex justify-between text-[10px] text-gray-600">
         {thresholds.map((t) => (
           <span key={t.tier}>
