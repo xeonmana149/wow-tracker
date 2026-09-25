@@ -287,12 +287,12 @@ function RankBadge({ rank }: { rank: number }) {
         src={medalSrc}
         alt={`Rank ${rank}`}
         draggable={false}
-        className="w-10 shrink-0 object-contain"
+        className="w-14 shrink-0 object-contain"
       />
     );
   }
   return (
-    <span className="w-10 shrink-0 text-center text-lg font-bold text-gray-400">{rank}</span>
+    <span className="w-14 shrink-0 text-center text-lg font-bold text-gray-400">{rank}</span>
   );
 }
 
