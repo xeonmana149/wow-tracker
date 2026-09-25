@@ -53,18 +53,18 @@ export default function AchievementShowcase({
             {earnedCount} / {totalCount} · {totalPoints.toLocaleString()} pts
           </span>
         </h3>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {isOwner && (
             <Link
               href={`/character/${characterId}/achievements`}
-              className="text-xs font-semibold text-amber-400 hover:underline"
+              className="rounded border border-amber-700/60 px-2.5 py-1 text-xs font-semibold text-amber-300 hover:bg-amber-500/10"
             >
               Choose showcase →
             </Link>
           )}
           <Link
             href={`/character/${characterId}/achievements`}
-            className="text-xs font-semibold text-sky-400 hover:underline"
+            className="rounded border border-neutral-600 px-2.5 py-1 text-xs font-semibold text-gray-200 hover:bg-neutral-700"
           >
             View All →
           </Link>
