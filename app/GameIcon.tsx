@@ -14,26 +14,26 @@ import { iconUrl } from "../lib/icons";
 // it appeared inside a scrollable container - not just achievement
 // badges, but every class/race/profession icon too (reported via a
 // clipped "PALADIN" tooltip in the Activity feed).
-const TOOLTIP_MAX_WIDTH = 260;
 const TOOLTIP_GAP = 8;
 
 type TooltipPos = {
-  left: number;
-  arrowLeft: number;
+  centerX: number;
   openAbove: boolean;
   top: number;
 };
 
+// Centers on the anchor's actual midpoint and lets CSS transform:
+// translateX(-50%) center the box around that point using its REAL
+// rendered width, whatever that turns out to be - the box is `w-max`, so
+// a short label like "Paladin" is much narrower than a long achievement
+// name, and assuming a fixed width here (as an earlier version of this
+// did) put the box's on-screen center at half that assumed width away
+// from the icon instead of centered on it.
 function computeTooltipPos(rect: DOMRect): TooltipPos {
   const centerX = rect.left + rect.width / 2;
-  let left = centerX - TOOLTIP_MAX_WIDTH / 2;
-  left = Math.max(TOOLTIP_GAP, Math.min(left, window.innerWidth - TOOLTIP_MAX_WIDTH - TOOLTIP_GAP));
-  const arrowLeft = centerX - left;
-
   const openAbove = rect.top > 60;
   const top = openAbove ? rect.top - TOOLTIP_GAP : rect.bottom + TOOLTIP_GAP;
-
-  return { left, arrowLeft, openAbove, top };
+  return { centerX, openAbove, top };
 }
 
 export default function GameIcon({
@@ -123,19 +123,18 @@ export default function GameIcon({
             role="tooltip"
             className="pointer-events-none fixed z-[999] w-max max-w-[260px] rounded-lg border border-amber-700/70 bg-neutral-950 px-3 py-2 text-sm font-medium leading-snug text-amber-100 shadow-lg shadow-black/60"
             style={{
-              left: pos.left,
+              left: pos.centerX,
               top: pos.top,
-              transform: pos.openAbove ? "translateY(-100%)" : undefined,
+              transform: pos.openAbove ? "translate(-50%, -100%)" : "translateX(-50%)",
             }}
           >
             {label}
             <span
-              className={`absolute h-2 w-2 -translate-x-1/2 rotate-45 border-amber-700/70 bg-neutral-950 ${
+              className={`absolute left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-amber-700/70 bg-neutral-950 ${
                 pos.openAbove
                   ? "top-full -translate-y-1/2 border-b border-r"
                   : "bottom-full translate-y-1/2 border-l border-t"
               }`}
-              style={{ left: pos.arrowLeft }}
             />
           </div>,
           document.body
