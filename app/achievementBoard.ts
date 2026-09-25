@@ -14,7 +14,6 @@ import { FLAT_ACHIEVEMENT_FAMILY, FLAT_ACHIEVEMENT_NAME, FLAT_ACHIEVEMENT_POINTS
 import type { AchievementKind } from "../lib/achievements";
 import {
   ACHIEVEMENT_BADGES,
-  RING_TIER_BADGES,
   TIERED_LOCAL_ICONS,
   FLAT_LOCAL_ICONS,
 } from "../lib/achievementBadges";
@@ -34,8 +33,13 @@ export type AchievementBoardItem = {
   name: string;
   description: string;
   family: AchievementFamily;
-  localIcon: string | null; // slug for /public/badge-icons/<slug>.png, if any
-  cdnIcon: string; // WoW CDN icon name fallback for anything without local art yet
+  // slug for /public/badge-icons/<slug>.png, if any - null means this
+  // achievement has no uploaded art yet, and every renderer now shows
+  // BadgePlaceholder instead of falling back to a WoW CDN icon for it
+  // (2026-09-25, "remove the old wow icon badges and only use the ones I
+  // upload" - there used to be a `cdnIcon` field here for exactly that
+  // fallback, removed along with the fallback itself).
+  localIcon: string | null;
   earned: boolean;
   tier: AchievementTier | null; // tiered only
   points: number; // points earned so far from this one item (0 if unearned)
@@ -63,7 +67,6 @@ export function buildAchievementItems({
     const value = kind === "recipes" ? recipesCount : computeCounter(kind, statRows);
     const thresholds = tierThresholds(kind);
     const nextThreshold = thresholds.find((t) => t.value > value)?.value ?? null;
-    const ring = RING_TIER_BADGES[kind as TieredAchievementKind];
 
     items.push({
       key: kind,
@@ -72,7 +75,6 @@ export function buildAchievementItems({
       description: tierDescription(kind),
       family: tierFamily(kind),
       localIcon: TIERED_LOCAL_ICONS[kind] ?? null,
-      cdnIcon: ring?.Copper.icon ?? "inv_misc_questionmark",
       earned: tier !== null,
       tier,
       points: tier ? TIER_POINTS[tier] : 0,
@@ -93,7 +95,6 @@ export function buildAchievementItems({
       description: badge.label,
       family: FLAT_ACHIEVEMENT_FAMILY[kind],
       localIcon: FLAT_LOCAL_ICONS[kind] ?? null,
-      cdnIcon: badge.icon,
       earned: !!row,
       tier: null,
       points: row ? FLAT_ACHIEVEMENT_POINTS : 0,

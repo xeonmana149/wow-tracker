@@ -15,6 +15,7 @@ import type { AchievementKind, GoldTier, TieredAchievementKind } from "../lib/ac
 import { localBadgeIconSrc } from "../lib/badgeFrames";
 import GameIcon from "./GameIcon";
 import TierFramedIcon from "./TierFramedIcon";
+import BadgePlaceholder from "./BadgePlaceholder";
 import ProgressBars from "./ProgressBars";
 
 export type { AchievementKind, GoldTier };
@@ -335,11 +336,7 @@ export default function CharacterCard({
                     if (localIcon) {
                       return <TierFramedIcon key={a.kind} icon={localIcon} tier={a.tier} label={meta.label} size={46} />;
                     }
-                    return (
-                      <span key={a.kind} className={`inline-block rounded-full ${meta.ring}`}>
-                        <GameIcon src={wowIconUrl(meta.icon)} label={meta.label} size={46} round />
-                      </span>
-                    );
+                    return <BadgePlaceholder key={a.kind} tier={a.tier} label={meta.label} size={46} round />;
                   }
                   const badge = ACHIEVEMENT_BADGES[a.kind as AchievementKind];
                   if (!badge) return null;
@@ -355,7 +352,7 @@ export default function CharacterCard({
                       />
                     );
                   }
-                  return <GameIcon key={a.kind} src={wowIconUrl(badge.icon)} label={badge.label} size={46} round />;
+                  return <BadgePlaceholder key={a.kind} label={badge.label} size={46} round />;
                 })}
                 {createdLabel && (
                   <GameIcon

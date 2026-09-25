@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
-import { wowIconUrl } from "../lib/icons";
 import { localBadgeIconSrc, TIER_FRAME_SRC, FRAME_HOLE_RATIO, TIER_MEDAL_SRC } from "../lib/badgeFrames";
 import { FAMILY_META, type AchievementFamily, type AchievementTier } from "../lib/achievements";
 import { buildAchievementItems, SHOWCASE_LIMIT, type AchievementBoardItem } from "./achievementBoard";
 import MilestoneBar from "./MilestoneBar";
+import BadgePlaceholder from "./BadgePlaceholder";
 
 // The full achievement browser for one character - everything the compact
 // header showcase (AchievementShowcase.tsx) deliberately leaves out:
@@ -285,7 +285,6 @@ function AchievementRow({
   const size = 80;
   const innerSize = Math.round(size * FRAME_HOLE_RATIO);
   const inset = Math.round((size - innerSize) / 2);
-  const iconSrc = item.localIcon ? localBadgeIconSrc(item.localIcon) : wowIconUrl(item.cdnIcon);
 
   // The bar now runs the FULL Copper -> Platinum range (previously it reset
   // to 0-100% of just "progress toward the next tier"), so the milestone
@@ -307,45 +306,18 @@ function AchievementRow({
       }`}
     >
       <span className="group/rowicon relative inline-block shrink-0" style={{ width: size, height: size }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={iconSrc}
-          alt=""
-          draggable={false}
-          className={`absolute rounded-sm object-cover ${!item.earned ? "grayscale" : ""}`}
-          style={
-            item.tier && item.localIcon
-              ? { width: innerSize, height: innerSize, top: inset, left: inset }
-              : { width: size, height: size, top: 0, left: 0 }
-          }
-        />
-        {item.tier && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={TIER_FRAME_SRC[item.tier]}
-            alt=""
-            aria-hidden="true"
-            draggable={false}
-            className="pointer-events-none absolute inset-0 h-full w-full"
-          />
-        )}
-
-        {/* Hover-to-enlarge preview of the badge art. */}
-        <span
-          role="tooltip"
-          className="pointer-events-none absolute left-0 top-full z-30 mt-2 scale-95 rounded-lg border border-amber-700/70 bg-neutral-950 p-2 opacity-0 shadow-lg shadow-black/60 transition-all duration-100 group-hover/rowicon:scale-100 group-hover/rowicon:opacity-100"
-        >
-          <span className="relative block" style={{ width: previewSize, height: previewSize }}>
+        {item.localIcon ? (
+          <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={iconSrc}
+              src={localBadgeIconSrc(item.localIcon)}
               alt=""
               draggable={false}
-              className={`absolute rounded object-cover ${!item.earned ? "grayscale" : ""}`}
+              className={`absolute rounded-sm object-cover ${!item.earned ? "grayscale" : ""}`}
               style={
-                item.tier && item.localIcon
-                  ? { width: previewInner, height: previewInner, top: previewInset, left: previewInset }
-                  : { width: previewSize, height: previewSize, top: 0, left: 0 }
+                item.tier
+                  ? { width: innerSize, height: innerSize, top: inset, left: inset }
+                  : { width: size, height: size, top: 0, left: 0 }
               }
             />
             {item.tier && (
@@ -357,6 +329,45 @@ function AchievementRow({
                 draggable={false}
                 className="pointer-events-none absolute inset-0 h-full w-full"
               />
+            )}
+          </>
+        ) : (
+          <BadgePlaceholder tier={item.tier} label={item.name} size={size} dim={!item.earned} />
+        )}
+
+        {/* Hover-to-enlarge preview of the badge art. */}
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute left-0 top-full z-30 mt-2 scale-95 rounded-lg border border-amber-700/70 bg-neutral-950 p-2 opacity-0 shadow-lg shadow-black/60 transition-all duration-100 group-hover/rowicon:scale-100 group-hover/rowicon:opacity-100"
+        >
+          <span className="relative block" style={{ width: previewSize, height: previewSize }}>
+            {item.localIcon ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={localBadgeIconSrc(item.localIcon)}
+                  alt=""
+                  draggable={false}
+                  className={`absolute rounded object-cover ${!item.earned ? "grayscale" : ""}`}
+                  style={
+                    item.tier
+                      ? { width: previewInner, height: previewInner, top: previewInset, left: previewInset }
+                      : { width: previewSize, height: previewSize, top: 0, left: 0 }
+                  }
+                />
+                {item.tier && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={TIER_FRAME_SRC[item.tier]}
+                    alt=""
+                    aria-hidden="true"
+                    draggable={false}
+                    className="pointer-events-none absolute inset-0 h-full w-full"
+                  />
+                )}
+              </>
+            ) : (
+              <BadgePlaceholder tier={item.tier} label={item.name} size={previewSize} dim={!item.earned} />
             )}
           </span>
         </span>

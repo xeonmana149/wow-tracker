@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
-import { wowIconUrl } from "../lib/icons";
 import { localBadgeIconSrc } from "../lib/badgeFrames";
 import { TIER_FRAME_SRC, FRAME_HOLE_RATIO } from "../lib/badgeFrames";
+import BadgePlaceholder from "./BadgePlaceholder";
 import type { AchievementBoardItem } from "./achievementBoard";
 
 // The compact "trophy cabinet" strip that sits below a character's header -
@@ -95,8 +95,6 @@ function ShowcaseBadge({ characterId, item }: { characterId: string; item: Achie
   const innerSize = Math.round(size * FRAME_HOLE_RATIO);
   const inset = Math.round((size - innerSize) / 2);
 
-  const iconSrc = item.localIcon ? localBadgeIconSrc(item.localIcon) : wowIconUrl(item.cdnIcon);
-
   // Hover preview - blows the same art up big enough to actually see the
   // detail in it, since even at 72px a hand-painted badge icon is small.
   const previewSize = 180;
@@ -111,45 +109,18 @@ function ShowcaseBadge({ characterId, item }: { characterId: string; item: Achie
       onMouseLeave={() => setHover(false)}
     >
       <span className="relative inline-block shrink-0" style={{ width: size, height: size }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={iconSrc}
-          alt=""
-          draggable={false}
-          className="absolute rounded-sm object-cover"
-          style={
-            item.tier && item.localIcon
-              ? { width: innerSize, height: innerSize, top: inset, left: inset }
-              : { width: size, height: size, top: 0, left: 0 }
-          }
-        />
-        {item.tier && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={TIER_FRAME_SRC[item.tier]}
-            alt=""
-            aria-hidden="true"
-            draggable={false}
-            className="pointer-events-none absolute inset-0 h-full w-full"
-          />
-        )}
-      </span>
-      <span className="line-clamp-1 text-[11px] font-semibold text-gray-200">{item.name}</span>
-      {item.tier && <span className="text-[10px] text-gray-500">{item.tier}</span>}
-
-      {hover && (
-        <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-56 -translate-x-1/2 rounded-lg border border-amber-700/70 bg-neutral-950 p-2.5 text-left shadow-lg shadow-black/60">
-          <span className="relative mx-auto mb-2 block" style={{ width: previewSize, height: previewSize }}>
+        {item.localIcon ? (
+          <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={iconSrc}
+              src={localBadgeIconSrc(item.localIcon)}
               alt=""
               draggable={false}
-              className="absolute rounded object-cover"
+              className="absolute rounded-sm object-cover"
               style={
-                item.tier && item.localIcon
-                  ? { width: previewInner, height: previewInner, top: previewInset, left: previewInset }
-                  : { width: previewSize, height: previewSize, top: 0, left: 0 }
+                item.tier
+                  ? { width: innerSize, height: innerSize, top: inset, left: inset }
+                  : { width: size, height: size, top: 0, left: 0 }
               }
             />
             {item.tier && (
@@ -161,6 +132,45 @@ function ShowcaseBadge({ characterId, item }: { characterId: string; item: Achie
                 draggable={false}
                 className="pointer-events-none absolute inset-0 h-full w-full"
               />
+            )}
+          </>
+        ) : (
+          <BadgePlaceholder tier={item.tier} label={item.name} size={size} />
+        )}
+      </span>
+      <span className="line-clamp-1 text-[11px] font-semibold text-gray-200">{item.name}</span>
+      {item.tier && <span className="text-[10px] text-gray-500">{item.tier}</span>}
+
+      {hover && (
+        <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-56 -translate-x-1/2 rounded-lg border border-amber-700/70 bg-neutral-950 p-2.5 text-left shadow-lg shadow-black/60">
+          <span className="relative mx-auto mb-2 block" style={{ width: previewSize, height: previewSize }}>
+            {item.localIcon ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={localBadgeIconSrc(item.localIcon)}
+                  alt=""
+                  draggable={false}
+                  className="absolute rounded object-cover"
+                  style={
+                    item.tier
+                      ? { width: previewInner, height: previewInner, top: previewInset, left: previewInset }
+                      : { width: previewSize, height: previewSize, top: 0, left: 0 }
+                  }
+                />
+                {item.tier && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={TIER_FRAME_SRC[item.tier]}
+                    alt=""
+                    aria-hidden="true"
+                    draggable={false}
+                    className="pointer-events-none absolute inset-0 h-full w-full"
+                  />
+                )}
+              </>
+            ) : (
+              <BadgePlaceholder tier={item.tier} label={item.name} size={previewSize} />
             )}
           </span>
           <div className="text-sm font-bold text-amber-100">{item.name}</div>

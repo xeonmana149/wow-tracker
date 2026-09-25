@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { PRIMARY_PROFESSIONS, PROFESSION_ICONS, RACE_ICONS, classIcon, wowIconUrl } from "../lib/icons";
+import { PRIMARY_PROFESSIONS, PROFESSION_ICONS, RACE_ICONS, classIcon } from "../lib/icons";
 import { localBadgeIconSrc } from "../lib/badgeFrames";
 import GameIcon from "./GameIcon";
 import TierFramedIcon from "./TierFramedIcon";
+import BadgePlaceholder from "./BadgePlaceholder";
 import {
   ACHIEVEMENT_BADGES,
   RING_TIER_BADGES,
@@ -143,7 +144,7 @@ export default function CharacterRow({ c }: { c: CardCharacter }) {
                   if (localIcon) {
                     return <TierFramedIcon key={a.kind} icon={localIcon} tier={a.tier} label={meta.label} size={28} />;
                   }
-                  return <GameIcon key={a.kind} src={wowIconUrl(meta.icon)} label={meta.label} size={28} round />;
+                  return <BadgePlaceholder key={a.kind} tier={a.tier} label={meta.label} size={28} round />;
                 }
                 const badge = ACHIEVEMENT_BADGES[a.kind as AchievementKind];
                 if (!badge) return null;
@@ -153,7 +154,7 @@ export default function CharacterRow({ c }: { c: CardCharacter }) {
                     <GameIcon key={a.kind} src={localBadgeIconSrc(flatLocalIcon)} label={badge.label} size={28} round />
                   );
                 }
-                return <GameIcon key={a.kind} src={wowIconUrl(badge.icon)} label={badge.label} size={28} round />;
+                return <BadgePlaceholder key={a.kind} label={badge.label} size={28} round />;
               })}
             </span>
           )}

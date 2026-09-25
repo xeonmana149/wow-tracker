@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
-import { classIcon, wowIconUrl } from "../../lib/icons";
-import { localBadgeIconSrc, TIER_FRAME_SRC, FRAME_HOLE_RATIO, TIER_MEDAL_SRC, RANK_ICON_SRC } from "../../lib/badgeFrames";
+import { classIcon } from "../../lib/icons";
+import { localBadgeIconSrc, TIER_MEDAL_SRC, RANK_ICON_SRC } from "../../lib/badgeFrames";
 import { TIERED_LOCAL_ICONS, RING_TIER_BADGES } from "../../lib/achievementBadges";
 import GameIcon from "../GameIcon";
 import TierFramedIcon from "../TierFramedIcon";
 import MilestoneBar from "../MilestoneBar";
+import BadgePlaceholder from "../BadgePlaceholder";
 import {
   TIERED_ACHIEVEMENT_KINDS,
   tierLabel,
@@ -396,9 +397,10 @@ function TierCountsRow({ counts }: { counts: Record<AchievementTier, number> }) 
 // Renders one tiered achievement's actual badge art - the same
 // TIERED_LOCAL_ICONS/RING_TIER_BADGES lookup and TierFramedIcon component
 // the character page, achievement browser and character rows all use now
-// (2026-09-25 badge-art rework), instead of this board's old generic medal
-// emoji. Falls back to the ring-and-CDN-icon treatment for any kind that
-// hasn't gotten local art yet, same as everywhere else.
+// (2026-09-25 badge-art rework). Kinds without uploaded art get
+// BadgePlaceholder instead of the old ring-and-CDN-icon treatment - nothing
+// here renders a WoW CDN icon for a badge any more ("remove the old wow
+// icon badges and only use the ones I upload").
 function AchievementKindIcon({
   kind,
   tier,
@@ -418,27 +420,23 @@ function AchievementKindIcon({
     if (localIcon) {
       return <TierFramedIcon icon={localIcon} tier={tier} label={label} size={size} />;
     }
-    const meta = ring?.[tier];
-    return (
-      <span className={`inline-block shrink-0 rounded-full ${meta?.ring ?? ""}`}>
-        <GameIcon src={wowIconUrl(meta?.icon ?? "inv_misc_questionmark")} label={label} size={size} round />
-      </span>
-    );
+    return <BadgePlaceholder tier={tier} label={ring?.[tier]?.label ?? label} size={size} round />;
   }
 
   // No tier - either this row hasn't earned one yet, or this is the
   // header's plain preview icon for whatever achievement is selected.
-  const cdnIcon = ring?.Copper.icon ?? "inv_misc_questionmark";
-  const src = localIcon ? localBadgeIconSrc(localIcon) : wowIconUrl(cdnIcon);
-  return (
-    <span
-      className={`relative inline-block shrink-0 overflow-hidden rounded-sm ${dim ? "opacity-50 grayscale" : ""}`}
-      style={{ width: size, height: size }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt="" draggable={false} className="h-full w-full object-cover" />
-    </span>
-  );
+  if (localIcon) {
+    return (
+      <span
+        className={`relative inline-block shrink-0 overflow-hidden rounded-sm ${dim ? "opacity-50 grayscale" : ""}`}
+        style={{ width: size, height: size }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={localBadgeIconSrc(localIcon)} alt="" draggable={false} className="h-full w-full object-cover" />
+      </span>
+    );
+  }
+  return <BadgePlaceholder label={label} size={size} dim={dim} />;
 }
 
 function AchievementsBoard({

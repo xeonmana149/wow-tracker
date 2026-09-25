@@ -24,10 +24,10 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
-import { wowIconUrl } from "../../../lib/icons";
 import { localBadgeIconSrc } from "../../../lib/badgeFrames";
 import GameIcon from "../../GameIcon";
 import TierFramedIcon from "../../TierFramedIcon";
+import BadgePlaceholder from "../../BadgePlaceholder";
 import {
   ACHIEVEMENT_BADGES,
   TIERED_LOCAL_ICONS,
@@ -269,7 +269,7 @@ export default function BadgeTesterPage() {
                     {localIcon ? (
                       <GameIcon src={localBadgeIconSrc(localIcon)} label={badge.label} size={32} round />
                     ) : (
-                      <GameIcon src={wowIconUrl(badge.icon)} label={badge.label} size={32} round />
+                      <BadgePlaceholder label={badge.label} size={32} round />
                     )}
                     {kind}
                   </button>
@@ -280,7 +280,6 @@ export default function BadgeTesterPage() {
             {TIERED_ACHIEVEMENT_KINDS.map((kind) => {
               const current = tiers[kind] ?? null;
               const localIcon = TIERED_LOCAL_ICONS[kind];
-              const fallbackSet = kind === "gold" ? null : TIER_BADGE_SETS[kind];
               return (
                 <div key={kind}>
                   <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -306,17 +305,12 @@ export default function BadgeTesterPage() {
                           title={label}
                           className={`flex items-center gap-1.5 rounded-full py-1.5 pl-1.5 pr-3 text-sm disabled:opacity-50 ${
                             current === tier ? "bg-amber-500 text-neutral-950" : "bg-neutral-800 text-gray-300"
-                          } ${localIcon ? "" : fallbackSet?.[tier].ring ?? ""}`}
+                          }`}
                         >
                           {localIcon ? (
                             <TierFramedIcon icon={localIcon} tier={tier} label={label} size={32} />
                           ) : (
-                            <GameIcon
-                              src={wowIconUrl(fallbackSet?.[tier].icon ?? "inv_misc_questionmark")}
-                              label={label}
-                              size={32}
-                              round
-                            />
+                            <BadgePlaceholder tier={tier} label={label} size={32} round />
                           )}
                           {tier}
                         </button>
