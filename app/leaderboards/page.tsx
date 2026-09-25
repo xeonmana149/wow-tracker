@@ -3,8 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
-import { classIcon } from "../../lib/icons";
+import { classIcon, wowIconUrl } from "../../lib/icons";
+import { localBadgeIconSrc, TIER_FRAME_SRC, FRAME_HOLE_RATIO } from "../../lib/badgeFrames";
+import { TIERED_LOCAL_ICONS, RING_TIER_BADGES } from "../../lib/achievementBadges";
 import GameIcon from "../GameIcon";
+import TierFramedIcon from "../TierFramedIcon";
 import {
   TIERED_ACHIEVEMENT_KINDS,
   tierLabel,
@@ -384,6 +387,54 @@ function TierCountsRow({ counts }: { counts: Record<AchievementTier, number> }) 
   );
 }
 
+// Renders one tiered achievement's actual badge art - the same
+// TIERED_LOCAL_ICONS/RING_TIER_BADGES lookup and TierFramedIcon component
+// the character page, achievement browser and character rows all use now
+// (2026-09-25 badge-art rework), instead of this board's old generic medal
+// emoji. Falls back to the ring-and-CDN-icon treatment for any kind that
+// hasn't gotten local art yet, same as everywhere else.
+function AchievementKindIcon({
+  kind,
+  tier,
+  size = 32,
+  dim = false,
+}: {
+  kind: TieredAchievementKind;
+  tier: AchievementTier | null;
+  size?: number;
+  dim?: boolean;
+}) {
+  const localIcon = TIERED_LOCAL_ICONS[kind];
+  const ring = RING_TIER_BADGES[kind];
+  const label = tierLabel(kind);
+
+  if (tier) {
+    if (localIcon) {
+      return <TierFramedIcon icon={localIcon} tier={tier} label={label} size={size} />;
+    }
+    const meta = ring?.[tier];
+    return (
+      <span className={`inline-block shrink-0 rounded-full ${meta?.ring ?? ""}`}>
+        <GameIcon src={wowIconUrl(meta?.icon ?? "inv_misc_questionmark")} label={label} size={size} round />
+      </span>
+    );
+  }
+
+  // No tier - either this row hasn't earned one yet, or this is the
+  // header's plain preview icon for whatever achievement is selected.
+  const cdnIcon = ring?.Copper.icon ?? "inv_misc_questionmark";
+  const src = localIcon ? localBadgeIconSrc(localIcon) : wowIconUrl(cdnIcon);
+  return (
+    <span
+      className={`relative inline-block shrink-0 overflow-hidden rounded-sm ${dim ? "opacity-50 grayscale" : ""}`}
+      style={{ width: size, height: size }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt="" draggable={false} className="h-full w-full object-cover" />
+    </span>
+  );
+}
+
 function AchievementsBoard({
   characters,
   accountGroups,
@@ -460,12 +511,20 @@ function AchievementsBoard({
             ))}
           </select>
         </div>
-        <div className="flex-1">
-          <p className="text-sm font-semibold text-gray-200">{tierLabel(achievementKind)}</p>
-          <p className="text-xs text-gray-500">{tierDescription(achievementKind)}</p>
-          <p className="mt-1 text-xs text-gray-500">
-            {thresholds.map((t) => `${TIER_MEDAL[t.tier]} ${t.tier} ${t.value.toLocaleString()}`).join("  ·  ")}
-          </p>
+        <div className="flex flex-1 items-start gap-3">
+          <AchievementKindIcon kind={achievementKind} tier={null} size={44} />
+          <div>
+            <p className="text-sm font-semibold text-gray-200">{tierLabel(achievementKind)}</p>
+            <p className="text-xs text-gray-500">{tierDescription(achievementKind)}</p>
+            <div className="mt-2 flex flex-wrap gap-3">
+              {thresholds.map((t) => (
+                <span key={t.tier} className="flex items-center gap-1.5 text-xs text-gray-400">
+                  <AchievementKindIcon kind={achievementKind} tier={t.tier} size={24} />
+                  {t.tier} {t.value.toLocaleString()}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -482,6 +541,7 @@ function AchievementsBoard({
                 sublabel={`Level ${row.c.level} ${row.c.class}`}
                 value={row.value}
                 tier={row.tier}
+                achievementKind={achievementKind}
                 maxThreshold={maxThreshold}
                 thresholds={thresholds}
                 href={`/character/${row.c.id}`}
@@ -500,6 +560,7 @@ function AchievementsBoard({
                 sublabel={`${row.characters.length} character${row.characters.length === 1 ? "" : "s"}`}
                 value={row.value}
                 tier={row.tier}
+                achievementKind={achievementKind}
                 maxThreshold={maxThreshold}
                 thresholds={thresholds}
               />
@@ -516,6 +577,7 @@ function ProgressRow({
   sublabel,
   value,
   tier,
+  achievementKind,
   maxThreshold,
   thresholds,
   href,
@@ -525,6 +587,7 @@ function ProgressRow({
   sublabel: string;
   value: number;
   tier: AchievementTier | null;
+  achievementKind: TieredAchievementKind;
   maxThreshold: number;
   thresholds: { tier: AchievementTier; value: number }[];
   href?: string;
@@ -534,6 +597,7 @@ function ProgressRow({
     <div className="rounded-lg border border-neutral-700 bg-neutral-900/40 p-3">
       <div className="flex flex-wrap items-center gap-3">
         <RankBadge rank={rank} />
+        <AchievementKindIcon kind={achievementKind} tier={tier} size={40} dim={!tier} />
         <div className="min-w-0 flex-1">
           {href ? (
             <Link href={href} className="font-semibold text-white hover:underline">
@@ -544,9 +608,7 @@ function ProgressRow({
           )}
           <div className="text-xs text-gray-500">{sublabel}</div>
         </div>
-        <span className="shrink-0 text-sm font-semibold text-gray-300">
-          {tier ? `${TIER_MEDAL[tier]} ${tier}` : "Untiered"}
-        </span>
+        <span className="shrink-0 text-sm font-semibold text-gray-300">{tier ?? "Untiered"}</span>
         <span className="shrink-0 text-lg font-bold text-[#c9a566]">{value.toLocaleString()}</span>
       </div>
       <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
