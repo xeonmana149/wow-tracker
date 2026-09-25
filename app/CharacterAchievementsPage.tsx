@@ -1,0 +1,300 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { supabase } from "../lib/supabase";
+import { wowIconUrl } from "../lib/icons";
+import { localBadgeIconSrc, TIER_FRAME_SRC, FRAME_HOLE_RATIO } from "../lib/badgeFrames";
+import { FAMILY_META, type AchievementFamily, type AchievementTier } from "../lib/achievements";
+import { buildAchievementItems, type AchievementBoardItem } from "./achievementBoard";
+
+// The full achievement browser for one character - everything the compact
+// header showcase (AchievementShowcase.tsx) deliberately leaves out:
+// categories, sorting, progress bars and points for every achievement,
+// earned or not. Reached via that showcase's "View All" link, at
+// /character/[id]/achievements.
+
+type SortMode = "category" | "alphabetical" | "closest" | "highestTier" | "recent";
+
+const TIER_ORDER: AchievementTier[] = ["Platinum", "Gold", "Silver", "Copper"];
+const TIER_MEDAL: Record<AchievementTier, string> = {
+  Platinum: "💎",
+  Gold: "🥇",
+  Silver: "🥈",
+  Copper: "🥉",
+};
+const TIER_RANK: Record<AchievementTier, number> = { Platinum: 3, Gold: 2, Silver: 1, Copper: 0 };
+
+export default function CharacterAchievementsPage({ characterId }: { characterId: string }) {
+  const [loading, setLoading] = useState(true);
+  const [characterName, setCharacterName] = useState("");
+  const [items, setItems] = useState<AchievementBoardItem[]>([]);
+  const [family, setFamily] = useState<AchievementFamily | "all">("all");
+  const [sort, setSort] = useState<SortMode>("category");
+
+  useEffect(() => {
+    async function load() {
+      const [{ data: character }, { data: achievementRows }, { data: statRows }, { data: professionRows }] =
+        await Promise.all([
+          supabase.from("characters").select("name").eq("id", characterId).single(),
+          supabase.from("achievements").select("kind, tier, earned_at").eq("character_id", characterId),
+          supabase.from("character_statistics").select("category, name, value").eq("character_id", characterId),
+          supabase.from("character_professions").select("recipes").eq("character_id", characterId),
+        ]);
+
+      setCharacterName(character?.name ?? "");
+
+      const recipesCount = (professionRows ?? []).reduce(
+        (sum: number, p: { recipes: unknown[] | null }) => sum + (Array.isArray(p.recipes) ? p.recipes.length : 0),
+        0
+      );
+
+      setItems(
+        buildAchievementItems({
+          achievementRows: (achievementRows ?? []) as {
+            kind: string;
+            tier: AchievementTier | null;
+            earned_at: string | null;
+          }[],
+          statRows: (statRows ?? []) as { category: string; name: string; value: string }[],
+          recipesCount,
+        })
+      );
+      setLoading(false);
+    }
+    load();
+  }, [characterId]);
+
+  const totalPoints = useMemo(() => items.reduce((sum, i) => sum + i.points, 0), [items]);
+  const tierCounts = useMemo(() => {
+    const counts: Record<AchievementTier, number> = { Platinum: 0, Gold: 0, Silver: 0, Copper: 0 };
+    for (const i of items) if (i.tier) counts[i.tier] += 1;
+    return counts;
+  }, [items]);
+  const earnedCount = items.filter((i) => i.earned).length;
+
+  const familiesPresent = useMemo(() => {
+    const set = new Set<AchievementFamily>();
+    for (const i of items) set.add(i.family);
+    return Array.from(set);
+  }, [items]);
+
+  const filtered = useMemo(
+    () => (family === "all" ? items : items.filter((i) => i.family === family)),
+    [items, family]
+  );
+
+  const sorted = useMemo(() => {
+    const list = [...filtered];
+    switch (sort) {
+      case "alphabetical":
+        return list.sort((a, b) => a.name.localeCompare(b.name));
+      case "highestTier":
+        return list.sort((a, b) => {
+          const rankA = a.tier ? TIER_RANK[a.tier] : a.earned ? -0.5 : -1;
+          const rankB = b.tier ? TIER_RANK[b.tier] : b.earned ? -0.5 : -1;
+          return rankB - rankA;
+        });
+      case "closest":
+        return list.sort((a, b) => {
+          const pctA = a.tiered && a.nextThreshold ? (a.value ?? 0) / a.nextThreshold : a.earned ? 1 : 0;
+          const pctB = b.tiered && b.nextThreshold ? (b.value ?? 0) / b.nextThreshold : b.earned ? 1 : 0;
+          return pctB - pctA;
+        });
+      case "recent":
+        return list.sort((a, b) => {
+          const timeA = a.earnedAt ? new Date(a.earnedAt).getTime() : 0;
+          const timeB = b.earnedAt ? new Date(b.earnedAt).getTime() : 0;
+          return timeB - timeA;
+        });
+      case "category":
+      default:
+        return list.sort(
+          (a, b) => a.family.localeCompare(b.family) || FAMILY_META[a.family].label.localeCompare(FAMILY_META[b.family].label)
+        );
+    }
+  }, [filtered, sort]);
+
+  const grouped = useMemo(() => {
+    if (sort !== "category") return [{ family: null as AchievementFamily | null, items: sorted }];
+    const map = new Map<AchievementFamily, AchievementBoardItem[]>();
+    for (const i of sorted) {
+      const list = map.get(i.family) ?? [];
+      list.push(i);
+      map.set(i.family, list);
+    }
+    return Array.from(map.entries()).map(([fam, list]) => ({ family: fam, items: list }));
+  }, [sorted, sort]);
+
+  if (loading) {
+    return <main className="mx-auto max-w-4xl p-4 text-white md:p-6">Loading achievements...</main>;
+  }
+
+  return (
+    <main className="mx-auto max-w-4xl p-4 text-white md:p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <Link href={`/character/${characterId}`} className="text-xs text-gray-500 hover:underline">
+            ← Back to {characterName || "character"}
+          </Link>
+          <h1 className="text-3xl font-bold">Achievements</h1>
+        </div>
+        <div className="text-lg font-bold text-[#c9a566]">{totalPoints.toLocaleString()} Achievement Points</div>
+      </div>
+
+      <div className="mt-4 rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-sm text-gray-400">
+            {earnedCount} / {items.length} earned
+          </span>
+          <div className="flex gap-4 text-sm">
+            {TIER_ORDER.map((t) => (
+              <span key={t} className="text-gray-300">
+                {TIER_MEDAL[t]} {t} <span className="font-bold text-white">{tierCounts[t]}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setFamily("all")}
+          className={`rounded px-3 py-1.5 text-sm font-semibold ${
+            family === "all" ? "bg-red-700 text-white" : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
+          }`}
+        >
+          All
+        </button>
+        {familiesPresent.map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setFamily(f)}
+            className={`rounded px-3 py-1.5 text-sm font-semibold ${
+              family === f ? "bg-red-700 text-white" : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
+            }`}
+          >
+            {FAMILY_META[f].icon} {FAMILY_META[f].label}
+          </button>
+        ))}
+
+        <span className="mx-1 h-5 w-px bg-neutral-700" />
+
+        <label className="flex items-center gap-1.5 text-sm text-gray-400">
+          Sort by
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortMode)}
+            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-gray-200"
+          >
+            <option value="category">Category</option>
+            <option value="alphabetical">Alphabetical</option>
+            <option value="closest">Closest to completion</option>
+            <option value="highestTier">Highest tier</option>
+            <option value="recent">Recently progressed</option>
+          </select>
+        </label>
+      </div>
+
+      <div className="mt-4 flex flex-col gap-6">
+        {grouped.map((group) => (
+          <div key={group.family ?? "flat"}>
+            {group.family && (
+              <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-gray-400">
+                {FAMILY_META[group.family].icon} {FAMILY_META[group.family].label}
+              </h2>
+            )}
+            <div className="flex flex-col gap-2">
+              {group.items.map((item) => (
+                <AchievementRow key={item.key} item={item} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </main>
+  );
+}
+
+function AchievementRow({ item }: { item: AchievementBoardItem }) {
+  const size = 48;
+  const innerSize = Math.round(size * FRAME_HOLE_RATIO);
+  const inset = Math.round((size - innerSize) / 2);
+  const iconSrc = item.localIcon ? localBadgeIconSrc(item.localIcon) : wowIconUrl(item.cdnIcon);
+
+  const percent =
+    item.tiered && item.value !== null
+      ? item.nextThreshold
+        ? Math.min(100, Math.round((item.value / item.nextThreshold) * 100))
+        : 100
+      : item.earned
+      ? 100
+      : 0;
+
+  return (
+    <div
+      id={item.key}
+      className={`flex items-center gap-3 rounded-lg border p-3 ${
+        item.earned ? "border-neutral-700 bg-neutral-900/40" : "border-neutral-800 bg-neutral-900/20 opacity-60"
+      }`}
+    >
+      <span className="relative inline-block shrink-0" style={{ width: size, height: size }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={iconSrc}
+          alt=""
+          draggable={false}
+          className={`absolute rounded-sm object-cover ${!item.earned ? "grayscale" : ""}`}
+          style={
+            item.tier && item.localIcon
+              ? { width: innerSize, height: innerSize, top: inset, left: inset }
+              : { width: size, height: size, top: 0, left: 0 }
+          }
+        />
+        {item.tier && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={TIER_FRAME_SRC[item.tier]}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+            className="pointer-events-none absolute inset-0 h-full w-full"
+          />
+        )}
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-2">
+          <span className="font-bold text-white">{item.name}</span>
+          {item.tier && <span className="text-xs font-semibold text-amber-400">{TIER_MEDAL[item.tier]} {item.tier}</span>}
+        </div>
+        <div className="text-xs text-gray-500">{item.description}</div>
+
+        {item.tiered ? (
+          <>
+            <div className="mt-1.5 h-1.5 w-full max-w-sm overflow-hidden rounded-full bg-neutral-800">
+              <div className="h-full rounded-full bg-[#c9a566]" style={{ width: `${percent}%` }} />
+            </div>
+            <div className="mt-1 text-[11px] text-gray-500">
+              {(item.value ?? 0).toLocaleString()}
+              {item.nextThreshold !== null ? ` / ${item.nextThreshold.toLocaleString()}` : " (maxed)"}
+              {item.thresholds && (
+                <span className="ml-2">
+                  {item.thresholds.map((t) => `${t.tier} ${t.value.toLocaleString()}`).join(" · ")}
+                </span>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="mt-1 text-[11px] text-gray-500">{item.earned ? "Earned" : "Not yet earned"}</div>
+        )}
+      </div>
+
+      <span className="shrink-0 text-sm font-bold text-[#c9a566]">
+        {item.earned ? `+${item.points}` : "—"} pts
+      </span>
+    </div>
+  );
+}

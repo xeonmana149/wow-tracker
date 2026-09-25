@@ -5,6 +5,7 @@ import { RACE_FACTION } from "../../../lib/options";
 import { pointsForLevel } from "../../../lib/talents";
 import { LEGACY_CAP } from "../../../lib/legacy";
 import { characterBars, whatsNext } from "../../../lib/progress";
+import type { AchievementTier } from "../../../lib/achievements";
 import OwnerActions from "./OwnerActions";
 import ProfessionsCard from "./ProfessionsCard";
 import GearCard from "./GearCard";
@@ -17,6 +18,8 @@ import NeedsSetupBanner from "./NeedsSetupBanner";
 import WishlistCard from "./WishlistCard";
 import PreBisCard from "./PreBisCard";
 import StatisticsCard from "./StatisticsCard";
+import AchievementShowcase from "../../AchievementShowcase";
+import { buildAchievementItems, pickShowcaseItems } from "../../achievementBoard";
 
 
 export const dynamic = "force-dynamic";
@@ -84,6 +87,15 @@ export default async function CharacterPage({
     .select("category, name, value")
     .eq("character_id", id);
 
+  // Powers the header's Achievements showcase below - kept as its own
+  // small query (like every other section on this page) rather than
+  // folded into Promise.all with the rest, so it's a one-line addition
+  // instead of restructuring this page's existing sequential-await style.
+  const { data: achievementRows } = await supabase
+    .from("achievements")
+    .select("kind, tier, earned_at")
+    .eq("character_id", id);
+
   const { data: prebisRows } = await supabase
     .from("character_prebis")
     .select("id, item_id, slot, items(name, quality_color, icon, icon_name)")
@@ -139,6 +151,27 @@ export default async function CharacterPage({
       weakGearSlots[t.slot] = { requiredLevel: t.value, characterLevel: t.max };
     }
   }
+
+  // Everything the header's Achievements showcase needs - built the same
+  // way the full /achievements page builds it (see app/achievementBoard.ts),
+  // so the two can never disagree about what's earned or how close the
+  // next tier is.
+  const recipesCount = (professions ?? []).reduce(
+    (n, p) => n + (Array.isArray(p.recipes) ? p.recipes.length : 0),
+    0
+  );
+  const achievementItems = buildAchievementItems({
+    achievementRows: (achievementRows ?? []) as {
+      kind: string;
+      tier: AchievementTier | null;
+      earned_at: string | null;
+    }[],
+    statRows: statisticRows ?? [],
+    recipesCount,
+  });
+  const showcaseItems = pickShowcaseItems(achievementItems);
+  const earnedAchievementCount = achievementItems.filter((i) => i.earned).length;
+  const achievementPoints = achievementItems.reduce((sum, i) => sum + i.points, 0);
 
   return (
     <main className="mx-auto max-w-[1500px] p-4 md:p-6">
@@ -209,6 +242,14 @@ export default async function CharacterPage({
             <OwnerActions characterId={character.id} ownerId={character.user_id} />
           </div>
         </div>
+
+        <AchievementShowcase
+          characterId={character.id}
+          items={showcaseItems}
+          earnedCount={earnedAchievementCount}
+          totalCount={achievementItems.length}
+          totalPoints={achievementPoints}
+        />
       </header>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">

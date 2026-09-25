@@ -572,7 +572,7 @@ export async function awardAchievement(
   const { data, error } = await supabase
     .from("achievements")
     .upsert(
-      { character_id: characterId, kind },
+      { character_id: characterId, kind, earned_at: new Date().toISOString() },
       { onConflict: "character_id,kind", ignoreDuplicates: true }
     )
     .select("kind");
@@ -609,7 +609,7 @@ export async function awardTier(
   const { error } = await supabase
     .from("achievements")
     .upsert(
-      { character_id: characterId, kind, tier: reached.tier },
+      { character_id: characterId, kind, tier: reached.tier, earned_at: new Date().toISOString() },
       { onConflict: "character_id,kind" }
     );
   if (error) return null;
