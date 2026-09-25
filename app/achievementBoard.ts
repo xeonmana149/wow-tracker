@@ -11,13 +11,13 @@ import {
   type AchievementFamily,
 } from "../lib/achievements";
 import { FLAT_ACHIEVEMENT_FAMILY, FLAT_ACHIEVEMENT_NAME, FLAT_ACHIEVEMENT_POINTS } from "../lib/achievementCategories";
+import type { AchievementKind } from "../lib/achievements";
 import {
   ACHIEVEMENT_BADGES,
   RING_TIER_BADGES,
   TIERED_LOCAL_ICONS,
   FLAT_LOCAL_ICONS,
-  type AchievementKind,
-} from "./CharacterCard";
+} from "../lib/achievementBadges";
 
 // One shared shape covering BOTH flat and tiered achievements, built fresh
 // from a character's achievement rows + live stats - used by both the
