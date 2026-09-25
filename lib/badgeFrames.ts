@@ -22,3 +22,25 @@ export const FRAME_HOLE_RATIO = 93 / 110;
 export function localBadgeIconSrc(slug: string) {
   return `/badge-icons/${slug}.png`;
 }
+
+// Full stand-alone medallion art (2026-09-25) - a complete laurel-and-gem
+// medal per tier, from /public/tier-medals/. Distinct from TIER_FRAME_SRC
+// above (a thin border that wraps a badge's own icon): these replace the
+// plain 💎🥇🥈🥉 emoji wherever a whole *count* of achievements at a tier is
+// shown (leaderboards' tier tallies, the achievement browser's summary bar)
+// rather than one specific achievement's art.
+export const TIER_MEDAL_SRC: Record<GoldTier, string> = {
+  Copper: "/tier-medals/copper.png",
+  Silver: "/tier-medals/silver.png",
+  Gold: "/tier-medals/gold.png",
+  Platinum: "/tier-medals/platinum.png",
+};
+
+// Leaderboard position medallions (2026-09-25), replacing the plain
+// 🥇🥈🥉 emoji RankBadge used to show for the top 3 spots. Only 1st-3rd get
+// dedicated art - anything past that still falls back to a plain number.
+export const RANK_ICON_SRC: Record<1 | 2 | 3, string> = {
+  1: "/rank-icons/rank-1.png",
+  2: "/rank-icons/rank-2.png",
+  3: "/rank-icons/rank-3.png",
+};

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
 import { wowIconUrl } from "../lib/icons";
-import { localBadgeIconSrc, TIER_FRAME_SRC, FRAME_HOLE_RATIO } from "../lib/badgeFrames";
+import { localBadgeIconSrc, TIER_FRAME_SRC, FRAME_HOLE_RATIO, TIER_MEDAL_SRC } from "../lib/badgeFrames";
 import { FAMILY_META, type AchievementFamily, type AchievementTier } from "../lib/achievements";
 import { buildAchievementItems, SHOWCASE_LIMIT, type AchievementBoardItem } from "./achievementBoard";
 import MilestoneBar from "./MilestoneBar";
@@ -18,12 +18,6 @@ import MilestoneBar from "./MilestoneBar";
 type SortMode = "category" | "alphabetical" | "closest" | "highestTier" | "recent";
 
 const TIER_ORDER: AchievementTier[] = ["Platinum", "Gold", "Silver", "Copper"];
-const TIER_MEDAL: Record<AchievementTier, string> = {
-  Platinum: "💎",
-  Gold: "🥇",
-  Silver: "🥈",
-  Copper: "🥉",
-};
 const TIER_RANK: Record<AchievementTier, number> = { Platinum: 3, Gold: 2, Silver: 1, Copper: 0 };
 
 export default function CharacterAchievementsPage({ characterId }: { characterId: string }) {
@@ -184,8 +178,10 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
           </span>
           <div className="flex gap-4 text-sm">
             {TIER_ORDER.map((t) => (
-              <span key={t} className="text-gray-300">
-                {TIER_MEDAL[t]} {t} <span className="font-bold text-white">{tierCounts[t]}</span>
+              <span key={t} className="flex items-center gap-1.5 text-gray-300">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={TIER_MEDAL_SRC[t]} alt={t} draggable={false} className="h-5 w-5 object-contain" />
+                {t} <span className="font-bold text-white">{tierCounts[t]}</span>
               </span>
             ))}
           </div>
@@ -330,7 +326,13 @@ function AchievementRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-2">
           <span className="font-bold text-white">{item.name}</span>
-          {item.tier && <span className="text-xs font-semibold text-amber-400">{TIER_MEDAL[item.tier]} {item.tier}</span>}
+          {item.tier && (
+            <span className="flex items-center gap-1 text-xs font-semibold text-amber-400">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={TIER_MEDAL_SRC[item.tier]} alt="" draggable={false} className="h-4 w-4 object-contain" />
+              {item.tier}
+            </span>
+          )}
         </div>
         <div className="text-xs text-gray-500">{item.description}</div>
 

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { classIcon, wowIconUrl } from "../../lib/icons";
-import { localBadgeIconSrc, TIER_FRAME_SRC, FRAME_HOLE_RATIO } from "../../lib/badgeFrames";
+import { localBadgeIconSrc, TIER_FRAME_SRC, FRAME_HOLE_RATIO, TIER_MEDAL_SRC, RANK_ICON_SRC } from "../../lib/badgeFrames";
 import { TIERED_LOCAL_ICONS, RING_TIER_BADGES } from "../../lib/achievementBadges";
 import GameIcon from "../GameIcon";
 import TierFramedIcon from "../TierFramedIcon";
@@ -62,12 +62,6 @@ type ProfessionRow = {
 };
 
 const TIER_ORDER: AchievementTier[] = ["Platinum", "Gold", "Silver", "Copper"];
-const TIER_MEDAL: Record<AchievementTier, string> = {
-  Platinum: "💎",
-  Gold: "🥇",
-  Silver: "🥈",
-  Copper: "🥉",
-};
 
 function parseStatValue(value: string): number | null {
   const n = Number(value.replace(/,/g, ""));
@@ -285,11 +279,20 @@ export default function LeaderboardsPage() {
 }
 
 function RankBadge({ rank }: { rank: number }) {
-  const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : null;
+  const medalSrc = rank === 1 || rank === 2 || rank === 3 ? RANK_ICON_SRC[rank] : null;
+  if (medalSrc) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={medalSrc}
+        alt={`Rank ${rank}`}
+        draggable={false}
+        className="w-8 shrink-0 object-contain"
+      />
+    );
+  }
   return (
-    <span className="w-8 shrink-0 text-center text-lg font-bold text-gray-400">
-      {medal ?? rank}
-    </span>
+    <span className="w-8 shrink-0 text-center text-lg font-bold text-gray-400">{rank}</span>
   );
 }
 
@@ -378,10 +381,12 @@ function OverallBoard({
 
 function TierCountsRow({ counts }: { counts: Record<AchievementTier, number> }) {
   return (
-    <div className="flex shrink-0 items-center gap-2 text-sm text-gray-300">
+    <div className="flex shrink-0 items-center gap-1.5 text-sm text-gray-300">
       {TIER_ORDER.map((t) => (
-        <span key={t} title={`${t} tier badges`}>
-          {TIER_MEDAL[t]} {counts[t]}
+        <span key={t} title={`${t} tier badges`} className="flex items-center gap-1">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={TIER_MEDAL_SRC[t]} alt={t} draggable={false} className="h-5 w-5 object-contain" />
+          {counts[t]}
         </span>
       ))}
     </div>
