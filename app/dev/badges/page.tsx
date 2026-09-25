@@ -21,9 +21,13 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { wowIconUrl } from "../../../lib/icons";
+import { localBadgeIconSrc } from "../../../lib/badgeFrames";
 import GameIcon from "../../GameIcon";
+import TierFramedIcon from "../../TierFramedIcon";
 import {
   ACHIEVEMENT_BADGES,
+  TIERED_LOCAL_ICONS,
+  FLAT_LOCAL_ICONS,
   GOLD_TIER_BADGE,
   EPIC_TIER_META,
   RECIPE_TIER_BADGE,
@@ -122,9 +126,15 @@ type IconEntry = { key: string; label: string; defaultIcon: string };
 function buildIconEntries(): IconEntry[] {
   const entries: IconEntry[] = [];
   for (const kind of PLAIN_KINDS) {
+    // Badges with local custom art (see TIERED_LOCAL_ICONS/FLAT_LOCAL_ICONS
+    // in CharacterCard.tsx) aren't in this list - their icon is a local
+    // file slug, not a CDN icon name, so the "type a WoW icon name" editor
+    // below doesn't apply to them.
+    if (FLAT_LOCAL_ICONS[kind]) continue;
     entries.push({ key: kind, label: ACHIEVEMENT_BADGES[kind].label, defaultIcon: ACHIEVEMENT_BADGES[kind].icon });
   }
   for (const kind of TIERED_ACHIEVEMENT_KINDS) {
+    if (TIERED_LOCAL_ICONS[kind]) continue;
     const set = TIER_BADGE_SETS[kind];
     if (kind === "gold") {
       // gold is the one tiered badge with a distinct icon PER tier, rather
@@ -355,7 +365,7 @@ export default function BadgeTesterPage() {
               {PLAIN_KINDS.map((kind) => {
                 const badge = ACHIEVEMENT_BADGES[kind];
                 const on = earnedPlain.has(kind);
-                const icon = resolvedIcon(iconOverrides, kind, badge.icon);
+                const localIcon = FLAT_LOCAL_ICONS[kind];
                 return (
                   <button
                     key={kind}
@@ -366,7 +376,16 @@ export default function BadgeTesterPage() {
                       on ? "bg-amber-500 text-neutral-950" : "bg-neutral-800 text-gray-300"
                     }`}
                   >
-                    <GameIcon src={wowIconUrl(icon)} label={badge.label} size={22} round />
+                    {localIcon ? (
+                      <GameIcon src={localBadgeIconSrc(localIcon)} label={badge.label} size={22} round />
+                    ) : (
+                      <GameIcon
+                        src={wowIconUrl(resolvedIcon(iconOverrides, kind, badge.icon))}
+                        label={badge.label}
+                        size={22}
+                        round
+                      />
+                    )}
                     {kind}
                   </button>
                 );
@@ -377,6 +396,7 @@ export default function BadgeTesterPage() {
               const set = TIER_BADGE_SETS[kind];
               const current = tiers[kind] ?? null;
               const overrideKey = (tier: AchievementTier) => (kind === "gold" ? `gold:${tier}` : kind);
+              const localIcon = TIERED_LOCAL_ICONS[kind];
               return (
                 <div key={kind}>
                   <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -400,14 +420,18 @@ export default function BadgeTesterPage() {
                         title={set[tier].label}
                         className={`flex items-center gap-1.5 rounded-full py-1.5 pl-1.5 pr-3 text-sm disabled:opacity-50 ${
                           current === tier ? "bg-amber-500 text-neutral-950" : "bg-neutral-800 text-gray-300"
-                        } ${set[tier].ring ?? ""}`}
+                        } ${localIcon ? "" : set[tier].ring ?? ""}`}
                       >
-                        <GameIcon
-                          src={wowIconUrl(resolvedIcon(iconOverrides, overrideKey(tier), set[tier].icon))}
-                          label={set[tier].label}
-                          size={22}
-                          round
-                        />
+                        {localIcon ? (
+                          <TierFramedIcon icon={localIcon} tier={tier} label={set[tier].label} size={22} />
+                        ) : (
+                          <GameIcon
+                            src={wowIconUrl(resolvedIcon(iconOverrides, overrideKey(tier), set[tier].icon))}
+                            label={set[tier].label}
+                            size={22}
+                            round
+                          />
+                        )}
                         {tier}
                       </button>
                     ))}

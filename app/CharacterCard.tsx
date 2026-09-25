@@ -13,7 +13,9 @@ import {
 import { characterBars } from "../lib/progress";
 import type { AchievementKind, GoldTier, TieredAchievementKind } from "../lib/achievements";
 import { resolvedIcon, type BadgeIconOverrides } from "../lib/badgeIconOverrides";
+import { localBadgeIconSrc } from "../lib/badgeFrames";
 import GameIcon from "./GameIcon";
+import TierFramedIcon from "./TierFramedIcon";
 import ProgressBars from "./ProgressBars";
 
 export type { AchievementKind, GoldTier };
@@ -268,6 +270,47 @@ const RING_TIER_BADGES: Partial<Record<TieredAchievementKind, TierRingBadge>> = 
 export const CREATED_DATE_ICON = "inv_misc_pocketwatch_01";
 export const CREATED_DATE_ICON_KEY = "created_date";
 
+// Local custom artwork (2026-09-25) - icon slugs live at
+// /public/badge-icons/<slug>.png and get layered with the matching tier's
+// border frame via TierFramedIcon, instead of a WoW CDN icon + colored
+// ring. Only badges the user has actually picked art for are listed here;
+// everything else in RING_TIER_BADGES/ACHIEVEMENT_BADGES keeps using its
+// CDN icon + ring/plain treatment until it gets a local icon too - so
+// adding one is just: drop the file, add one line below.
+export const TIERED_LOCAL_ICONS: Partial<Record<TieredAchievementKind, string>> = {
+  gold: "deep-pockets",
+  epic_gear: "well-equipped",
+  recipes: "artisan",
+  honorable_kills: "gladiator",
+  creatures_killed: "monster-hunter",
+  quests_completed: "adventurer",
+  killing_blows: "executioner",
+  boss_kills: "slayer",
+  consumables: "well-supplied",
+  travel: "wayfarer",
+  social: "social-butterfly",
+  bg_wins: "battlemaster",
+  duels_won: "duelist",
+  dungeons_entered: "dungeon-delver",
+  raids_entered: "raider",
+  exalted_factions: "diplomat",
+  mounts_owned: "stablemaster",
+  pets_owned: "pet-collector",
+  fish_caught: "angler",
+  auctions_posted: "auctioneer",
+};
+
+// Same idea for the flat (no-tier) achievement badges that got local art -
+// these render as a plain local icon with no border frame, same shape as
+// the CDN-icon versions they replace.
+export const FLAT_LOCAL_ICONS: Partial<Record<AchievementKind, string>> = {
+  max_level: "max-level",
+  maxed_legacy: "maxed-legacy",
+  top_pvp_rank: "top-pvp-rank",
+  founding_member: "founding-member",
+  greeter: "greeter",
+};
+
 type CardAchievement = {
   kind: AchievementKind | TieredAchievementKind;
   tier?: GoldTier | null;
@@ -490,6 +533,10 @@ export default function CharacterCard({
                 {(c.achievements ?? []).map((a) => {
                   if (a.kind === "gold" && a.tier) {
                     const badge = GOLD_TIER_BADGE[a.tier];
+                    const localIcon = TIERED_LOCAL_ICONS.gold;
+                    if (localIcon) {
+                      return <TierFramedIcon key="gold" icon={localIcon} tier={a.tier} label={badge.label} size={28} />;
+                    }
                     const icon = resolvedIcon(iconOverrides, `gold:${a.tier}`, badge.icon);
                     return (
                       <span key="gold" className="inline-block rounded-full ring-2 ring-amber-500/70">
@@ -500,6 +547,10 @@ export default function CharacterCard({
                   const ringBadge = RING_TIER_BADGES[a.kind as TieredAchievementKind];
                   if (ringBadge && a.tier) {
                     const meta = ringBadge[a.tier];
+                    const localIcon = TIERED_LOCAL_ICONS[a.kind as TieredAchievementKind];
+                    if (localIcon) {
+                      return <TierFramedIcon key={a.kind} icon={localIcon} tier={a.tier} label={meta.label} size={28} />;
+                    }
                     const icon = resolvedIcon(iconOverrides, `${a.kind}:${a.tier}`, meta.icon);
                     return (
                       <span key={a.kind} className={`inline-block rounded-full ${meta.ring}`}>
@@ -509,6 +560,18 @@ export default function CharacterCard({
                   }
                   const badge = ACHIEVEMENT_BADGES[a.kind as AchievementKind];
                   if (!badge) return null;
+                  const flatLocalIcon = FLAT_LOCAL_ICONS[a.kind as AchievementKind];
+                  if (flatLocalIcon) {
+                    return (
+                      <GameIcon
+                        key={a.kind}
+                        src={localBadgeIconSrc(flatLocalIcon)}
+                        label={badge.label}
+                        size={28}
+                        round
+                      />
+                    );
+                  }
                   const icon = resolvedIcon(iconOverrides, a.kind, badge.icon);
                   return <GameIcon key={a.kind} src={wowIconUrl(icon)} label={badge.label} size={28} round />;
                 })}
