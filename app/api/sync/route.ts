@@ -64,124 +64,82 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const realm = parsed.basic?.realm ?? null;
 
-    // The site's `characters.name` column is required (by a DB check
-    // constraint, characters_name_two_words) to be exactly two
-    // whitespace-separated words - the convention here is
-    // "<CharacterName> <Realm>" (e.g. "Xeon Mana"), not just the bare
-    // in-game name. The addon only ever knows the real, one-word game name,
-    // so every lookup below matches on a PREFIX ("Xeon %") rather than
-    // equality against the full two-word name - equality would never match
-    // an existing character and would fall through to trying to create a
-    // duplicate with just the one-word name, which fails that same
-    // constraint (this was the actual bug: a real character already
-    // existed as "Xeon Mana" but the exact-match query looked for a
-    // character literally named "Xeon").
-    const namePrefix = `${gameName} %`;
-
-    // Try a name-prefix + realm match first (the normal case once a
-    // character has synced at least once before).
-    let exactMatch: { id: string; realm: string | null } | null = null;
-    if (realm) {
-      const { data } = await supabaseAdmin
-        .from("characters")
-        .select("id, realm")
-        .eq("user_id", userId)
-        .ilike("name", namePrefix)
-        .eq("realm", realm)
-        .maybeSingle();
-      exactMatch = data;
-    }
+    // WoW Forever is realmless - every character has a real first+last
+    // name in-game (see the 2026-09-25 chat), and `characters.name` is
+    // required by a DB check constraint (characters_name_two_words) to be
+    // exactly that two-word name. There is no separate realm concept here
+    // at all - an earlier version of this route mistakenly tried to build
+    // a second name-component out of GetRealmName()'s return value, which
+    // just produced a bogus THIRD word and broke every new-character sync
+    // (still hitting the same check constraint, just for a different
+    // reason). Matching and creating both just use gameName directly now.
+    const { data: exactMatch } = await supabaseAdmin
+      .from("characters")
+      .select("id")
+      .eq("user_id", userId)
+      .ilike("name", gameName)
+      .maybeSingle();
 
     if (exactMatch) {
       characterId = exactMatch.id;
     } else {
-      // Fall back to a name-prefix match against a character that has no
-      // realm saved yet - this is what an existing, manually-created
-      // character looks like before its first auto-sync (its two-word name
-      // was typed in by hand, e.g. "Xeon Mana", but the separate `realm`
-      // column was never filled in). Treat it as the same character and
-      // fill in its realm, instead of creating a duplicate.
-      const { data: legacyMatch } = await supabaseAdmin
+      const { data: created, error: createError } = await supabaseAdmin
         .from("characters")
-        .select("id, realm")
-        .eq("user_id", userId)
-        .ilike("name", namePrefix)
-        .is("realm", null)
-        .maybeSingle();
+        .insert({
+          user_id: userId,
+          name: gameName,
+          race: parsed.basic?.race || "Unknown",
+          class: parsed.basic?.class || "Unknown",
+          faction: parsed.basic?.faction ?? null,
+          // The database requires every character to have a non-empty
+          // main_spec, and a ruleset from a fixed set of values
+          // (PVP/PVE/RPPVE/HARDCORE) - the addon doesn't know either at
+          // creation time (see earlier discussion on ruleset not being
+          // addon-detectable yet), so these are placeholders. Edit them
+          // on the site afterward if they're wrong for this character.
+          main_spec: "Unspecified",
+          ruleset: "PVE",
+          // Explicitly "Unspecified" rather than leaving this out of the
+          // insert - the column's own default is "Main", which would
+          // silently mark every auto-created character as a main even
+          // though the addon has no way to actually know that.
+          character_type: "Unspecified",
+          level: typeof parsed.basic?.level === "number" ? parsed.basic.level : 1,
+          guild: parsed.basic?.guild ?? null,
+          // Flags this character on the website so the owner gets a
+          // "Needs attention" banner prompting them to fill in the real
+          // main spec and ruleset (the addon can't know either yet).
+          needs_setup: true,
+        })
+        .select("id")
+        .single();
 
-      if (legacyMatch) {
-        characterId = legacyMatch.id;
-        if (realm) {
-          await supabaseAdmin.from("characters").update({ realm }).eq("id", legacyMatch.id);
-        }
-      } else if (!realm) {
-        // No existing character to fall back to, and nothing to make a
-        // valid two-word name out of - refuse rather than guess at a fake
-        // second word.
+      if (createError || !created) {
         return NextResponse.json(
           {
             error:
-              "Could not create character: no realm reported by the addon, and no existing character to match against. Update the addon and sync again.",
+              "Could not create character: " +
+              (createError?.message ?? "unknown error") +
+              (createError?.message?.includes("characters_name_two_words")
+                ? ` (the addon reported the name as "${gameName}" - if that's missing a first or last name, the addon isn't capturing the full name yet)`
+                : ""),
           },
-          { status: 400 }
+          { status: 500 }
         );
-      } else {
-        // realm is guaranteed non-null here (the !realm branch above
-        // already returned) - safe to build the required two-word name.
-        const twoWordName = `${gameName} ${realm}`;
-        const { data: created, error: createError } = await supabaseAdmin
-          .from("characters")
-          .insert({
-            user_id: userId,
-            name: twoWordName,
-            race: parsed.basic?.race || "Unknown",
-            class: parsed.basic?.class || "Unknown",
-            faction: parsed.basic?.faction ?? null,
-            realm,
-            // The database requires every character to have a non-empty
-            // main_spec, and a ruleset from a fixed set of values
-            // (PVP/PVE/RPPVE/HARDCORE) - the addon doesn't know either at
-            // creation time (see earlier discussion on ruleset not being
-            // addon-detectable yet), so these are placeholders. Edit them
-            // on the site afterward if they're wrong for this character.
-            main_spec: "Unspecified",
-            ruleset: "PVE",
-            // Explicitly "Unspecified" rather than leaving this out of the
-            // insert - the column's own default is "Main", which would
-            // silently mark every auto-created character as a main even
-            // though the addon has no way to actually know that.
-            character_type: "Unspecified",
-            level: typeof parsed.basic?.level === "number" ? parsed.basic.level : 1,
-            guild: parsed.basic?.guild ?? null,
-            // Flags this character on the website so the owner gets a
-            // "Needs attention" banner prompting them to fill in the real
-            // main spec and ruleset (the addon can't know either yet).
-            needs_setup: true,
-          })
-          .select("id")
-          .single();
+      }
+      characterId = created.id;
 
-        if (createError || !created) {
-          return NextResponse.json(
-            { error: "Could not create character: " + (createError?.message ?? "unknown error") },
-            { status: 500 }
-          );
-        }
-        characterId = created.id;
-
-        // Best-effort activity feed entry - never blocks the sync itself.
-        try {
-          await supabaseAdmin.from("activity_events").insert({
-            character_id: characterId,
-            user_id: userId,
-            kind: "character_created",
-            message: `${twoWordName} joined the roster`,
-          });
-        } catch {
-          // ignored on purpose
-        }
+      // Best-effort activity feed entry - never blocks the sync itself.
+      try {
+        await supabaseAdmin.from("activity_events").insert({
+          character_id: characterId,
+          user_id: userId,
+          kind: "character_created",
+          message: `${gameName} joined the roster`,
+        });
+      } catch {
+        // ignored on purpose
       }
     }
   }
