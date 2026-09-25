@@ -3,15 +3,15 @@ import { iconUrlForFileId, PRIMARY_PROFESSIONS } from "./icons";
 import {
   ACHIEVEMENT_MESSAGE,
   awardAchievement,
-  awardEpicTier,
-  awardGoldTier,
-  awardRecipeTier,
-  epicTierMessage,
-  goldTierMessage,
-  recipeTierMessage,
+  awardTier,
+  tierMessage,
   isWithinFoundingWindow,
+  computeCounter,
+  TIERED_ACHIEVEMENT_KINDS,
+  PERSONALITY_BADGES,
 } from "./achievements";
 import { checkAccountAchievements } from "./accountAchievements";
+import { applyLiveObservation, ensureItemsExist } from "./items";
 
 export type ParsedTraitNode = {
   entryID?: number;
@@ -105,12 +105,28 @@ export type ParsedExport = {
         }
     )[];
   }[];
-  gear?: Record<string, { link: string; name: string; color?: string; icon?: number; tooltip?: string[] }>;
+  gear?: Record<
+    string,
+    { link: string; name: string; id?: number; color?: string; icon?: number; tooltip?: string[] }
+  >;
+  // Every item seen in bags/bank on this sync - NOT stored per-character
+  // anywhere (no bag-viewer feature exists or is planned), purely fed
+  // through the same item-database pipeline as gear so items get real,
+  // verified data before anyone's necessarily equipped them. See the
+  // 2026-09-24 chat and addon 1.7.0's collectContainerItems().
+  bagItems?: { id?: number; name: string; color?: string; icon?: number; tooltip?: string[] }[];
   traits?: {
     experimental?: boolean;
     error?: string;
     configs?: { configID: number; nodes: ParsedTraitNode[] }[];
   };
+  // Every stat the in-game Statistics pane reports (Phase 1 of the
+  // 2026-09-25 Statistics feature - see collectStatistics() in the addon).
+  // Captured wholesale rather than a curated subset, so a future badge idea
+  // never needs another addon update just to start tracking a stat that
+  // wasn't grabbed before. value is already formatted by the client
+  // ("1,502", or "--" for a stat never recorded) and stored as-is.
+  statistics?: { id: number; category: string; name: string; value: string }[];
 };
 
 // Addon gear key -> the site's Equipped Gear slot name. "shirt" and
@@ -307,7 +323,11 @@ export async function applyImport(
   // threshold that the previous known balance hadn't reached yet. Uses
   // the "before" row read at the top of this function, so a single sync
   // can only ever cross each threshold once (no double-firing on a
-  // future sync that stays above it).
+  // future sync that stays above it). This is just activity-feed
+  // narration off the live balance - the tiered "gold" ACHIEVEMENT is
+  // separate and now sourced from the Statistics pane's lifetime "Total
+  // gold acquired" instead (see the Statistics-based badges section
+  // further down), so spending gold never takes that badge away.
   if (typeof parsed.basic?.money === "number") {
     const beforeCopper = before.money_copper ?? 0;
     const afterCopper = parsed.basic.money;
@@ -321,16 +341,6 @@ export async function applyImport(
           message: `${before.name} hit ${gold} gold`,
         });
       }
-    }
-
-    const tier = await awardGoldTier(supabase, characterId, afterCopper);
-    if (tier) {
-      events.push({
-        character_id: characterId,
-        user_id: before.user_id,
-        kind: "achievement_earned",
-        message: goldTierMessage(before.name, tier),
-      });
     }
   }
 
@@ -468,13 +478,13 @@ export async function applyImport(
     0
   );
   if (totalRecipes > 0) {
-    const tier = await awardRecipeTier(supabase, characterId, totalRecipes);
+    const tier = await awardTier(supabase, characterId, "recipes", totalRecipes);
     if (tier) {
       events.push({
         character_id: characterId,
         user_id: before.user_id,
         kind: "achievement_earned",
-        message: recipeTierMessage(before.name, tier),
+        message: tierMessage("recipes", before.name, tier),
       });
     }
   }
@@ -500,13 +510,13 @@ export async function applyImport(
     slot: string;
     item_name: string;
     item_link: string;
+    item_id: number | null;
     item_quality: string | null;
     item_icon: string | null;
     tooltip: string[];
     updated_at: string;
   }[] = [];
   const emptySlots: string[] = [];
-  let newEpicCount = 0;
   let equippedNewLegendary = false;
   // Whether the addon reported ANY gear at all this export. GetInventoryItemLink
   // can come back nil for every slot if the export was captured before the
@@ -530,6 +540,7 @@ export async function applyImport(
       slot: siteSlot,
       item_name: item.name,
       item_link: item.link,
+      item_id: item.id ?? null,
       item_quality: item.color ?? null,
       item_icon: iconUrlForFileId(item.icon),
       tooltip: item.tooltip ?? [],
@@ -546,24 +557,15 @@ export async function applyImport(
         kind: "epic_gear",
         message: `${before.name} equipped ${item.name}`,
       });
-      if (quality === EPIC_COLOR) newEpicCount += 1;
       if (quality === LEGENDARY_COLOR) equippedNewLegendary = true;
     }
   }
 
-  // Epic-gear tier - a running count of distinct Epic items equipped over
-  // time, only reported when it crosses into a higher tier than before.
-  if (newEpicCount > 0) {
-    const tier = await awardEpicTier(supabase, characterId, newEpicCount);
-    if (tier) {
-      events.push({
-        character_id: characterId,
-        user_id: before.user_id,
-        kind: "achievement_earned",
-        message: epicTierMessage(before.name, tier),
-      });
-    }
-  }
+  // The Epic-gear TIER badge is no longer tracked here as a running count -
+  // it's sourced from the Statistics pane's own "Epic items acquired" stat
+  // in the Statistics-based badges section further down, which is
+  // authoritative and already accounts for Epics equipped before this
+  // feature existed (a manual counter starting from zero never could).
 
   // Legendary is its own one-off badge, separate from the Epic tier.
   if (equippedNewLegendary) {
@@ -579,6 +581,48 @@ export async function applyImport(
   }
 
   if (gearRows.length > 0) {
+    // Keep the items table in sync with what's actually equipped. A live
+    // scanned tooltip (present on every gear export from addon 1.6.0+) is
+    // the only trustworthy source for an item's real quality/stats - WoW
+    // Forever reuses classic item IDs but can rebalance them, and Blizzard's
+    // classic API has no idea when that's happened (confirmed 2026-09-24 on
+    // Runed Copper Belt: Blizzard says Common/86 Armor/no stats, the live
+    // game says Uncommon/91 Armor/+3 Str/+2 Sta). So applyLiveObservation
+    // always wins when there's a tooltip to read; ensureItemsExist (an
+    // unverified Blizzard-baseline placeholder) only covers the rare case
+    // where an item ID came through with no tooltip at all.
+    const idsNeedingBaseline: number[] = [];
+    const fallbacks = new Map<number, { name?: string; icon?: number | null }>();
+    for (const addonSlot of Object.keys(GEAR_SLOT_MAP)) {
+      const item = parsed.gear?.[addonSlot];
+      if (item?.id == null) continue;
+      if (item.tooltip && item.tooltip.length > 0) {
+        try {
+          await applyLiveObservation(supabase, item.id, {
+            name: item.name,
+            color: item.color ?? null,
+            icon: item.icon ?? null,
+            tooltip: item.tooltip,
+          });
+        } catch (e) {
+          // Never let an item-database hiccup block the actual gear sync -
+          // the equipped_gear upsert below is what matters for the
+          // character page; items can catch up next sync.
+          console.error(`applyLiveObservation failed for item ${item.id}:`, e);
+        }
+      } else {
+        idsNeedingBaseline.push(item.id);
+        fallbacks.set(item.id, { name: item.name, icon: item.icon ?? null });
+      }
+    }
+    if (idsNeedingBaseline.length > 0) {
+      try {
+        await ensureItemsExist(supabase, idsNeedingBaseline, fallbacks);
+      } catch (e) {
+        console.error("ensureItemsExist failed during gear sync:", e);
+      }
+    }
+
     const { error } = await supabase
       .from("equipped_gear")
       .upsert(gearRows, { onConflict: "character_id,slot" });
@@ -592,6 +636,34 @@ export async function applyImport(
       .eq("character_id", characterId)
       .in("slot", emptySlots);
     if (error) throw new Error(error.message);
+  }
+
+  // 4b. Bag/bank contents - never written to any per-character table (no
+  //     bag-viewer feature exists), purely fed through the item database
+  //     pipeline so items get real data as soon as ANYONE's seen carrying
+  //     them, not only once someone's actually worn them. Same
+  //     "live tooltip always wins" rule as gear.
+  for (const item of parsed.bagItems ?? []) {
+    if (item.id == null) continue;
+    try {
+      if (item.tooltip && item.tooltip.length > 0) {
+        await applyLiveObservation(supabase, item.id, {
+          name: item.name,
+          color: item.color ?? null,
+          icon: item.icon ?? null,
+          tooltip: item.tooltip,
+        });
+      } else {
+        await ensureItemsExist(
+          supabase,
+          [item.id],
+          new Map([[item.id, { name: item.name, icon: item.icon ?? null }]])
+        );
+      }
+    } catch (e) {
+      // Never let one bad bag item block the rest of the sync.
+      console.error(`bag item sync failed for item ${item.id}:`, e);
+    }
   }
 
   // 5. Talents - only nodes the addon already resolved a name and tree for
@@ -618,6 +690,74 @@ export async function applyImport(
         talentUnknown.push(
           `entryID ${node.entryID ?? "?"} (${node.rank}/${node.maxRank ?? node.rank})`
         );
+      }
+    }
+  }
+
+  // 6. Statistics pane data - whatever the addon reports this sync fully
+  //    replaces what's on file for those stat IDs, one upsert per exported
+  //    stat, keyed on (character_id, stat_id).
+  if (parsed.statistics && parsed.statistics.length > 0) {
+    const statisticRows = parsed.statistics.map((s) => ({
+      character_id: characterId,
+      user_id: before.user_id,
+      stat_id: s.id,
+      category: s.category,
+      name: s.name,
+      value: s.value,
+      updated_at: new Date().toISOString(),
+    }));
+    const { error } = await supabase
+      .from("character_statistics")
+      .upsert(statisticRows, { onConflict: "character_id,stat_id" });
+    if (error) throw new Error(error.message);
+
+    // Statistics-based badges (2026-09-25 rework, expanded 2026-09-25) - the
+    // tiered achievements that used to be sourced from ad-hoc fields this
+    // site tracked itself (a live gold balance, a hand-rolled equipped-Epic
+    // counter) are now sourced from the game's own Statistics pane data
+    // instead, plus a growing set of combined-stat badges (Well Supplied,
+    // Wayfarer, Social Butterfly) that add several related raw stats into
+    // one meaningful counter. TIER_COUNTERS in achievements.ts is the one
+    // place that says which raw stat(s) feed which badge - shared with the
+    // leaderboards page, so the two can never disagree about what a badge
+    // actually measures. "recipes" is the one exception (computed from
+    // character_professions above, not from Statistics), so it's skipped
+    // here and awarded separately.
+    for (const kind of TIERED_ACHIEVEMENT_KINDS) {
+      if (kind === "recipes") continue;
+      const value = computeCounter(kind, parsed.statistics);
+      if (value <= 0) continue;
+      const tier = await awardTier(supabase, characterId, kind, value);
+      if (tier) {
+        events.push({
+          character_id: characterId,
+          user_id: before.user_id,
+          kind: "achievement_earned",
+          message: tierMessage(kind, before.name, tier),
+        });
+      }
+    }
+
+    // One-off "personality badges" - a single threshold on one specific
+    // Social-pane stat (separate from the combined "social" counter above,
+    // which feeds Social Butterfly). Same silent-skip-if-never-recorded
+    // behavior as everything else here.
+    for (const badge of PERSONALITY_BADGES) {
+      const row = parsed.statistics.find(
+        (s) => s.category === badge.category && s.name === badge.name
+      );
+      if (!row) continue;
+      const n = Number(row.value.replace(/,/g, ""));
+      if (!Number.isFinite(n) || n < badge.threshold) continue;
+      const earned = await awardAchievement(supabase, characterId, badge.kind);
+      if (earned) {
+        events.push({
+          character_id: characterId,
+          user_id: before.user_id,
+          kind: "achievement_earned",
+          message: ACHIEVEMENT_MESSAGE[badge.kind](before.name),
+        });
       }
     }
   }

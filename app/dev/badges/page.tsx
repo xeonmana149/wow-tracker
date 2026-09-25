@@ -1,7 +1,7 @@
 "use client";
 
 // A dev-only page for forcing badges onto your own characters/account so
-// you can see how they look without actually grinding to max level, 5000
+// you can see how they look without actually grinding to max level, 25,000
 // gold, etc. Only ever touches the achievements/account_achievements
 // tables directly - it doesn't fake any of the underlying game data
 // (level, gold, professions), so this is purely a "what does the badge
@@ -12,6 +12,11 @@
 // only ever on their own characters/account (RLS on the two tables makes
 // characters and profiles readable by everyone, but this page only ever
 // writes character_id/user_id values that came from your own query).
+//
+// 2026-09-25: generalized to the new 4-tier (Copper/Silver/Gold/Platinum)
+// system and every tiered achievement (not just gold/epic_gear) - one
+// section per TIERED_ACHIEVEMENT_KINDS entry instead of two hand-written
+// blocks, so a future new tiered badge doesn't need this page touched too.
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
@@ -21,11 +26,25 @@ import {
   ACHIEVEMENT_BADGES,
   GOLD_TIER_BADGE,
   EPIC_TIER_META,
+  RECIPE_TIER_BADGE,
+  HONORABLE_KILLS_TIER_BADGE,
+  CREATURES_KILLED_TIER_BADGE,
+  QUESTS_COMPLETED_TIER_BADGE,
+  KILLING_BLOWS_TIER_BADGE,
+  BOSS_KILLS_TIER_BADGE,
+  CONSUMABLES_TIER_BADGE,
+  TRAVEL_TIER_BADGE,
+  SOCIAL_TIER_BADGE,
   CREATED_DATE_ICON,
   CREATED_DATE_ICON_KEY,
   type AchievementKind,
-  type GoldTier,
+  type GoldTier as AchievementTier,
 } from "../../CharacterCard";
+import {
+  TIERED_ACHIEVEMENT_KINDS,
+  tierLabel,
+  type TieredAchievementKind,
+} from "../../../lib/achievements";
 import { ACCOUNT_ACHIEVEMENT_BADGES, type AccountAchievementKind } from "../../../lib/accountAchievements";
 import {
   loadBadgeIconOverrides,
@@ -35,17 +54,39 @@ import {
 
 type Character = { id: string; name: string; class: string };
 
-// Plain yes/no achievements (everything except the two tiered ones, which
-// get their own tier-picker UI below).
+// Plain yes/no achievements (everything except the tiered ones, which get
+// their own generic tier-picker section below).
 const PLAIN_KINDS = Object.keys(ACHIEVEMENT_BADGES) as AchievementKind[];
 const ACCOUNT_KINDS = Object.keys(ACCOUNT_ACHIEVEMENT_BADGES) as AccountAchievementKind[];
-const TIERS: GoldTier[] = ["Bronze", "Silver", "Gold"];
+const TIERS: AchievementTier[] = ["Copper", "Silver", "Gold", "Platinum"];
 
-// The epic_gear tier is derived from a running `progress` count in the
-// real system - when forcing a tier here for testing, this just sets
-// progress to a value guaranteed to land on that tier so nothing looks
-// inconsistent if you ever look at the raw row.
-const EPIC_TIER_PROGRESS: Record<GoldTier, number> = { Bronze: 1, Silver: 3, Gold: 5 };
+// The epic_gear tier is derived from a running `progress` count in the real
+// system - when forcing a tier here for testing, this just sets progress
+// to a value guaranteed to land on that tier so nothing looks inconsistent
+// if you ever look at the raw row. No other tiered kind uses `progress`.
+const EPIC_TIER_PROGRESS: Record<AchievementTier, number> = {
+  Copper: 1,
+  Silver: 3,
+  Gold: 5,
+  Platinum: 10,
+};
+
+// Every tiered badge's per-tier icon/ring/label set, keyed the same way
+// CharacterCard's own RING_TIER_BADGES map is (that map isn't exported, so
+// this page keeps its own copy built from the same exported pieces).
+const TIER_BADGE_SETS: Record<TieredAchievementKind, Record<AchievementTier, { icon: string; ring?: string; label: string }>> = {
+  gold: GOLD_TIER_BADGE,
+  epic_gear: EPIC_TIER_META,
+  recipes: RECIPE_TIER_BADGE,
+  honorable_kills: HONORABLE_KILLS_TIER_BADGE,
+  creatures_killed: CREATURES_KILLED_TIER_BADGE,
+  quests_completed: QUESTS_COMPLETED_TIER_BADGE,
+  killing_blows: KILLING_BLOWS_TIER_BADGE,
+  boss_kills: BOSS_KILLS_TIER_BADGE,
+  consumables: CONSUMABLES_TIER_BADGE,
+  travel: TRAVEL_TIER_BADGE,
+  social: SOCIAL_TIER_BADGE,
+};
 
 // Every badge that can have its icon overridden, for the icon-editor
 // section below. Keys match what CharacterCard/AccountBadges look up via
@@ -57,18 +98,22 @@ function buildIconEntries(): IconEntry[] {
   for (const kind of PLAIN_KINDS) {
     entries.push({ key: kind, label: ACHIEVEMENT_BADGES[kind].label, defaultIcon: ACHIEVEMENT_BADGES[kind].icon });
   }
-  for (const tier of TIERS) {
-    entries.push({
-      key: `gold:${tier}`,
-      label: GOLD_TIER_BADGE[tier].label,
-      defaultIcon: GOLD_TIER_BADGE[tier].icon,
-    });
+  for (const kind of TIERED_ACHIEVEMENT_KINDS) {
+    const set = TIER_BADGE_SETS[kind];
+    if (kind === "gold") {
+      // gold is the one tiered badge with a distinct icon PER tier, rather
+      // than one shared icon plus a ring - so it needs one entry per tier.
+      for (const tier of TIERS) {
+        entries.push({ key: `gold:${tier}`, label: set[tier].label, defaultIcon: set[tier].icon });
+      }
+    } else {
+      entries.push({
+        key: kind,
+        label: `${tierLabel(kind)} (every tier shares this one icon - only the ring color differs)`,
+        defaultIcon: set.Copper.icon,
+      });
+    }
   }
-  entries.push({
-    key: "epic_gear",
-    label: "Epic gear tier (Bronze/Silver/Gold all share this one icon - only the ring color differs)",
-    defaultIcon: EPIC_TIER_META.Bronze.icon,
-  });
   entries.push({
     key: CREATED_DATE_ICON_KEY,
     label: "Character creation-date badge",
@@ -91,8 +136,7 @@ export default function BadgeTesterPage() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [selectedCharacter, setSelectedCharacter] = useState("");
   const [earnedPlain, setEarnedPlain] = useState<Set<AchievementKind>>(new Set());
-  const [goldTier, setGoldTierState] = useState<GoldTier | null>(null);
-  const [epicTier, setEpicTierState] = useState<GoldTier | null>(null);
+  const [tiers, setTiers] = useState<Partial<Record<TieredAchievementKind, AchievementTier>>>({});
   const [accountEarned, setAccountEarned] = useState<Set<AccountAchievementKind>>(new Set());
   const [iconOverrides, setIconOverrides] = useState<BadgeIconOverrides>({});
   const [iconDrafts, setIconDrafts] = useState<Record<string, string>>({});
@@ -133,16 +177,16 @@ export default function BadgeTesterPage() {
       .select("kind, tier")
       .eq("character_id", characterId);
     const plain = new Set<AchievementKind>();
-    let gold: GoldTier | null = null;
-    let epic: GoldTier | null = null;
+    const nextTiers: Partial<Record<TieredAchievementKind, AchievementTier>> = {};
     for (const row of data ?? []) {
-      if (row.kind === "gold") gold = row.tier as GoldTier | null;
-      else if (row.kind === "epic_gear") epic = row.tier as GoldTier | null;
-      else plain.add(row.kind as AchievementKind);
+      if ((TIERED_ACHIEVEMENT_KINDS as string[]).includes(row.kind)) {
+        if (row.tier) nextTiers[row.kind as TieredAchievementKind] = row.tier as AchievementTier;
+      } else {
+        plain.add(row.kind as AchievementKind);
+      }
     }
     setEarnedPlain(plain);
-    setGoldTierState(gold);
-    setEpicTierState(epic);
+    setTiers(nextTiers);
   }
 
   async function loadAccountBadges(uid: string) {
@@ -195,39 +239,18 @@ export default function BadgeTesterPage() {
     setBusy(false);
   }
 
-  async function setGoldTier(tier: GoldTier | null) {
+  async function setTier(kind: TieredAchievementKind, tier: AchievementTier | null) {
     if (!selectedCharacter) return;
     setBusy(true);
     if (tier === null) {
-      await supabase.from("achievements").delete().eq("character_id", selectedCharacter).eq("kind", "gold");
-    } else {
-      await supabase
-        .from("achievements")
-        .upsert(
-          { character_id: selectedCharacter, kind: "gold", tier },
-          { onConflict: "character_id,kind" }
-        );
-    }
-    await loadCharacterBadges(selectedCharacter);
-    setBusy(false);
-  }
-
-  async function setEpicTier(tier: GoldTier | null) {
-    if (!selectedCharacter) return;
-    setBusy(true);
-    if (tier === null) {
-      await supabase
-        .from("achievements")
-        .delete()
-        .eq("character_id", selectedCharacter)
-        .eq("kind", "epic_gear");
+      await supabase.from("achievements").delete().eq("character_id", selectedCharacter).eq("kind", kind);
     } else {
       await supabase.from("achievements").upsert(
         {
           character_id: selectedCharacter,
-          kind: "epic_gear",
+          kind,
           tier,
-          progress: EPIC_TIER_PROGRESS[tier],
+          ...(kind === "epic_gear" ? { progress: EPIC_TIER_PROGRESS[tier] } : {}),
         },
         { onConflict: "character_id,kind" }
       );
@@ -324,73 +347,48 @@ export default function BadgeTesterPage() {
               })}
             </div>
 
-            <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Wealth tier (gold)
-            </h3>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <button
-                disabled={busy}
-                onClick={() => setGoldTier(null)}
-                className={`rounded-full px-3 py-1.5 text-sm disabled:opacity-50 ${
-                  goldTier === null ? "bg-amber-500 text-neutral-950" : "bg-neutral-800 text-gray-300"
-                }`}
-              >
-                None
-              </button>
-              {TIERS.map((tier) => (
-                <button
-                  key={tier}
-                  disabled={busy}
-                  onClick={() => setGoldTier(tier)}
-                  title={GOLD_TIER_BADGE[tier].label}
-                  className={`flex items-center gap-1.5 rounded-full py-1.5 pl-1.5 pr-3 text-sm disabled:opacity-50 ${
-                    goldTier === tier ? "bg-amber-500 text-neutral-950" : "bg-neutral-800 text-gray-300"
-                  }`}
-                >
-                  <GameIcon
-                    src={wowIconUrl(resolvedIcon(iconOverrides, `gold:${tier}`, GOLD_TIER_BADGE[tier].icon))}
-                    label={GOLD_TIER_BADGE[tier].label}
-                    size={22}
-                    round
-                  />
-                  {tier}
-                </button>
-              ))}
-            </div>
-
-            <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Epic gear tier
-            </h3>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <button
-                disabled={busy}
-                onClick={() => setEpicTier(null)}
-                className={`rounded-full px-3 py-1.5 text-sm disabled:opacity-50 ${
-                  epicTier === null ? "bg-purple-500 text-neutral-950" : "bg-neutral-800 text-gray-300"
-                }`}
-              >
-                None
-              </button>
-              {TIERS.map((tier) => (
-                <button
-                  key={tier}
-                  disabled={busy}
-                  onClick={() => setEpicTier(tier)}
-                  title={EPIC_TIER_META[tier].label}
-                  className={`flex items-center gap-1.5 rounded-full py-1.5 pl-1.5 pr-3 text-sm disabled:opacity-50 ${
-                    epicTier === tier ? "bg-purple-500 text-neutral-950" : "bg-neutral-800 text-gray-300"
-                  } ${EPIC_TIER_META[tier].ring}`}
-                >
-                  <GameIcon
-                    src={wowIconUrl(resolvedIcon(iconOverrides, "epic_gear", EPIC_TIER_META[tier].icon))}
-                    label={EPIC_TIER_META[tier].label}
-                    size={22}
-                    round
-                  />
-                  {tier}
-                </button>
-              ))}
-            </div>
+            {TIERED_ACHIEVEMENT_KINDS.map((kind) => {
+              const set = TIER_BADGE_SETS[kind];
+              const current = tiers[kind] ?? null;
+              const overrideKey = (tier: AchievementTier) => (kind === "gold" ? `gold:${tier}` : kind);
+              return (
+                <div key={kind}>
+                  <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    {tierLabel(kind)}
+                  </h3>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      disabled={busy}
+                      onClick={() => setTier(kind, null)}
+                      className={`rounded-full px-3 py-1.5 text-sm disabled:opacity-50 ${
+                        current === null ? "bg-amber-500 text-neutral-950" : "bg-neutral-800 text-gray-300"
+                      }`}
+                    >
+                      None
+                    </button>
+                    {TIERS.map((tier) => (
+                      <button
+                        key={tier}
+                        disabled={busy}
+                        onClick={() => setTier(kind, tier)}
+                        title={set[tier].label}
+                        className={`flex items-center gap-1.5 rounded-full py-1.5 pl-1.5 pr-3 text-sm disabled:opacity-50 ${
+                          current === tier ? "bg-amber-500 text-neutral-950" : "bg-neutral-800 text-gray-300"
+                        } ${set[tier].ring ?? ""}`}
+                      >
+                        <GameIcon
+                          src={wowIconUrl(resolvedIcon(iconOverrides, overrideKey(tier), set[tier].icon))}
+                          label={set[tier].label}
+                          size={22}
+                          round
+                        />
+                        {tier}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
 
             <button
               disabled={busy}
