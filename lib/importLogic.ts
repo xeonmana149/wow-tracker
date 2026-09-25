@@ -3,12 +3,8 @@ import { iconUrlForFileId, PRIMARY_PROFESSIONS } from "./icons";
 import {
   ACHIEVEMENT_MESSAGE,
   awardAchievement,
-  awardEpicTier,
-  awardGoldTier,
-  awardRecipeTier,
-  epicTierMessage,
-  goldTierMessage,
-  recipeTierMessage,
+  awardTier,
+  tierMessage,
   isWithinFoundingWindow,
 } from "./achievements";
 import { checkAccountAchievements } from "./accountAchievements";
@@ -324,7 +320,11 @@ export async function applyImport(
   // threshold that the previous known balance hadn't reached yet. Uses
   // the "before" row read at the top of this function, so a single sync
   // can only ever cross each threshold once (no double-firing on a
-  // future sync that stays above it).
+  // future sync that stays above it). This is just activity-feed
+  // narration off the live balance - the tiered "gold" ACHIEVEMENT is
+  // separate and now sourced from the Statistics pane's lifetime "Total
+  // gold acquired" instead (see the Statistics-based badges section
+  // further down), so spending gold never takes that badge away.
   if (typeof parsed.basic?.money === "number") {
     const beforeCopper = before.money_copper ?? 0;
     const afterCopper = parsed.basic.money;
@@ -338,16 +338,6 @@ export async function applyImport(
           message: `${before.name} hit ${gold} gold`,
         });
       }
-    }
-
-    const tier = await awardGoldTier(supabase, characterId, afterCopper);
-    if (tier) {
-      events.push({
-        character_id: characterId,
-        user_id: before.user_id,
-        kind: "achievement_earned",
-        message: goldTierMessage(before.name, tier),
-      });
     }
   }
 
@@ -485,13 +475,13 @@ export async function applyImport(
     0
   );
   if (totalRecipes > 0) {
-    const tier = await awardRecipeTier(supabase, characterId, totalRecipes);
+    const tier = await awardTier(supabase, characterId, "recipes", totalRecipes);
     if (tier) {
       events.push({
         character_id: characterId,
         user_id: before.user_id,
         kind: "achievement_earned",
-        message: recipeTierMessage(before.name, tier),
+        message: tierMessage("recipes", before.name, tier),
       });
     }
   }
@@ -524,7 +514,6 @@ export async function applyImport(
     updated_at: string;
   }[] = [];
   const emptySlots: string[] = [];
-  let newEpicCount = 0;
   let equippedNewLegendary = false;
   // Whether the addon reported ANY gear at all this export. GetInventoryItemLink
   // can come back nil for every slot if the export was captured before the
@@ -565,24 +554,15 @@ export async function applyImport(
         kind: "epic_gear",
         message: `${before.name} equipped ${item.name}`,
       });
-      if (quality === EPIC_COLOR) newEpicCount += 1;
       if (quality === LEGENDARY_COLOR) equippedNewLegendary = true;
     }
   }
 
-  // Epic-gear tier - a running count of distinct Epic items equipped over
-  // time, only reported when it crosses into a higher tier than before.
-  if (newEpicCount > 0) {
-    const tier = await awardEpicTier(supabase, characterId, newEpicCount);
-    if (tier) {
-      events.push({
-        character_id: characterId,
-        user_id: before.user_id,
-        kind: "achievement_earned",
-        message: epicTierMessage(before.name, tier),
-      });
-    }
-  }
+  // The Epic-gear TIER badge is no longer tracked here as a running count -
+  // it's sourced from the Statistics pane's own "Epic items acquired" stat
+  // in the Statistics-based badges section further down, which is
+  // authoritative and already accounts for Epics equipped before this
+  // feature existed (a manual counter starting from zero never could).
 
   // Legendary is its own one-off badge, separate from the Epic tier.
   if (equippedNewLegendary) {
@@ -711,10 +691,9 @@ export async function applyImport(
     }
   }
 
-  // 6. Statistics pane data (Phase 1 - just storing it; badges/leaderboards
-  //    built from this are a separate, later phase). Whatever the addon
-  //    reports this sync fully replaces what's on file for those stat IDs,
-  //    one upsert per exported stat, keyed on (character_id, stat_id).
+  // 6. Statistics pane data - whatever the addon reports this sync fully
+  //    replaces what's on file for those stat IDs, one upsert per exported
+  //    stat, keyed on (character_id, stat_id).
   if (parsed.statistics && parsed.statistics.length > 0) {
     const statisticRows = parsed.statistics.map((s) => ({
       character_id: characterId,
@@ -729,6 +708,59 @@ export async function applyImport(
       .from("character_statistics")
       .upsert(statisticRows, { onConflict: "character_id,stat_id" });
     if (error) throw new Error(error.message);
+
+    // Statistics-based badges (2026-09-25 rework) - the tiered achievements
+    // that used to be sourced from ad-hoc fields this site tracked itself
+    // (a live gold balance, a hand-rolled equipped-Epic counter) are now
+    // sourced from the game's own Statistics pane data instead, plus a
+    // handful of brand new ones this richer data makes possible. See
+    // TIER_DEFS in achievements.ts for the thresholds.
+    //
+    // Values come back from the client already formatted ("1,502", or "--"
+    // for a stat never recorded) - stripped of commas and parsed here, and
+    // anything that doesn't parse to a plain number (including "--") is
+    // just skipped, same as the site treating an unrecorded stat as "no
+    // data" everywhere else.
+    const findStat = (category: string, name: string): number | null => {
+      const row = parsed.statistics!.find((s) => s.category === category && s.name === name);
+      if (!row) return null;
+      const n = Number(row.value.replace(/,/g, ""));
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const statTiers: { kind: Parameters<typeof awardTier>[2]; value: number | null }[] = [
+      { kind: "gold", value: findStat("Wealth", "Total gold acquired") },
+      { kind: "epic_gear", value: findStat("Gear", "Epic items acquired") },
+      { kind: "honorable_kills", value: findStat("Honorable Kills", "Total Honorable Kills") },
+      { kind: "creatures_killed", value: findStat("Creatures", "Creatures killed") },
+      { kind: "quests_completed", value: findStat("Quests", "Quests completed") },
+      { kind: "killing_blows", value: findStat("Killing Blows", "Total Killing Blows") },
+      {
+        // Not a single Blizzard stat - there's one counter per boss, not
+        // an aggregate - so this sums every entry reported under the Boss
+        // Kills category instead of looking up one named stat.
+        kind: "boss_kills",
+        value: parsed.statistics
+          .filter((s) => s.category === "Boss Kills")
+          .reduce((sum, s) => {
+            const n = Number(s.value.replace(/,/g, ""));
+            return sum + (Number.isFinite(n) ? n : 0);
+          }, 0) || null,
+      },
+    ];
+
+    for (const { kind, value } of statTiers) {
+      if (value == null || value <= 0) continue;
+      const tier = await awardTier(supabase, characterId, kind, value);
+      if (tier) {
+        events.push({
+          character_id: characterId,
+          user_id: before.user_id,
+          kind: "achievement_earned",
+          message: tierMessage(kind, before.name, tier),
+        });
+      }
+    }
   }
 
   // Account-wide achievements - re-checked on every sync since any of the

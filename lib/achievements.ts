@@ -15,47 +15,127 @@ export type AchievementKind =
   | "top_pvp_rank"
   | "founding_member";
 
-// The tiered achievements that upgrade through Bronze/Silver/Gold instead
-// of being a flat yes/no: "gold" (account gold on this character), "epic_gear"
-// (how many distinct Epic items this character has equipped over time - a
-// running count, not a snapshot of what's worn right now), and "recipes"
-// (total known recipes across every profession, as of the last sync).
-export type TieredAchievementKind = "gold" | "epic_gear" | "recipes";
+// The tiered (Bronze/Silver/Gold) achievements. As of 2026-09-25 these are
+// all driven off the real in-game Statistics pane data the addon now
+// reports (character_statistics / parsed.statistics), rather than fields
+// this site was tracking itself:
+//  - "gold" used to be a snapshot of the character's CURRENT bank balance
+//    (money_copper) - now it's "Total gold acquired", a lifetime total, so
+//    spending gold never takes the badge away.
+//  - "epic_gear" used to be our own running count, incremented every time
+//    a new Epic item was seen equipped (missed anything equipped before
+//    this feature existed) - now it's the game's own "Epic items acquired"
+//    stat, which is authoritative and already accounts for your whole
+//    history.
+//  - "recipes" was already snapshot-based (total known recipes across
+//    professions) and isn't a Statistics-pane stat, so it's unchanged.
+//  - honorable_kills/creatures_killed/quests_completed/killing_blows/
+//    boss_kills are new, made possible by the richer data.
+export type TieredAchievementKind =
+  | "gold"
+  | "epic_gear"
+  | "recipes"
+  | "honorable_kills"
+  | "creatures_killed"
+  | "quests_completed"
+  | "killing_blows"
+  | "boss_kills";
 
 export type GoldTier = "Bronze" | "Silver" | "Gold";
 
 const TIER_RANK: Record<GoldTier, number> = { Bronze: 0, Silver: 1, Gold: 2 };
 
-// Gold thresholds (in real gold) for the wealth achievement's three tiers.
-// Deliberately separate from the activity feed's own gold_milestone
-// thresholds (100/500/1000/5000) - those just narrate crossing a number,
-// this is what the badge tiers upgrade on.
-const GOLD_TIER_THRESHOLDS: { tier: GoldTier; gold: number }[] = [
-  { tier: "Gold", gold: 5000 },
-  { tier: "Silver", gold: 500 },
-  { tier: "Bronze", gold: 50 },
-];
+type TierThreshold = { tier: GoldTier; value: number };
 
-// How many distinct Epic items equipped (cumulative, counted every time a
-// *new* Epic item goes into a slot - swapping a worse Epic for a better
-// one still counts) each tier needs. Adjust these if 1/3/5 feels off for
-// your group.
-const EPIC_TIER_THRESHOLDS: { tier: GoldTier; count: number }[] = [
-  { tier: "Gold", count: 5 },
-  { tier: "Silver", count: 3 },
-  { tier: "Bronze", count: 1 },
-];
+type TierDef = {
+  thresholds: TierThreshold[];
+  // format() renders the "reached a tier" activity-feed message. Takes the
+  // character name, the tier reached, and the threshold value that earned
+  // it (thresholds are in whatever unit that kind's caller passes in - see
+  // the comment on each threshold table below).
+  format: (name: string, tier: GoldTier, value: number) => string;
+};
 
-// How many recipes known ACROSS EVERY PROFESSION (not per-profession) each
-// tier needs. Snapshot-based like gold, not cumulative like epic_gear - the
-// addon reports a character's full known-recipe list each time a profession
-// window is scanned, so the current total is always known outright rather
-// than needing to be tracked incrementally.
-const RECIPE_TIER_THRESHOLDS: { tier: GoldTier; count: number }[] = [
-  { tier: "Gold", count: 500 },
-  { tier: "Silver", count: 250 },
-  { tier: "Bronze", count: 50 },
-];
+// Each threshold table is ordered Gold-first so `.find()` picks the
+// highest tier the current value already qualifies for.
+const TIER_DEFS: Record<TieredAchievementKind, TierDef> = {
+  // Values in whole gold (not copper) - matches how the Statistics pane's
+  // own "Total gold acquired" stat is already formatted, so the numbers
+  // here are exactly what you'd see in-game.
+  gold: {
+    thresholds: [
+      { tier: "Gold", value: 5000 },
+      { tier: "Silver", value: 500 },
+      { tier: "Bronze", value: 50 },
+    ],
+    format: (name, tier, value) => `${name} has acquired ${value.toLocaleString()}+ gold - ${tier} tier!`,
+  },
+  // Distinct Epic items acquired, lifetime - the game's own count now, not
+  // ours (see the type comment above).
+  epic_gear: {
+    thresholds: [
+      { tier: "Gold", value: 5 },
+      { tier: "Silver", value: 3 },
+      { tier: "Bronze", value: 1 },
+    ],
+    format: (name, tier, value) => `${name} has acquired ${value}+ Epic items - ${tier} tier!`,
+  },
+  // Total known recipes across every profession - not a Statistics-pane
+  // stat, still computed the same way it always was (see importLogic.ts).
+  recipes: {
+    thresholds: [
+      { tier: "Gold", value: 500 },
+      { tier: "Silver", value: 250 },
+      { tier: "Bronze", value: 50 },
+    ],
+    format: (name, tier, value) => `${name} knows ${value}+ recipes - ${tier} tier!`,
+  },
+  honorable_kills: {
+    thresholds: [
+      { tier: "Gold", value: 200 },
+      { tier: "Silver", value: 50 },
+      { tier: "Bronze", value: 10 },
+    ],
+    format: (name, tier, value) =>
+      `${name} has ${value}+ Honorable Kills - ${tier} tier!`,
+  },
+  creatures_killed: {
+    thresholds: [
+      { tier: "Gold", value: 5000 },
+      { tier: "Silver", value: 1000 },
+      { tier: "Bronze", value: 250 },
+    ],
+    format: (name, tier, value) =>
+      `${name} has slain ${value.toLocaleString()}+ creatures - ${tier} tier!`,
+  },
+  quests_completed: {
+    thresholds: [
+      { tier: "Gold", value: 150 },
+      { tier: "Silver", value: 75 },
+      { tier: "Bronze", value: 25 },
+    ],
+    format: (name, tier, value) => `${name} has completed ${value}+ quests - ${tier} tier!`,
+  },
+  killing_blows: {
+    thresholds: [
+      { tier: "Gold", value: 500 },
+      { tier: "Silver", value: 150 },
+      { tier: "Bronze", value: 25 },
+    ],
+    format: (name, tier, value) => `${name} has ${value}+ Killing Blows - ${tier} tier!`,
+  },
+  // Not a single Blizzard stat - summed by importLogic.ts across every
+  // individual boss entry under the Boss Kills category (there's no
+  // aggregate "total boss kills" stat, just one counter per boss).
+  boss_kills: {
+    thresholds: [
+      { tier: "Gold", value: 150 },
+      { tier: "Silver", value: 50 },
+      { tier: "Bronze", value: 10 },
+    ],
+    format: (name, tier, value) => `${name} has ${value}+ boss kills - ${tier} tier!`,
+  },
+};
 
 export const ACHIEVEMENT_MESSAGE: Record<AchievementKind, (name: string) => string> = {
   max_level: (name) => `${name} reached the level cap!`,
@@ -66,21 +146,6 @@ export const ACHIEVEMENT_MESSAGE: Record<AchievementKind, (name: string) => stri
   top_pvp_rank: (name) => `${name} reached the top PvP rank!`,
   founding_member: (name) => `${name} earned the Founding Member badge!`,
 };
-
-export function goldTierMessage(name: string, tier: GoldTier): string {
-  const gold = GOLD_TIER_THRESHOLDS.find((t) => t.tier === tier)?.gold ?? "?";
-  return `${name} reached the ${tier} wealth tier (${gold}g)!`;
-}
-
-export function epicTierMessage(name: string, tier: GoldTier): string {
-  const count = EPIC_TIER_THRESHOLDS.find((t) => t.tier === tier)?.count ?? "?";
-  return `${name} has equipped ${count}+ Epic items - ${tier} tier!`;
-}
-
-export function recipeTierMessage(name: string, tier: GoldTier): string {
-  const count = RECIPE_TIER_THRESHOLDS.find((t) => t.tier === tier)?.count ?? "?";
-  return `${name} knows ${count}+ recipes - ${tier} tier!`;
-}
 
 // Awards a plain (non-tiered) achievement to a character. Safe to call
 // every time the underlying condition is true, not just the first moment
@@ -103,22 +168,29 @@ export async function awardAchievement(
   return (data?.length ?? 0) > 0;
 }
 
-// The wealth achievement upgrades in place based on the character's
-// current gold - returns the new tier if this call improved on whatever
-// tier (if any) the character already held, or null otherwise.
-export async function awardGoldTier(
+// Generic snapshot-based tier upgrade: every tiered achievement is "does
+// the character's CURRENT value for this thing clear a threshold", derived
+// fresh each sync rather than incrementally tracked - so a badge is never
+// missed for something that was already true before this feature existed
+// (unlike the old hand-rolled epic_gear counter, which only ever counted
+// NEW equips going forward). Returns the newly-reached tier only when this
+// call is what pushed the character into a HIGHER tier than it already
+// held, so the activity feed doesn't repeat itself every sync.
+export async function awardTier(
   supabase: SupabaseClient,
   characterId: string,
-  copper: number
+  kind: TieredAchievementKind,
+  currentValue: number
 ): Promise<GoldTier | null> {
-  const reached = GOLD_TIER_THRESHOLDS.find((t) => copper >= t.gold * 10000);
+  const def = TIER_DEFS[kind];
+  const reached = def.thresholds.find((t) => currentValue >= t.value);
   if (!reached) return null;
 
   const { data: existing } = await supabase
     .from("achievements")
     .select("tier")
     .eq("character_id", characterId)
-    .eq("kind", "gold")
+    .eq("kind", kind)
     .maybeSingle();
 
   const existingRank = existing?.tier ? TIER_RANK[existing.tier as GoldTier] : -1;
@@ -127,80 +199,32 @@ export async function awardGoldTier(
   const { error } = await supabase
     .from("achievements")
     .upsert(
-      { character_id: characterId, kind: "gold", tier: reached.tier },
+      { character_id: characterId, kind, tier: reached.tier },
       { onConflict: "character_id,kind" }
     );
   if (error) return null;
   return reached.tier;
 }
 
-// The recipes-known achievement upgrades in place based on the character's
-// current total recipe count (summed across every profession), same
-// snapshot approach as awardGoldTier - returns the new tier if this call
-// improved on whatever tier (if any) the character already held, or null
-// otherwise.
-export async function awardRecipeTier(
-  supabase: SupabaseClient,
-  characterId: string,
-  totalRecipes: number
-): Promise<GoldTier | null> {
-  const reached = RECIPE_TIER_THRESHOLDS.find((t) => totalRecipes >= t.count);
-  if (!reached) return null;
+export const TIERED_ACHIEVEMENT_KINDS: TieredAchievementKind[] = [
+  "gold",
+  "epic_gear",
+  "recipes",
+  "honorable_kills",
+  "creatures_killed",
+  "quests_completed",
+  "killing_blows",
+  "boss_kills",
+];
 
-  const { data: existing } = await supabase
-    .from("achievements")
-    .select("tier")
-    .eq("character_id", characterId)
-    .eq("kind", "recipes")
-    .maybeSingle();
-
-  const existingRank = existing?.tier ? TIER_RANK[existing.tier as GoldTier] : -1;
-  if (TIER_RANK[reached.tier] <= existingRank) return null;
-
-  const { error } = await supabase
-    .from("achievements")
-    .upsert(
-      { character_id: characterId, kind: "recipes", tier: reached.tier },
-      { onConflict: "character_id,kind" }
-    );
-  if (error) return null;
-  return reached.tier;
-}
-
-// The Epic-gear achievement instead accumulates a running count (stored in
-// the `progress` column) every time this is called with newEpicsThisSync
-// > 0, and its tier is derived from the running total. Returns the new
-// tier only when this call is what pushed it into a HIGHER tier than it
-// already held - a count going from 1 to 2 still keeps it at Bronze, so
-// that's not reported as a fresh achievement.
-export async function awardEpicTier(
-  supabase: SupabaseClient,
-  characterId: string,
-  newEpicsThisSync: number
-): Promise<GoldTier | null> {
-  if (newEpicsThisSync <= 0) return null;
-
-  const { data: existing } = await supabase
-    .from("achievements")
-    .select("tier, progress")
-    .eq("character_id", characterId)
-    .eq("kind", "epic_gear")
-    .maybeSingle();
-
-  const newProgress = (existing?.progress ?? 0) + newEpicsThisSync;
-  const newTier = EPIC_TIER_THRESHOLDS.find((t) => newProgress >= t.count)?.tier ?? null;
-  const existingRank = existing?.tier ? TIER_RANK[existing.tier as GoldTier] : -1;
-  const newRank = newTier ? TIER_RANK[newTier] : -1;
-
-  const { error } = await supabase
-    .from("achievements")
-    .upsert(
-      { character_id: characterId, kind: "epic_gear", tier: newTier, progress: newProgress },
-      { onConflict: "character_id,kind" }
-    );
-  if (error) return null;
-
-  return newRank > existingRank ? newTier : null;
+export function tierMessage(
+  kind: TieredAchievementKind,
+  name: string,
+  tier: GoldTier
+): string {
+  const def = TIER_DEFS[kind];
+  const threshold = def.thresholds.find((t) => t.tier === tier);
+  return def.format(name, tier, threshold?.value ?? 0);
 }
 
 // When the server goes live - characters created from that moment through

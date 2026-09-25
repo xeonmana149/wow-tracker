@@ -11,7 +11,7 @@ import {
   wowIconUrl,
 } from "../lib/icons";
 import { characterBars } from "../lib/progress";
-import type { AchievementKind, GoldTier } from "../lib/achievements";
+import type { AchievementKind, GoldTier, TieredAchievementKind } from "../lib/achievements";
 import { resolvedIcon, type BadgeIconOverrides } from "../lib/badgeIconOverrides";
 import GameIcon from "./GameIcon";
 import ProgressBars from "./ProgressBars";
@@ -83,13 +83,68 @@ export const RECIPE_TIER_BADGE: Record<GoldTier, { icon: string; ring: string; l
   },
 };
 
+// The five badges added in the 2026-09-25 Statistics-based rework (see
+// lib/achievements.ts) - one fixed icon per kind, with the tier communicated
+// by a colored ring, same convention as epic_gear/recipes above rather than
+// needing 15 distinct tier icons.
+type TierRingBadge = Record<GoldTier, { icon: string; ring: string; label: string }>;
+
+const RING_BY_TIER: Record<GoldTier, string> = {
+  Bronze: "ring-2 ring-amber-700",
+  Silver: "ring-2 ring-gray-300",
+  Gold: "ring-2 ring-yellow-400",
+};
+
+function ringBadge(icon: string, labelFor: (tier: GoldTier) => string): TierRingBadge {
+  return {
+    Bronze: { icon, ring: RING_BY_TIER.Bronze, label: labelFor("Bronze") },
+    Silver: { icon, ring: RING_BY_TIER.Silver, label: labelFor("Silver") },
+    Gold: { icon, ring: RING_BY_TIER.Gold, label: labelFor("Gold") },
+  };
+}
+
+export const HONORABLE_KILLS_TIER_BADGE = ringBadge(
+  "ability_warrior_savageblow",
+  (tier) => `${tier} tier - ${{ Bronze: 10, Silver: 50, Gold: 200 }[tier]}+ Honorable Kills`
+);
+export const CREATURES_KILLED_TIER_BADGE = ringBadge(
+  "inv_misc_monsterclaw_04",
+  (tier) => `${tier} tier - ${{ Bronze: 250, Silver: 1000, Gold: 5000 }[tier]}+ creatures killed`
+);
+export const QUESTS_COMPLETED_TIER_BADGE = ringBadge(
+  "achievement_quests_completed_08",
+  (tier) => `${tier} tier - ${{ Bronze: 25, Silver: 75, Gold: 150 }[tier]}+ quests completed`
+);
+export const KILLING_BLOWS_TIER_BADGE = ringBadge(
+  "ability_rogue_ambush",
+  (tier) => `${tier} tier - ${{ Bronze: 25, Silver: 150, Gold: 500 }[tier]}+ Killing Blows`
+);
+export const BOSS_KILLS_TIER_BADGE = ringBadge(
+  "achievement_boss_ragnaros",
+  (tier) => `${tier} tier - ${{ Bronze: 10, Silver: 50, Gold: 150 }[tier]}+ boss kills`
+);
+
+// One lookup covering every ring-style tiered badge (everything except
+// "gold", which uses a different icon per tier instead of a ring - see
+// GOLD_TIER_BADGE above) so the render below doesn't need a growing
+// if/else chain every time a new tiered badge is added.
+const RING_TIER_BADGES: Partial<Record<TieredAchievementKind, TierRingBadge>> = {
+  epic_gear: EPIC_TIER_META,
+  recipes: RECIPE_TIER_BADGE,
+  honorable_kills: HONORABLE_KILLS_TIER_BADGE,
+  creatures_killed: CREATURES_KILLED_TIER_BADGE,
+  quests_completed: QUESTS_COMPLETED_TIER_BADGE,
+  killing_blows: KILLING_BLOWS_TIER_BADGE,
+  boss_kills: BOSS_KILLS_TIER_BADGE,
+};
+
 // The 📅 created-date badge isn't a real achievement, but gets the same
 // icon treatment for visual consistency with the ones that are.
 export const CREATED_DATE_ICON = "inv_misc_pocketwatch_01";
 export const CREATED_DATE_ICON_KEY = "created_date";
 
 type CardAchievement = {
-  kind: AchievementKind | "gold" | "epic_gear" | "recipes";
+  kind: AchievementKind | TieredAchievementKind;
   tier?: GoldTier | null;
 };
 
@@ -317,20 +372,12 @@ export default function CharacterCard({
                       </span>
                     );
                   }
-                  if (a.kind === "epic_gear" && a.tier) {
-                    const meta = EPIC_TIER_META[a.tier];
-                    const icon = resolvedIcon(iconOverrides, "epic_gear", meta.icon);
+                  const ringBadge = RING_TIER_BADGES[a.kind as TieredAchievementKind];
+                  if (ringBadge && a.tier) {
+                    const meta = ringBadge[a.tier];
+                    const icon = resolvedIcon(iconOverrides, `${a.kind}:${a.tier}`, meta.icon);
                     return (
-                      <span key="epic_gear" className={`inline-block rounded-full ${meta.ring}`}>
-                        <GameIcon src={wowIconUrl(icon)} label={meta.label} size={28} round />
-                      </span>
-                    );
-                  }
-                  if (a.kind === "recipes" && a.tier) {
-                    const meta = RECIPE_TIER_BADGE[a.tier];
-                    const icon = resolvedIcon(iconOverrides, `recipes:${a.tier}`, meta.icon);
-                    return (
-                      <span key="recipes" className={`inline-block rounded-full ${meta.ring}`}>
+                      <span key={a.kind} className={`inline-block rounded-full ${meta.ring}`}>
                         <GameIcon src={wowIconUrl(icon)} label={meta.label} size={28} round />
                       </span>
                     );
