@@ -121,6 +121,13 @@ export type ParsedExport = {
     error?: string;
     configs?: { configID: number; nodes: ParsedTraitNode[] }[];
   };
+  // Every stat the in-game Statistics pane reports (Phase 1 of the
+  // 2026-09-25 Statistics feature - see collectStatistics() in the addon).
+  // Captured wholesale rather than a curated subset, so a future badge idea
+  // never needs another addon update just to start tracking a stat that
+  // wasn't grabbed before. value is already formatted by the client
+  // ("1,502", or "--" for a stat never recorded) and stored as-is.
+  statistics?: { id: number; category: string; name: string; value: string }[];
 };
 
 // Addon gear key -> the site's Equipped Gear slot name. "shirt" and
@@ -702,6 +709,26 @@ export async function applyImport(
         );
       }
     }
+  }
+
+  // 6. Statistics pane data (Phase 1 - just storing it; badges/leaderboards
+  //    built from this are a separate, later phase). Whatever the addon
+  //    reports this sync fully replaces what's on file for those stat IDs,
+  //    one upsert per exported stat, keyed on (character_id, stat_id).
+  if (parsed.statistics && parsed.statistics.length > 0) {
+    const statisticRows = parsed.statistics.map((s) => ({
+      character_id: characterId,
+      user_id: before.user_id,
+      stat_id: s.id,
+      category: s.category,
+      name: s.name,
+      value: s.value,
+      updated_at: new Date().toISOString(),
+    }));
+    const { error } = await supabase
+      .from("character_statistics")
+      .upsert(statisticRows, { onConflict: "character_id,stat_id" });
+    if (error) throw new Error(error.message);
   }
 
   // Account-wide achievements - re-checked on every sync since any of the

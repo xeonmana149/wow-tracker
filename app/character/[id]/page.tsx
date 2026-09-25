@@ -16,6 +16,7 @@ import ImportPanel from "./ImportPanel";
 import NeedsSetupBanner from "./NeedsSetupBanner";
 import WishlistCard from "./WishlistCard";
 import PreBisCard from "./PreBisCard";
+import StatisticsCard from "./StatisticsCard";
 
 
 export const dynamic = "force-dynamic";
@@ -77,6 +78,11 @@ export default async function CharacterPage({
     .select("id, item_name, note, priority, obtained")
     .eq("character_id", id)
     .order("created_at", { ascending: true });
+
+  const { data: statisticRows } = await supabase
+    .from("character_statistics")
+    .select("category, name, value")
+    .eq("character_id", id);
 
   const { data: prebisRows } = await supabase
     .from("character_prebis")
@@ -319,6 +325,10 @@ export default async function CharacterPage({
             items={prebis}
           />
         </div>
+      </div>
+
+      <div className="mt-4">
+        <StatisticsCard stats={statisticRows ?? []} />
       </div>
     </main>
   );
