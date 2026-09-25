@@ -156,11 +156,11 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
   }, [sorted, sort]);
 
   if (loading) {
-    return <main className="mx-auto max-w-4xl p-4 text-white md:p-6">Loading achievements...</main>;
+    return <main className="mx-auto max-w-6xl p-4 text-white md:p-6">Loading achievements...</main>;
   }
 
   return (
-    <main className="mx-auto max-w-4xl p-4 text-white md:p-6">
+    <main className="mx-auto max-w-6xl p-4 text-white md:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
           <Link href={`/character/${characterId}`} className="text-xs text-gray-500 hover:underline">
@@ -249,7 +249,7 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
                 {FAMILY_META[group.family].icon} {FAMILY_META[group.family].label}
               </h2>
             )}
-            <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {group.items.map((item) => (
                 <AchievementRow
                   key={item.key}
