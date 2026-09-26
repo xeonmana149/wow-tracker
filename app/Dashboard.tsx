@@ -386,8 +386,15 @@ export default function Dashboard({
   // empty/never-synced profile has null versions, which isn't "outdated" -
   // just "haven't heard from you yet"). Compared against whatever this
   // deploy of the site itself considers current, from lib/versions.ts.
+  //
+  // Tray version is deliberately NOT checked here anymore (2026-09-26) -
+  // the desktop app now updates itself automatically via electron-updater,
+  // so a "new version out, go download it" banner became actively wrong
+  // information (it kept nagging about versions the app had already
+  // updated past on its own, since LATEST_VERSIONS.tray tracks the
+  // website's own knowledge of the tray app, which isn't kept in lockstep
+  // with every tray release the way the addon side still needs it to be).
   const addonOutdated = !!myVersions.addon && myVersions.addon !== LATEST_VERSIONS.addon;
-  const trayOutdated = !!myVersions.tray && myVersions.tray !== LATEST_VERSIONS.tray;
 
   return (
     <main className="mx-auto max-w-[1500px] p-4 md:p-6">
@@ -406,32 +413,16 @@ export default function Dashboard({
         </p>
       </div>
 
-      {(addonOutdated || trayOutdated) && (
+      {addonOutdated && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#6b5229] bg-[#3a2d18]/40 p-3 text-sm text-[#e6d6ac]">
           <div className="flex items-start gap-2">
             {ICON_INFO}
-            <div>
-              {addonOutdated && (
-                <p>
-                  A new version of the WoWForeverTracker addon ({LATEST_VERSIONS.addon}) is out.
-                  You have {myVersions.addon} installed. Download it and replace the addon folder in
-                  WoW.
-                </p>
-              )}
-              {trayOutdated && (
-                <p className={addonOutdated ? "mt-1" : undefined}>
-                  A new version of the background sync app ({LATEST_VERSIONS.tray}) is out. You
-                  have {myVersions.tray} installed. Download it and reinstall over the old folder.
-                </p>
-              )}
-            </div>
+            <p>
+              A new version of the WoWForeverTracker addon ({LATEST_VERSIONS.addon}) is out. You
+              have {myVersions.addon} installed - your desktop app will update it automatically
+              next time it checks. Just <code>/reload</code> once it does.
+            </p>
           </div>
-          <Link
-            href="/download"
-            className="shrink-0 rounded bg-red-700 px-3 py-1.5 text-xs"
-          >
-            View Instructions →
-          </Link>
         </div>
       )}
 

@@ -12,6 +12,56 @@ function isTracked(value: string) {
   return value.trim() !== "" && value.trim() !== "--";
 }
 
+// Blizzard's own Statistics UI formats money stats (e.g. "Total gold
+// acquired", "Most gold ever owned") using in-game texture escape codes -
+// something like "1|TInterface\MoneyFrame\UI-GoldIcon:0:0:2:0|t56|T...
+// SilverIcon...|t12|T...CopperIcon...|t". The WoW client renders |T...|t as
+// a little coin icon; outside the game it's just meaningless text, and the
+// addon exports GetStatistic()'s value verbatim since it has no way to know
+// this site can't render WoW's texture syntax. Detected and reformatted
+// here instead of changing what the addon exports (every existing synced
+// row already has this raw text baked in, so this has to be tolerant on
+// read regardless of what future addon versions do).
+const MONEY_ICON_RE = /(\d+)\s*\|T[^|]*?(Gold|Silver|Copper)Icon[^|]*\|t/gi;
+
+function parseBlizzardMoneyString(value: string): number | null {
+  MONEY_ICON_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let gold = 0,
+    silver = 0,
+    copper = 0,
+    found = false;
+  while ((match = MONEY_ICON_RE.exec(value))) {
+    found = true;
+    const amount = Number(match[1]);
+    const kind = match[2].toLowerCase();
+    if (kind === "gold") gold = amount;
+    else if (kind === "silver") silver = amount;
+    else if (kind === "copper") copper = amount;
+  }
+  return found ? gold * 10000 + silver * 100 + copper : null;
+}
+
+// Renders a stat's value, transparently reformatting Blizzard's raw money
+// texture-strings into plain "Xg Ys Zc" text with WoW's usual coin colors -
+// everything else (most stats are plain numbers or names) passes through
+// unchanged.
+function StatValue({ value, className }: { value: string; className?: string }) {
+  const copper = parseBlizzardMoneyString(value);
+  if (copper === null) return <span className={className}>{value}</span>;
+
+  const gold = Math.floor(copper / 10000);
+  const silver = Math.floor((copper % 10000) / 100);
+  const bronze = copper % 100;
+  return (
+    <span className={className}>
+      {gold > 0 && <span style={{ color: "#ffd700" }}>{gold.toLocaleString()}g </span>}
+      {(silver > 0 || gold > 0) && <span style={{ color: "#c0c0c0" }}>{silver}s </span>}
+      <span style={{ color: "#b87333" }}>{bronze}c</span>
+    </span>
+  );
+}
+
 // "1,502" -> 1502. NaN for anything that isn't a plain number (e.g.
 // "Warsong Gulch" for a "Battleground played the most" stat) - those just
 // don't participate in magnitude-based picks below.
@@ -249,11 +299,10 @@ export default function StatisticsCard({ stats }: { stats: StatisticRow[] }) {
                 {r.name}
                 <span className="ml-2 text-xs text-gray-500">{r.category}</span>
               </span>
-              <span
+              <StatValue
+                value={r.value}
                 className={`font-semibold ${isTracked(r.value) ? "text-[#c9a566]" : "text-gray-600"}`}
-              >
-                {r.value}
-              </span>
+              />
             </div>
           ))}
         </div>
@@ -289,7 +338,7 @@ export default function StatisticsCard({ stats }: { stats: StatisticRow[] }) {
                   </span>
                   {headline ? (
                     <span className="text-lg font-bold text-[#c9a566]">
-                      {headline.value}
+                      <StatValue value={headline.value} />
                       <span className="ml-1.5 text-xs font-normal text-gray-400">
                         {headline.name}
                       </span>
@@ -356,13 +405,12 @@ export default function StatisticsCard({ stats }: { stats: StatisticRow[] }) {
                           {rows.map((r) => (
                             <li key={r.name} className="flex items-center justify-between gap-3">
                               <span className="text-gray-300">{r.name}</span>
-                              <span
+                              <StatValue
+                                value={r.value}
                                 className={`font-semibold ${
                                   isTracked(r.value) ? "text-[#c9a566]" : "text-gray-600"
                                 }`}
-                              >
-                                {r.value}
-                              </span>
+                              />
                             </li>
                           ))}
                         </ul>
