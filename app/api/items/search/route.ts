@@ -68,9 +68,11 @@ export async function GET(req: NextRequest) {
   const hasMinLevel = Number.isFinite(minLevel) && minLevel > 0;
   const hasMaxLevel = Number.isFinite(maxLevel) && maxLevel > 0;
 
-  if (!hasNameSearch && !hasQuality && !hasStat && !hasCategory && !hasMinLevel && !hasMaxLevel) {
-    return NextResponse.json({ items: [], total: 0, page: 1, pageSize: PAGE_SIZE });
-  }
+  // No filters at all used to short-circuit to an empty result here - that
+  // was the actual reason the Items page showed nothing until you searched,
+  // separate from (and in addition to) the frontend's own gating. Falls
+  // through to the normal query below instead, which already defaults to
+  // name order and excludes Quest items - i.e. a plain unfiltered browse.
 
   function baseQuery(withCount: boolean) {
     let query = supabaseAdmin

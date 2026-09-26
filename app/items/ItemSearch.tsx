@@ -783,13 +783,12 @@ export default function ItemSearch() {
     const trimmedStat = stat.trim();
     const trimmedMinLevel = minLevel.trim();
     const trimmedMaxLevel = maxLevel.trim();
-    const active =
-      trimmedQuery.length >= 2 ||
-      quality.length > 0 ||
-      trimmedStat.length >= 2 ||
-      category.length > 0 ||
-      trimmedMinLevel.length > 0 ||
-      trimmedMaxLevel.length > 0;
+    // No filters at all is a valid state now - it just means "browse
+    // everything" (fetched with no params below). The only time there's
+    // nothing worth fetching is a query that's been started but is too
+    // short to filter on yet (a single character would match almost every
+    // item and just be noise).
+    const active = trimmedQuery.length !== 1;
 
     if (!active) {
       setResults([]);
@@ -879,13 +878,10 @@ export default function ItemSearch() {
 
   const selectedItem = results.find((r) => r.id === selectedId) ?? null;
 
-  const active =
-    query.trim().length >= 2 ||
-    quality.length > 0 ||
-    stat.trim().length >= 2 ||
-    category.length > 0 ||
-    minLevel.trim().length > 0 ||
-    maxLevel.trim().length > 0;
+  // Mirrors the fetch-gating logic above: everything is "active" (worth
+  // showing results for) except a query that's been started but is only
+  // one character long.
+  const active = query.trim().length !== 1;
 
   return (
     <div>
@@ -1010,11 +1006,6 @@ export default function ItemSearch() {
       )}
       {loading && <p className="mt-3 text-sm text-gray-500">Searching...</p>}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
-      {!active && (
-        <p className="mt-3 text-sm text-gray-400">
-          Start typing a name, pick a quality, or filter by a stat to browse the item database.
-        </p>
-      )}
 
       {active && !loading && !error && results.length > 0 && (
         <>
