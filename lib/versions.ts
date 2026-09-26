@@ -9,7 +9,7 @@
 // treated as "different, so out of date" by whoever's checking.
 export const LATEST_VERSIONS = {
   addon: "1.8.3",
-  tray: "1.2.0",
+  tray: "2.2.0",
 };
 
 // Wherever people should go to grab the update. The tray app still points
