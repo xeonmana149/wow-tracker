@@ -309,6 +309,13 @@ export const TIERED_LOCAL_ICONS: Partial<Record<TieredAchievementKind, string>> 
   pets_owned: "pet-collector",
   fish_caught: "angler",
   auctions_posted: "auctioneer",
+  // 2026-09-26 icon batch - the last four ring-tiered kinds that still had
+  // no local art (they fell back to their CDN icon + colored ring until
+  // now).
+  damage_done: "juggernaut",
+  healing_done: "lifebringer",
+  loot_rolls: "loot-goblin",
+  auction_gold: "trader",
 };
 
 // Same idea for the flat (no-tier) achievement badges that got local art -
@@ -320,4 +327,13 @@ export const FLAT_LOCAL_ICONS: Partial<Record<AchievementKind, string>> = {
   top_pvp_rank: "top-pvp-rank",
   founding_member: "founding-member",
   greeter: "greeter",
+  // 2026-09-26 icon batch.
+  legendary_item: "legendary-item",
+  maxed_profession: "maxed-profession",
+  renaissance: "renaissance",
+  standing_in_fire: "standing-in-fire",
+  hoggers_plaything: "hoggers-plaything",
+  cant_swim: "cant-swim",
+  gravity_challenged: "gravity-challenged",
+  identity_crisis: "identity-crisis",
 };
