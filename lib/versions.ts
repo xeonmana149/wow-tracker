@@ -12,9 +12,14 @@ export const LATEST_VERSIONS = {
   tray: "1.2.0",
 };
 
-// Wherever people should go to grab the update - both point at the same
-// Downloads page for now since that's where both live.
+// Wherever people should go to grab the update. The tray app still points
+// at the human-facing Downloads page (it's only ever linked for someone to
+// click) - but the addon needs a DIRECT file link, because the tray app's
+// own auto-update check (main.js's checkForAddonUpdate) fetches this value
+// from /api/version and downloads it programmatically, not a page a person
+// reads. Keep this in sync with whatever the actual filename is under
+// public/downloads/ in the website project.
 export const DOWNLOAD_URLS = {
-  addon: "/download",
+  addon: "/downloads/WoWForeverTrackerAddon.zip",
   tray: "/download",
 };
