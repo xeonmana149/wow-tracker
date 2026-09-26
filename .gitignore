@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# tray app releases (hosted on GitHub Releases, not committed here)
+public/downloads/*.exe
+public/downloads/*.blockmap
+latest.yml
