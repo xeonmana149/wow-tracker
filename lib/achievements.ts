@@ -83,7 +83,13 @@ export type TieredAchievementKind =
   | "loot_rolls" // "Loot Goblin"
   | "fish_caught" // "Angler"
   | "auctions_posted" // "Auctioneer"
-  | "auction_gold"; // "Trader"
+  | "auction_gold" // "Trader"
+  // Master Chef (2026-09-26) - same "computed from character_professions,
+  // not character_statistics" special case as "recipes" (Artisan), except
+  // scoped to ONLY the Cooking profession's known recipes rather than
+  // every profession summed together. See TIER_COUNTERS below (also left
+  // empty, same reason) and importLogic.ts's dedicated Cooking-only query.
+  | "master_chef"; // "Master Chef"
 
 export type AchievementTier = "Copper" | "Silver" | "Gold" | "Platinum";
 // Kept as an alias so older code that still says GoldTier keeps working -
@@ -427,6 +433,22 @@ const TIER_DEFS: Record<TieredAchievementKind, TierDef> = {
     ],
     format: (name, tier, value) => `${name} has earned ${value.toLocaleString()}+ gold from auctions - ${tier} tier!`,
   },
+  master_chef: {
+    label: "Master Chef",
+    description: "Cooking recipes known.",
+    family: "professions",
+    // Scoped to ONE profession's recipe count rather than all of them
+    // combined (unlike Artisan/"recipes"), so these are deliberately much
+    // smaller than that achievement's 50/150/350/750 ladder - starting
+    // estimates, not tuned against real Cooking recipe counts yet.
+    thresholds: [
+      { tier: "Platinum", value: 100 },
+      { tier: "Gold", value: 60 },
+      { tier: "Silver", value: 30 },
+      { tier: "Copper", value: 15 },
+    ],
+    format: (name, tier, value) => `${name} knows ${value}+ Cooking recipes - ${tier} tier!`,
+  },
 };
 
 export const ACHIEVEMENT_MESSAGE: Record<AchievementKind, (name: string) => string> = {
@@ -500,9 +522,11 @@ export const PERSONALITY_BADGES: {
 // Which character_statistics rows feed each tiered achievement's counter.
 // A plain {category,name} sums that one stat; {categoryOnly} sums EVERY
 // stat under that raw category (used for boss_kills, where Blizzard tracks
-// one counter per boss rather than a single aggregate). "recipes" is left
-// as an empty list on purpose - it's computed from character_professions,
-// not character_statistics, so importLogic.ts special-cases it instead.
+// one counter per boss rather than a single aggregate). "recipes" and
+// "master_chef" are left as empty lists on purpose - both are computed from
+// character_professions, not character_statistics, so importLogic.ts
+// special-cases them instead (master_chef the same way as recipes, just
+// filtered down to the Cooking profession only).
 //
 // This is the single source of truth for "what feeds what" - both the
 // sync route (importLogic.ts, via computeCounter below) and the
@@ -563,6 +587,7 @@ export const TIER_COUNTERS: Record<TieredAchievementKind, StatSelector[]> = {
   fish_caught: [{ category: "Secondary Skills", name: "Fish caught" }],
   auctions_posted: [{ category: "Wealth", name: "Auctions posted" }],
   auction_gold: [{ category: "Wealth", name: "Gold earned from auctions" }],
+  master_chef: [],
 };
 
 // Sums whichever raw stats feed a given tiered kind, out of an arbitrary
@@ -682,6 +707,7 @@ export const TIERED_ACHIEVEMENT_KINDS: TieredAchievementKind[] = [
   "fish_caught",
   "auctions_posted",
   "auction_gold",
+  "master_chef",
 ];
 
 export function tierLabel(kind: TieredAchievementKind): string {

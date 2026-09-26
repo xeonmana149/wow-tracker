@@ -549,10 +549,13 @@ export async function applyImport(
   // just the one(s) touched this sync, since the badge reflects the whole
   // shared library. Queried fresh from the DB (rather than from
   // `updatedProfessions`, which only tracks skill in memory) so it reflects
-  // whatever was just written above.
+  // whatever was just written above. Also splits out a Cooking-only count
+  // for the "Master Chef" badge (2026-09-26) - same profession-derived
+  // special case as the all-professions "recipes"/Artisan badge above, just
+  // scoped to one profession, so both are computed from this single query.
   const { data: allProfessionRecipes } = await supabase
     .from("character_professions")
-    .select("recipes")
+    .select("profession, recipes")
     .eq("character_id", characterId);
   const totalRecipes = (allProfessionRecipes ?? []).reduce(
     (n, p) => n + (Array.isArray(p.recipes) ? p.recipes.length : 0),
@@ -568,6 +571,27 @@ export async function applyImport(
         achievement_kind: "recipes",
         achievement_tier: tier,
         message: tierMessage("recipes", before.name, tier),
+      });
+    }
+  }
+  const cookingRecipes = (allProfessionRecipes ?? []).reduce(
+    (n, p) =>
+      n +
+      (p.profession?.toLowerCase() === "cooking" && Array.isArray(p.recipes)
+        ? p.recipes.length
+        : 0),
+    0
+  );
+  if (cookingRecipes > 0) {
+    const masterChefTier = await awardTier(supabase, characterId, "master_chef", cookingRecipes);
+    if (masterChefTier) {
+      events.push({
+        character_id: characterId,
+        user_id: before.user_id,
+        kind: "achievement_earned",
+        achievement_kind: "master_chef",
+        achievement_tier: masterChefTier,
+        message: tierMessage("master_chef", before.name, masterChefTier),
       });
     }
   }

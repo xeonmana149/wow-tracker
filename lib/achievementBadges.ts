@@ -250,6 +250,16 @@ export const AUCTION_GOLD_TIER_BADGE = ringBadge(
   (tier) =>
     `Trader - ${tier} tier - ${{ Copper: 100, Silver: 1000, Gold: 10000, Platinum: 50000 }[tier].toLocaleString()}+ gold from auctions`
 );
+// Master Chef (2026-09-26) - Cooking-only recipes-known badge, same
+// profession-derived special case as "recipes"/Artisan above but scoped to
+// one profession. No local art yet on purpose - the user is making their
+// own icon, so this stays on the generic CDN-icon + colored-ring treatment
+// until a TIERED_LOCAL_ICONS.master_chef entry gets added later.
+export const MASTER_CHEF_TIER_BADGE = ringBadge(
+  "trade_cooking",
+  (tier) =>
+    `Master Chef - ${tier} tier - ${{ Copper: 15, Silver: 30, Gold: 60, Platinum: 100 }[tier]}+ Cooking recipes known`
+);
 
 // One lookup covering every ring-style tiered badge (everything except
 // "gold", which is handled separately above via GOLD_TIER_LABEL) so the
@@ -279,6 +289,7 @@ export const RING_TIER_BADGES: Partial<Record<TieredAchievementKind, TierRingBad
   fish_caught: FISH_CAUGHT_TIER_BADGE,
   auctions_posted: AUCTIONS_POSTED_TIER_BADGE,
   auction_gold: AUCTION_GOLD_TIER_BADGE,
+  master_chef: MASTER_CHEF_TIER_BADGE,
 };
 
 // Local custom artwork (2026-09-25) - icon slugs live at
