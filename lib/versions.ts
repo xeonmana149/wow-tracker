@@ -21,5 +21,9 @@ export const LATEST_VERSIONS = {
 // public/downloads/ in the website project.
 export const DOWNLOAD_URLS = {
   addon: "/downloads/WoWForeverTrackerAddon.zip",
-  tray: "/download",
+  // Evergreen GitHub link: redirects to the newest release's asset with
+  // this exact filename. Only works because tray-electron/package.json's
+  // nsis.artifactName is fixed to "WoWForeverTrackerSetup.exe" (no version
+  // in the name) - if that ever changes, this URL breaks.
+  tray: "https://github.com/xeonmana149/wow-tracker/releases/latest/download/WoWForeverTrackerSetup.exe",
 };
