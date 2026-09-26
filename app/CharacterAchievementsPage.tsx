@@ -334,12 +334,12 @@ function AchievementRow({
               draggable={false}
               className={`absolute rounded-sm object-cover ${!item.earned ? "grayscale" : ""}`}
               style={
-                item.tier
+                item.tier || !item.earned
                   ? { width: innerSize, height: innerSize, top: inset, left: inset }
                   : { width: size, height: size, top: 0, left: 0 }
               }
             />
-            {item.tier && (
+            {item.earned && item.tier && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={TIER_FRAME_SRC[item.tier]}
@@ -347,6 +347,22 @@ function AchievementRow({
                 aria-hidden="true"
                 draggable={false}
                 className="pointer-events-none absolute inset-0 h-full w-full"
+              />
+            )}
+            {!item.earned && (
+              // Locked/not-yet-earned border (2026-09-26) - reuses the
+              // Copper tier frame art, desaturated to grey via CSS filter
+              // rather than a separate asset, so every un-earned badge
+              // (tiered or flat/one-off) reads as "locked" at a glance
+              // instead of just floating with no border at all.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={TIER_FRAME_SRC.Copper}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                className="pointer-events-none absolute inset-0 h-full w-full"
+                style={{ filter: "grayscale(1) brightness(1.15)" }}
               />
             )}
           </>
@@ -369,12 +385,12 @@ function AchievementRow({
                   draggable={false}
                   className={`absolute rounded object-cover ${!item.earned ? "grayscale" : ""}`}
                   style={
-                    item.tier
+                    item.tier || !item.earned
                       ? { width: previewInner, height: previewInner, top: previewInset, left: previewInset }
                       : { width: previewSize, height: previewSize, top: 0, left: 0 }
                   }
                 />
-                {item.tier && (
+                {item.earned && item.tier && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={TIER_FRAME_SRC[item.tier]}
@@ -382,6 +398,17 @@ function AchievementRow({
                     aria-hidden="true"
                     draggable={false}
                     className="pointer-events-none absolute inset-0 h-full w-full"
+                  />
+                )}
+                {!item.earned && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={TIER_FRAME_SRC.Copper}
+                    alt=""
+                    aria-hidden="true"
+                    draggable={false}
+                    className="pointer-events-none absolute inset-0 h-full w-full"
+                    style={{ filter: "grayscale(1) brightness(1.15)" }}
                   />
                 )}
               </>
