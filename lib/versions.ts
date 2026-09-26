@@ -9,14 +9,14 @@
 // treated as "different, so out of date" by whoever's checking.
 export const LATEST_VERSIONS = {
   addon: "1.8.3",
-  tray: "2.2.0",
+  tray: "2.2.2",
 };
 
 // Wherever people should go to grab the update. The tray app still points
 // at the human-facing Downloads page (it's only ever linked for someone to
 // click) - but the addon needs a DIRECT file link, because the tray app's
 // own auto-update check (main.js's checkForAddonUpdate) fetches this value
-// from /api/version and downloads it programmatically, not a page a person
+// from /api/versions and downloads it programmatically, not a page a person
 // reads. Keep this in sync with whatever the actual filename is under
 // public/downloads/ in the website project.
 export const DOWNLOAD_URLS = {
