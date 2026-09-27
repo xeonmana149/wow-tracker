@@ -382,6 +382,15 @@ export async function applyImport(
   // why xpMax can legitimately be 0 (level cap, no bar left to fill).
   if (typeof parsed.basic?.xp === "number") charUpdate.xp = parsed.basic.xp;
   if (typeof parsed.basic?.xpMax === "number") charUpdate.xp_max = parsed.basic.xpMax;
+  // Persisted for display (2026-09-27 fix) - the Addicted achievement card
+  // was correctly awarding its Copper/Silver/etc. tier but always showing a
+  // stuck "0" on its progress bar, because this value used to only exist
+  // transiently down in the Addicted-tier block below, never actually saved
+  // anywhere achievementBoard.ts could read back. Same idea as recipesCount
+  // getting summed fresh for the "recipes" achievement's live value.
+  if (typeof parsed.basic?.timePlayedSeconds === "number" && parsed.basic.timePlayedSeconds > 0) {
+    charUpdate.time_played_hours = Math.floor(parsed.basic.timePlayedSeconds / 3600);
+  }
 
   if (Object.keys(charUpdate).length > 0) {
     const { error } = await supabase.from("characters").update(charUpdate).eq("id", characterId);

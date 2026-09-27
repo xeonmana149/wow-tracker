@@ -79,10 +79,18 @@ export function buildAchievementItems({
   achievementRows,
   statRows,
   recipesCount,
+  hoursPlayed,
 }: {
   achievementRows: { kind: string; tier: AchievementTier | null; earned_at?: string | null }[];
   statRows: { category: string; name: string; value: string }[];
   recipesCount: number;
+  // "addicted"'s live value (2026-09-27 fix) - not sourced from statRows
+  // like every other tiered kind (TIER_COUNTERS.addicted is intentionally
+  // empty - see achievements.ts), so computeCounter() always returned 0 for
+  // it, leaving the achievement correctly tiered but showing a stuck "0" on
+  // its progress bar. Optional/defaults to 0 so callers that haven't been
+  // updated yet don't break, just show 0 same as before.
+  hoursPlayed?: number;
 }): AchievementBoardItem[] {
   const byKind = new Map(achievementRows.map((a) => [a.kind, a]));
   const items: AchievementBoardItem[] = [];
@@ -90,7 +98,8 @@ export function buildAchievementItems({
   for (const kind of TIERED_ACHIEVEMENT_KINDS) {
     const row = byKind.get(kind);
     const tier = (row?.tier as AchievementTier | null | undefined) ?? null;
-    const value = kind === "recipes" ? recipesCount : computeCounter(kind, statRows);
+    const value =
+      kind === "recipes" ? recipesCount : kind === "addicted" ? hoursPlayed ?? 0 : computeCounter(kind, statRows);
     const thresholds = tierThresholds(kind);
     const nextThreshold = thresholds.find((t) => t.value > value)?.value ?? null;
 

@@ -52,7 +52,11 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
     async function load() {
       const [{ data: character }, { data: achievementRows }, { data: statRows }, { data: professionRows }, { data: userData }] =
         await Promise.all([
-          supabase.from("characters").select("name, user_id, showcase_kinds").eq("id", characterId).single(),
+          supabase
+            .from("characters")
+            .select("name, user_id, showcase_kinds, time_played_hours")
+            .eq("id", characterId)
+            .single(),
           supabase.from("achievements").select("kind, tier, earned_at").eq("character_id", characterId),
           supabase.from("character_statistics").select("category, name, value").eq("character_id", characterId),
           supabase.from("character_professions").select("recipes").eq("character_id", characterId),
@@ -77,6 +81,8 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
           }[],
           statRows: (statRows ?? []) as { category: string; name: string; value: string }[],
           recipesCount,
+          // 2026-09-27 fix - see achievementBoard.ts's hoursPlayed comment.
+          hoursPlayed: (character?.time_played_hours as number | null) ?? 0,
         })
       );
       setLoading(false);

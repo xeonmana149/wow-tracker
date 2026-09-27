@@ -168,6 +168,9 @@ export default async function CharacterPage({
     }[],
     statRows: statisticRows ?? [],
     recipesCount,
+    // characters.* is selected wholesale above (select("*", ...)), so
+    // time_played_hours (2026-09-27) is already on this row.
+    hoursPlayed: character.time_played_hours ?? 0,
   });
   const showcaseItems = pickShowcaseItems(achievementItems, {
     pinnedKinds: character.showcase_kinds ?? null,
