@@ -933,14 +933,18 @@ export async function applyImport(
   }
 
   // Legacy Challenges - the real Blizzard Achievements pane (see the
-  // ParsedExport.legacyAchievements comment above). One upsert row per
-  // achievement, keyed on (character_id, achievement_id), so a sync just
-  // overwrites each achievement's current completed/criteria state in
-  // place - there's no tier/points system here to award separately, this
-  // is display-only data straight from the game's own pane.
+  // ParsedExport.legacyAchievements comment above). Account-wide, not
+  // per-character (2026-09-27 rework) - completion state is the same
+  // regardless of which character on the account is logged in when you
+  // sync, so this upserts into account_legacy_achievements keyed on
+  // (user_id, achievement_id) rather than the old per-character table
+  // (character_legacy_achievements, now unused - see
+  // sql/items-migration-25.sql). A sync from ANY character on the account
+  // overwrites the account's current completed/criteria state in place -
+  // there's no tier/points system here to award separately, this is
+  // display-only data straight from the game's own pane.
   if (parsed.legacyAchievements && parsed.legacyAchievements.length > 0) {
     const legacyRows = parsed.legacyAchievements.map((a) => ({
-      character_id: characterId,
       user_id: before.user_id,
       achievement_id: a.id,
       category: a.category,
@@ -953,8 +957,8 @@ export async function applyImport(
       updated_at: new Date().toISOString(),
     }));
     const { error } = await supabase
-      .from("character_legacy_achievements")
-      .upsert(legacyRows, { onConflict: "character_id,achievement_id" });
+      .from("account_legacy_achievements")
+      .upsert(legacyRows, { onConflict: "user_id,achievement_id" });
     if (error) throw new Error(error.message);
   }
 

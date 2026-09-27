@@ -282,3 +282,23 @@ export function pickShowcaseItems(
     })
     .slice(0, limit);
 }
+
+// Splits a set of Legacy Challenge items into Blizzard's own sub-categories
+// (e.g. "Dungeons", "Explorer", "Eastern Kingdoms") for the mini-header
+// layout on AccountLegacyPage - alphabetical, "Other" (achievements synced
+// before the addon captured a category) sorted last rather than wherever
+// "O" happens to land.
+export function groupByLegacyCategory(items: AchievementBoardItem[]): [string, AchievementBoardItem[]][] {
+  const map = new Map<string, AchievementBoardItem[]>();
+  for (const item of items) {
+    const category = item.legacyCategory ?? "Other";
+    const list = map.get(category) ?? [];
+    list.push(item);
+    map.set(category, list);
+  }
+  return Array.from(map.entries()).sort(([a], [b]) => {
+    if (a === "Other") return 1;
+    if (b === "Other") return -1;
+    return a.localeCompare(b);
+  });
+}

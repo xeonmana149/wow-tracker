@@ -69,11 +69,25 @@ const items = (
   </Icon>
 );
 
+// A shield-and-star medal for the Legacy Challenges tab (2026-09-27) -
+// distinct from the leaderboards trophy so the two don't read as the same
+// destination at a glance.
+const medal = (
+  <Icon>
+    <circle cx="12" cy="15" r="5" />
+    <path d="M8 11L6 3h12l-2 8" />
+    <path d="M12 12.5l1 2.2 2.4.2-1.8 1.6.6 2.3-2.2-1.3-2.2 1.3.6-2.3-1.8-1.6 2.4-.2z" />
+  </Icon>
+);
+
 const links = [
   { href: "/", label: "Dashboard", icon: shield },
   { href: "/items", label: "Items", icon: items },
   { href: "/friends", label: "Friends", icon: people },
   { href: "/leaderboards", label: "Leaderboards", icon: trophy },
+  // Account-wide, not tied to a character (2026-09-27) - see
+  // app/AccountLegacyPage.tsx for why this isn't under /character/[id]/...
+  { href: "/legacy", label: "Legacy", icon: medal },
   { href: "/news", label: "News", icon: news },
 ];
 
