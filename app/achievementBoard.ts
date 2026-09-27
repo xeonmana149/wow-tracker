@@ -54,6 +54,17 @@ export type AchievementBoardItem = {
   nextThreshold: number | null; // next uncleared threshold, tiered only (null once maxed)
   thresholds: { tier: AchievementTier; value: number }[] | null; // Copper-first, tiered only
   earnedAt: string | null;
+  // Legacy Challenges only (2026-09-27) - Blizzard's own sub-category for
+  // this achievement (e.g. "Dungeons", "Explorer", "Eastern Kingdoms"),
+  // used to draw the same mini category headers the in-game Legacy
+  // Challenges panel uses, nested under the single "Legacy Challenges"
+  // family header. null for every non-legacy item.
+  legacyCategory: string | null;
+  // Legacy Challenges only - the full per-criteria checklist (e.g. one
+  // entry per dungeon/zone required), collapsed by default and toggled
+  // open the same way the in-game achievement pane's own +/- does. null
+  // when there's nothing to expand (no criteria, or a non-legacy item).
+  criteria: { text: string; completed: boolean }[] | null;
 };
 
 export function buildAchievementItems({
@@ -90,6 +101,8 @@ export function buildAchievementItems({
       nextThreshold,
       thresholds,
       earnedAt: row?.earned_at ?? null,
+      legacyCategory: null,
+      criteria: null,
     });
   }
 
@@ -111,6 +124,8 @@ export function buildAchievementItems({
       nextThreshold: null,
       thresholds: null,
       earnedAt: row?.earned_at ?? null,
+      legacyCategory: null,
+      criteria: null,
     });
   }
 
@@ -136,6 +151,7 @@ export function buildAchievementItems({
 //     achievement, always.
 export type LegacyAchievementRow = {
   achievement_id: number;
+  category: string;
   name: string;
   description: string | null;
   completed: boolean;
@@ -188,6 +204,10 @@ export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): Achie
         nextThreshold: null,
         thresholds: null,
         earnedAt: null,
+        legacyCategory: row.category,
+        // 0-1 criteria means there's nothing worth collapsing/expanding -
+        // the description line above already says everything there is.
+        criteria: null,
       };
     }
 
@@ -210,6 +230,8 @@ export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): Achie
       nextThreshold,
       thresholds,
       earnedAt: null,
+      legacyCategory: row.category,
+      criteria,
     };
   });
 }

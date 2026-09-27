@@ -70,7 +70,7 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
         // of this one achievement system.
         supabase
           .from("character_legacy_achievements")
-          .select("achievement_id, name, description, completed, criteria, icon, points")
+          .select("achievement_id, category, name, description, completed, criteria, icon, points")
           .eq("character_id", characterId),
       ]);
 
@@ -307,22 +307,70 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
                 {FAMILY_META[group.family].icon} {FAMILY_META[group.family].label}
               </h2>
             )}
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              {group.items.map((item) => (
-                <AchievementRow
-                  key={item.key}
-                  item={item}
-                  isOwner={isOwner}
-                  pinned={pinned.includes(item.key)}
-                  onTogglePin={() => togglePin(item.key)}
-                />
-              ))}
-            </div>
+            {group.family === "legacy" ? (
+              // Legacy Challenges get a second layer of headers underneath
+              // the main "Legacy Challenges" one above - Blizzard's own
+              // sub-categories (Dungeons, Raids, Explorer, Classes, ...),
+              // exactly like the in-game Legacy Challenges panel's own
+              // category list, instead of one flat pile of 111 cards.
+              <div className="flex flex-col gap-4">
+                {groupByLegacyCategory(group.items).map(([category, catItems]) => (
+                  <div key={category}>
+                    <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-amber-400/70">
+                      {category}
+                    </h3>
+                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                      {catItems.map((item) => (
+                        <AchievementRow
+                          key={item.key}
+                          item={item}
+                          isOwner={isOwner}
+                          pinned={pinned.includes(item.key)}
+                          onTogglePin={() => togglePin(item.key)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                {group.items.map((item) => (
+                  <AchievementRow
+                    key={item.key}
+                    item={item}
+                    isOwner={isOwner}
+                    pinned={pinned.includes(item.key)}
+                    onTogglePin={() => togglePin(item.key)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>
     </main>
   );
+}
+
+// Splits a family group's items into Blizzard's own sub-categories (e.g.
+// "Dungeons", "Explorer", "Eastern Kingdoms") for the Legacy Challenges
+// mini-header layout above - alphabetical, "Other" (achievements synced
+// before the addon captured a category) sorted last rather than wherever
+// "O" happens to land.
+function groupByLegacyCategory(items: AchievementBoardItem[]): [string, AchievementBoardItem[]][] {
+  const map = new Map<string, AchievementBoardItem[]>();
+  for (const item of items) {
+    const category = item.legacyCategory ?? "Other";
+    const list = map.get(category) ?? [];
+    list.push(item);
+    map.set(category, list);
+  }
+  return Array.from(map.entries()).sort(([a], [b]) => {
+    if (a === "Other") return 1;
+    if (b === "Other") return -1;
+    return a.localeCompare(b);
+  });
 }
 
 function AchievementRow({
@@ -336,6 +384,11 @@ function AchievementRow({
   pinned: boolean;
   onTogglePin: () => void;
 }) {
+  // Collapsed by default, same as the in-game Legacy Challenges panel's own
+  // +/- toggle (item.criteria only exists at all for a Legacy Challenge
+  // with more than one criterion - see achievementBoard.ts).
+  const [expanded, setExpanded] = useState(false);
+
   // Bumped again (2026-09-25) - 48px -> 64px -> 80px, now that the badges
   // have proper hand-picked art instead of generic WoW CDN icons. Worth the
   // extra room to actually read the artwork here, where it's the main
@@ -505,6 +558,34 @@ function AchievementRow({
                 </span>
               )}
             </div>
+
+            {item.criteria && item.criteria.length > 0 && (
+              <div className="mt-1.5">
+                {/* Same collapse/expand idea as the in-game achievement
+                    pane's own +/- square next to the description - hidden
+                    by default so 111 Legacy Challenges don't turn into a
+                    wall of checklist text. */}
+                <button
+                  type="button"
+                  onClick={() => setExpanded((e) => !e)}
+                  className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-400/80 hover:text-amber-300"
+                >
+                  <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border border-amber-700/70 bg-neutral-950 text-[10px] leading-none">
+                    {expanded ? "−" : "+"}
+                  </span>
+                  {expanded ? "Hide checklist" : "Show checklist"}
+                </button>
+                {expanded && (
+                  <ul className="mt-1.5 space-y-0.5 text-[11px]">
+                    {item.criteria.map((c, i) => (
+                      <li key={i} className={c.completed ? "text-gray-300" : "text-gray-600"}>
+                        {c.completed ? "✓" : "○"} {c.text}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </>
         ) : (
           <div className="mt-1 text-[11px] text-gray-500">{item.earned ? "Earned" : "Not yet earned"}</div>
