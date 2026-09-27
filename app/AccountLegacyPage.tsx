@@ -50,7 +50,12 @@ export default function AccountLegacyPage() {
   }, []);
 
   const totalPoints = useMemo(() => items.reduce((sum, i) => sum + i.points, 0), [items]);
-  const earnedCount = items.filter((i) => i.earned).length;
+  // "Completed" means fully done (points > 0), not just showing some tier
+  // progress - item.earned goes true the moment a multi-criteria challenge
+  // reaches its first tier (e.g. Copper), which isn't the same as actually
+  // finishing it. Points only pay out at full completion (see
+  // achievementBoard.ts), so they're the right signal for "done" here too.
+  const completedCount = items.filter((i) => i.points > 0).length;
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -61,7 +66,7 @@ export default function AccountLegacyPage() {
   const filtered = useMemo(() => {
     return items
       .filter((i) => category === "all" || (i.legacyCategory ?? "Other") === category)
-      .filter((i) => !hideCompleted || !i.earned);
+      .filter((i) => !hideCompleted || i.points === 0);
   }, [items, category, hideCompleted]);
 
   const grouped = useMemo(() => groupByLegacyCategory(filtered), [filtered]);
@@ -111,7 +116,7 @@ export default function AccountLegacyPage() {
 
       <div className="mt-4 rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
         <span className="text-sm text-gray-400">
-          {earnedCount} / {items.length} completed
+          {completedCount} / {items.length} completed
         </span>
       </div>
 

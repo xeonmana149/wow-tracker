@@ -247,8 +247,13 @@ export default function AchievementRow({
         </button>
       )}
 
-      <span className={`shrink-0 text-sm font-bold ${item.earned ? "text-[#c9a566]" : "text-gray-600"}`}>
-        {item.earned ? `+${item.points}` : "—"} pts
+      {/* Keyed off points (not item.earned) - a partially-progressed Legacy
+          Challenge can show a live Copper/Silver/Gold/Platinum tier
+          (earned=true) while still paying out 0 points until every
+          criterion is done, so "earned" alone would misleadingly show
+          "+0 pts" as if that were a real reward. */}
+      <span className={`shrink-0 text-sm font-bold ${item.points > 0 ? "text-[#c9a566]" : "text-gray-600"}`}>
+        {item.points > 0 ? `+${item.points}` : "—"} pts
       </span>
     </div>
   );

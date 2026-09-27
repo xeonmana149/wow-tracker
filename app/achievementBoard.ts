@@ -180,12 +180,21 @@ function legacyThresholds(total: number): { tier: AchievementTier; value: number
   return values.map((value, i) => ({ tier: names[i], value }));
 }
 
+// Legacy Points (2026-09-27, "make the legacy points equal to the game") -
+// each Legacy Challenge is worth exactly 1 point when fully completed, 0
+// otherwise - not Blizzard's own achievement point value (row.points, still
+// captured but no longer used for scoring) and not scaled by tier. A
+// partially-progressed multi-criteria achievement still shows a live
+// Copper/Silver/Gold/Platinum tier for visual progress, but only pays out
+// its 1 point at Platinum (every criterion done) - "completed" is binary,
+// same as the in-game panel's own checkmark.
+const LEGACY_POINTS_PER_CHALLENGE = 1;
+
 export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): AchievementBoardItem[] {
   return rows.map((row) => {
     const criteria = row.criteria ?? [];
     const total = criteria.length;
     const done = criteria.filter((c) => c.completed).length;
-    const blizzardPoints = row.points && row.points > 0 ? row.points : FLAT_ACHIEVEMENT_POINTS;
     const key = `legacy_${row.achievement_id}`;
 
     if (total <= 1) {
@@ -199,7 +208,7 @@ export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): Achie
         remoteIcon: row.icon ?? null,
         earned: row.completed,
         tier: null,
-        points: row.completed ? blizzardPoints : 0,
+        points: row.completed ? LEGACY_POINTS_PER_CHALLENGE : 0,
         value: null,
         nextThreshold: null,
         thresholds: null,
@@ -214,6 +223,7 @@ export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): Achie
     const thresholds = legacyThresholds(total);
     const tier = [...thresholds].reverse().find((t) => done >= t.value)?.tier ?? null;
     const nextThreshold = thresholds.find((t) => t.value > done)?.value ?? null;
+    const fullyDone = done >= total;
 
     return {
       key,
@@ -225,7 +235,7 @@ export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): Achie
       remoteIcon: row.icon ?? null,
       earned: tier !== null,
       tier,
-      points: tier ? TIER_POINTS[tier] : 0,
+      points: fullyDone ? LEGACY_POINTS_PER_CHALLENGE : 0,
       value: done,
       nextThreshold,
       thresholds,
