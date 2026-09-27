@@ -167,7 +167,16 @@ export type LegacyAchievementRow = {
   completed: boolean;
   criteria: { text: string; completed: boolean }[] | null;
   icon: number | null;
+  // Blizzard's own GetAchievementInfo points value - CONFIRMED WRONG/
+  // UNRELATED as of 2026-09-27 (0 for achievements that genuinely award real
+  // Legacy Points in game). Kept only for reference/debugging. See
+  // ui_points below for the real value.
   points: number | null;
+  // The REAL Legacy Point value (addon 1.8.8+), scraped straight off the
+  // rendered Legacy Challenges panel by the addon since no API exposes it -
+  // see scanLegacyPointsFromUI() in the addon. null until that achievement's
+  // row has been seen on screen at least once.
+  ui_points: number | null;
 };
 
 // Copper/Silver/Gold/Platinum at ~25/50/75/100% of a legacy achievement's
@@ -190,25 +199,27 @@ function legacyThresholds(total: number): { tier: AchievementTier; value: number
   return values.map((value, i) => ({ tier: names[i], value }));
 }
 
-// Legacy Points (2026-09-27, corrected same day after Jordan found the
-// in-game "Legacy Points 0/65" header + each achievement's own shield badge
-// tooltip, "Earn 1 Legacy Point") - that badge IS Blizzard's own
-// GetAchievementInfo `points` field, just repurposed by this server as the
-// Legacy Point value instead of the usual 5/10/25 achievement-point scale.
-// Confirmed: only some achievements (e.g. the ones under "Adventure") carry
-// a nonzero points value at all - the other ~46 (class-only, profession-only,
-// etc.) are just regular achievements sharing this same panel and report 0.
-// So this is NOT a flat 1-per-challenge award (that was wrong - it would
-// total 111 once everything's done, not 65) - it pays out row.points itself,
-// which is already captured by the addon and naturally sums to 65 across the
-// account once every legacy-point-eligible achievement is completed.
+// Legacy Points (2026-09-27, corrected TWICE the same day) - first guess was
+// a flat 1-per-challenge (wrong - totals 111, not 65). Second guess was that
+// Blizzard's own GetAchievementInfo `points` field was secretly the Legacy
+// Point value (also wrong - confirmed via manual in-game frame inspection
+// that it comes back 0 for achievements that genuinely award real points,
+// like "Explorer" and "Lord Valthalak Laid to Rest"). The real number turned
+// out not to be exposed through ANY API at all - it only exists as rendered
+// text in the Legacy Challenges panel's own UI (a small "shield" button next
+// to each achievement showing just its point value), which the addon
+// (v1.8.8+) now scrapes directly off screen as the panel gets browsed - see
+// scanLegacyPointsFromUI() in the addon. This uses THAT value (row.ui_points)
+// - not row.points, which stays around for reference only. Someone browsing
+// every category tab at least once will naturally fill in the real 65-point
+// total; anything not yet seen shows as 0 until then.
 export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): AchievementBoardItem[] {
   return rows.map((row) => {
     const criteria = row.criteria ?? [];
     const total = criteria.length;
     const done = criteria.filter((c) => c.completed).length;
     const key = `legacy_${row.achievement_id}`;
-    const pointValue = row.points ?? 0;
+    const pointValue = row.ui_points ?? 0;
 
     if (total <= 1) {
       return {

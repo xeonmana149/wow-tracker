@@ -45,7 +45,7 @@ export default function AccountLegacyPage() {
 
       const { data: legacyRows } = await supabase
         .from("account_legacy_achievements")
-        .select("achievement_id, category, name, description, completed, criteria, icon, points")
+        .select("achievement_id, category, name, description, completed, criteria, icon, points, ui_points")
         .eq("user_id", userData.user.id);
 
       setItems(buildLegacyAchievementItems((legacyRows ?? []) as LegacyAchievementRow[]));

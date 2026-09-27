@@ -43,6 +43,54 @@ local function safeGet(fnName, ...)
     return r1, r2, r3, r4, r5, r6
 end
 
+-- A widget's OWN text, if it's the kind of thing that has any (Button,
+-- EditBox, FontString itself). Moved up here (2026-09-27) from the
+-- legacyframetreedump diagnostic once it turned out to be needed for real,
+-- always-on data collection too (see scanLegacyPointsFromUI further down) -
+-- not just for one-off frame-tree dumps.
+local function widgetOwnText(widget)
+    local ok, text = pcall(function()
+        if widget.GetText then
+            return widget:GetText()
+        end
+        return nil
+    end)
+    if ok and text and text ~= "" then
+        return text
+    end
+    return nil
+end
+
+-- GetChildren() only returns child FRAMES - a plain text label is almost
+-- always a FontString REGION instead (a name, a number, a description line),
+-- which GetChildren() silently skips entirely. GetRegions() is the only way
+-- to actually see those.
+local function regionTexts(frame, budget)
+    local texts = {}
+    local ok, regions = pcall(function()
+        return { frame:GetRegions() }
+    end)
+    if not ok or not regions then
+        return texts
+    end
+    for _, r in ipairs(regions) do
+        budget.count = budget.count + 1
+        if budget.count > 1500 then
+            break
+        end
+        local okType, rt = pcall(function()
+            return r.GetObjectType and r:GetObjectType()
+        end)
+        if okType and rt == "FontString" then
+            local t = widgetOwnText(r)
+            if t then
+                table.insert(texts, t)
+            end
+        end
+    end
+    return texts
+end
+
 -- Same idea but for a function value you already have in hand (e.g. one
 -- pulled out of a C_* table), rather than a global name. Every existing
 -- caller of this only ever needed a single return value, so this only ever
@@ -1119,11 +1167,24 @@ local function collectLegacyAchievements()
                         completed = completed and true or false,
                         description = description,
                         icon = icon,
-                        -- Blizzard's own achievement point value (2026-09-27)
-                        -- - used on the website as this achievement's flat
-                        -- point award instead of a guessed default, when
-                        -- Blizzard reports one.
+                        -- Blizzard's own achievement point value from
+                        -- GetAchievementInfo - kept for reference only.
+                        -- CONFIRMED WRONG/UNRELATED as of 2026-09-27 (comes
+                        -- back 0 for achievements that genuinely award real
+                        -- Legacy Points in game) - the website does NOT use
+                        -- this for scoring. See uiPoints below for the real
+                        -- value.
                         points = points,
+                        -- The REAL Legacy Point value, scraped straight off
+                        -- the rendered UI (see scanLegacyPointsFromUI above)
+                        -- since no API exposes it. nil until this
+                        -- achievement's row has actually been seen on screen
+                        -- at least once (any character, any session -
+                        -- WFTSyncDB.legacyPointValues is keyed by name, not
+                        -- per-character) - builds up over time as the Legacy
+                        -- Challenges panel gets browsed.
+                        uiPoints = (type(WFTSyncDB) == "table" and type(WFTSyncDB.legacyPointValues) == "table"
+                            and name and WFTSyncDB.legacyPointValues[name]) or nil,
                     }
                     if type(getNumCriteria) == "function" then
                         local okC, numCriteria = safeCall(getNumCriteria, id)
@@ -1151,12 +1212,104 @@ local function collectLegacyAchievements()
     return out
 end
 
+-- Legacy Points UI scan (2026-09-27) - confirmed via manual frame-tree
+-- dumps that the real per-achievement "Legacy Point" value (the shield
+-- badge shown in the Legacy Challenges panel) is NOT available through any
+-- documented API - GetAchievementInfo's own points field is unrelated and
+-- wrong (0 for achievements confirmed to award real points in game), there's
+-- no C_Legacy* table, and LegacyTreeData is just the 3 tree-tab definitions,
+-- not per-achievement data. The ONLY place this number exists is the
+-- rendered UI itself: each achievement row is a Button whose regionTexts are
+-- [name, description, description] (the description appears twice), with a
+-- child Button whose own regionText is just the point value on its own
+-- (e.g. "1"). This walks whatever's currently rendered under
+-- LegacySystemFrame and caches every point value it finds by achievement
+-- name into WFTSyncDB.legacyPointValues - same "opportunistic capture,
+-- builds up over multiple views" pattern as the recipe capture below, since
+-- Blizzard only renders whichever rows are currently visible/scrolled to.
+-- Hooked to run passively (see the OnUpdate frame right after this) so it
+-- fills in on its own as you browse each category tab, with no slash
+-- command needed.
+local function scanLegacyPointsFromUI()
+    local frame = _G.LegacySystemFrame
+    if not frame or not frame.IsShown or not frame:IsShown() then
+        return 0
+    end
+
+    local found = 0
+    local budget = { count = 0 }
+
+    local function walk(f, depth)
+        if not f or depth > 8 or budget.count > 3000 then
+            return
+        end
+        local ok, children = pcall(function()
+            return { f:GetChildren() }
+        end)
+        if not ok or not children then
+            return
+        end
+        for _, child in ipairs(children) do
+            budget.count = budget.count + 1
+            if budget.count > 3000 then
+                return
+            end
+            local okType, objType = pcall(function()
+                return child.GetObjectType and child:GetObjectType()
+            end)
+            if okType and objType == "Button" then
+                local texts = regionTexts(child, budget)
+                if #texts >= 3 and texts[2] == texts[3] then
+                    local name = texts[1]
+                    local okKids, kids = pcall(function()
+                        return { child:GetChildren() }
+                    end)
+                    if okKids and kids then
+                        for _, kid in ipairs(kids) do
+                            local okKidType, kidType = pcall(function()
+                                return kid.GetObjectType and kid:GetObjectType()
+                            end)
+                            if okKidType and kidType == "Button" then
+                                local kidTexts = regionTexts(kid, budget)
+                                if #kidTexts == 1 and tonumber(kidTexts[1]) then
+                                    WFTSyncDB = WFTSyncDB or {}
+                                    WFTSyncDB.legacyPointValues = WFTSyncDB.legacyPointValues or {}
+                                    WFTSyncDB.legacyPointValues[name] = tonumber(kidTexts[1])
+                                    found = found + 1
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            walk(child, depth + 1)
+        end
+    end
+
+    walk(frame, 0)
+    return found
+end
+
+local legacyPointsScanFrame = CreateFrame("Frame")
+local legacyPointsScanElapsed = 0
+legacyPointsScanFrame:SetScript("OnUpdate", function(_, elapsed)
+    -- scanLegacyPointsFromUI already bails out instantly (IsShown check)
+    -- when the panel's closed, but throttling to once/second avoids walking
+    -- the whole frame tree every single frame while it IS open.
+    legacyPointsScanElapsed = legacyPointsScanElapsed + elapsed
+    if legacyPointsScanElapsed < 1 then
+        return
+    end
+    legacyPointsScanElapsed = 0
+    pcall(scanLegacyPointsFromUI)
+end)
+
 local function buildExport()
     local out = {}
     local tocversion = select(4, safeGet("GetBuildInfo"))
     local okDate, timestamp = safeCall(_G.date, "%Y-%m-%d %H:%M:%S")
     out.meta = {
-        addonVersion = "1.8.7",
+        addonVersion = "1.8.8",
         tocversion = tocversion,
         exportedAt = okDate and timestamp or nil,
     }
@@ -2594,6 +2747,319 @@ local function cmdAchievementsProbe()
     showExportWindow(json)
 end
 
+----------------------------------------------------------------------
+-- /wft legacypointsprobe (2026-09-27) - GetAchievementInfo's own `points`
+-- field (already captured into every export since 1.8.7) turned out NOT to
+-- be the same thing as the "Legacy Points" reward shown by each
+-- achievement's shield-badge tooltip in game ("Earn 1 Legacy Point") -
+-- proven wrong when achievements the website marked "No Legacy Points"
+-- (Lord Valthalak Laid to Rest, Explorer, the Alchemy skill-rank ones) turned
+-- out to genuinely award points in game. This hunts for wherever that real
+-- number actually comes from instead of guessing again:
+--   1. Every key on C_AchievementInfo - a separate, newer API namespace
+--      /wft statsprobe already confirmed exists on this client - in case the
+--      real points live behind a function there instead of the classic
+--      GetAchievementInfo.
+--   2. Any global function/table with "legacy" in its name, in case this
+--      server added its own dedicated API for this.
+--   3. Every achievement's own rewardText string (GetAchievementInfo's 11th
+--      return value, never captured before now) in case it's spelled out
+--      there as plain text ("Earn 1 Legacy Point") rather than a number
+--      anywhere else.
+-- Diagnostic only - doesn't touch buildExport()/the real sync data, so no
+-- version bump needed (per the version-bump skill's own carve-out).
+----------------------------------------------------------------------
+
+local function cmdLegacyPointsProbe()
+    print("|cffffcc00WFT legacypointsprobe - hunting for where 'Legacy Points' actually comes from:|r")
+
+    local CAch = _G.C_AchievementInfo
+    if CAch then
+        local keys = {}
+        for k in pairs(CAch) do
+            table.insert(keys, tostring(k))
+        end
+        table.sort(keys)
+        print(("  C_AchievementInfo has %d keys:"):format(#keys))
+        for _, k in ipairs(keys) do
+            print("    " .. k)
+        end
+    else
+        print("  C_AchievementInfo: MISSING")
+    end
+
+    local legacyGlobals = {}
+    for k, v in pairs(_G) do
+        if type(k) == "string" and k:lower():find("legacy") then
+            table.insert(legacyGlobals, k .. " (" .. type(v) .. ")")
+        end
+    end
+    table.sort(legacyGlobals)
+    print(("  Global names containing 'legacy': %d"):format(#legacyGlobals))
+    for _, g in ipairs(legacyGlobals) do
+        print("    " .. g)
+    end
+
+    -- Full points/flags/rewardText dump for every achievement, into the
+    -- export window (too much to print to chat directly) - copy/paste the
+    -- whole thing back so the exact rewardText wording and flags for a
+    -- KNOWN point-earner (e.g. "Explorer") can be checked directly.
+    local getCategoryList = _G.GetCategoryList
+    local getCategoryNum = _G.GetCategoryNumAchievements
+    local getAchievementInfo = _G.GetAchievementInfo
+    local rows = {}
+    if type(getCategoryList) == "function" then
+        local okList, catIDs = safeCall(getCategoryList)
+        if okList and catIDs then
+            for _, catID in ipairs(catIDs) do
+                local numEntries = 0
+                if type(getCategoryNum) == "function" then
+                    local okN, num = safeCall(getCategoryNum, catID, true)
+                    if okN and type(num) == "number" then
+                        numEntries = num
+                    end
+                end
+                if numEntries > 0 and type(getAchievementInfo) == "function" then
+                    for i = 1, numEntries do
+                        local okA, id, name, points, completed, _m, _d, _y, description, flags, icon, rewardText =
+                            safeCall(getAchievementInfo, catID, i)
+                        if okA and id then
+                            table.insert(rows, {
+                                id = id,
+                                name = name,
+                                points = points,
+                                flags = flags,
+                                rewardText = rewardText,
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+    print(("  Dumped %d achievements' points/flags/rewardText to the export window - copy/paste it back."):format(#rows))
+
+    local ok2, json = pcall(jsonEncode, rows)
+    if not ok2 then
+        print("|cffff0000WFT legacypointsprobe JSON error:|r " .. tostring(json))
+        return
+    end
+    showExportWindow(json)
+end
+
+----------------------------------------------------------------------
+-- /wft legacysystemprobe (2026-09-27) - legacypointsprobe's global scan
+-- found LEGACY_POINTS_AMOUNT/LEGACY_POINTS_CURR_MAX/LEGACY_POINTS_SEASONAL_CAP
+-- and LegacySystemFrame_LoadUI/ToggleLegacySystemUI - that's Blizzard's own
+-- built-in "Legacy System" UI module, a completely separate system from the
+-- Achievements API this addon has been reading, and it's LAZY-LOADED (not in
+-- memory until its panel is opened in game) - which is why nothing from its
+-- real API showed up in that scan. This forces it to load, then checks
+-- whether an addon and/or new globals appeared, so the real point-value API
+-- can be found instead of guessed at again. Diagnostic only, no version bump.
+----------------------------------------------------------------------
+
+local function cmdLegacySystemProbe()
+    print("|cffffcc00WFT legacysystemprobe - forcing the Legacy System UI to load:|r")
+
+    if type(_G.LegacySystemFrame_LoadUI) == "function" then
+        local ok, err = pcall(_G.LegacySystemFrame_LoadUI)
+        print("  LegacySystemFrame_LoadUI() called, ok=" .. tostring(ok) .. (ok and "" or (" err=" .. tostring(err))))
+    else
+        print("  LegacySystemFrame_LoadUI is not a function - trying ToggleLegacySystemUI instead")
+        if type(_G.ToggleLegacySystemUI) == "function" then
+            local ok, err = pcall(_G.ToggleLegacySystemUI)
+            print("  ToggleLegacySystemUI() called, ok=" .. tostring(ok) .. (ok and "" or (" err=" .. tostring(err))))
+        end
+    end
+
+    local isLoaded = safeGet("IsAddOnLoaded", "Blizzard_LegacySystem")
+    print("  Blizzard_LegacySystem addon loaded: " .. tostring(isLoaded))
+
+    -- Common naming patterns Blizzard uses for a system's C_ API table -
+    -- checked directly rather than guessed at in isolation, so this prints
+    -- a clear yes/no for each rather than silence.
+    local candidateTables = {
+        "C_LegacySystem", "C_LegacyPoints", "C_LegacyChallenges", "C_LegacyRewardTrack", "C_LegacyReward",
+    }
+    for _, name in ipairs(candidateTables) do
+        local t = _G[name]
+        if type(t) == "table" then
+            local keys = {}
+            for k in pairs(t) do
+                table.insert(keys, tostring(k))
+            end
+            table.sort(keys)
+            print("  " .. name .. " EXISTS - keys: " .. table.concat(keys, ", "))
+        else
+            print("  " .. name .. ": missing")
+        end
+    end
+
+    -- Full re-scan of every global with "legacy" in its name - compare this
+    -- against the list legacypointsprobe already printed; anything new here
+    -- only appeared after the force-load above, which is the real API.
+    local legacyGlobals = {}
+    for k, v in pairs(_G) do
+        if type(k) == "string" and k:lower():find("legacy") then
+            table.insert(legacyGlobals, k .. " (" .. type(v) .. ")")
+        end
+    end
+    table.sort(legacyGlobals)
+    print(("  Full 'legacy' global list after force-load (%d) - compare against the legacypointsprobe list, anything new is the real API:"):format(#legacyGlobals))
+    for _, g in ipairs(legacyGlobals) do
+        print("    " .. g)
+    end
+
+    if _G.LegacySystemFrame then
+        print("  LegacySystemFrame exists as a real frame object (was just a table entry before).")
+    end
+end
+
+----------------------------------------------------------------------
+-- /wft legacytreedatadump (2026-09-27) - legacysystemprobe's re-scan found
+-- LegacyTreeData, a plain table (not a mixin/frame like everything else that
+-- appeared) - almost certainly Blizzard's own static data mapping each
+-- achievement to its Legacy Point value and category structure, shipped
+-- with the Legacy System UI module rather than computed per-achievement via
+-- an API call. Dumps it (bounded - frames/functions inside are common in
+-- Blizzard UI tables and can be huge/self-referential, so this caps depth
+-- and entry count rather than doing a raw, unbounded table dump). Diagnostic
+-- only, no version bump.
+----------------------------------------------------------------------
+
+local function safeDumpValue(v, depth, budget)
+    depth = depth or 0
+    if depth > 5 or budget.count > 4000 then
+        return "<truncated>"
+    end
+    local t = type(v)
+    if t == "table" then
+        local out = {}
+        local n = 0
+        for k, val in pairs(v) do
+            n = n + 1
+            budget.count = budget.count + 1
+            if n > 40 or budget.count > 4000 then
+                out["__truncated_after_" .. n .. "_entries"] = true
+                break
+            end
+            out[tostring(k)] = safeDumpValue(val, depth + 1, budget)
+        end
+        return out
+    elseif t == "function" then
+        return "<function>"
+    elseif t == "userdata" then
+        return "<userdata>"
+    else
+        return v
+    end
+end
+
+local function cmdLegacyTreeDataDump()
+    print("|cffffcc00WFT legacytreedatadump - dumping LegacyTreeData:|r")
+    local data = _G.LegacyTreeData
+    if type(data) ~= "table" then
+        print("  LegacyTreeData is not a table (type=" .. type(data) .. ") - nothing to dump. Run /wft legacysystemprobe first if you haven't this session.")
+        return
+    end
+
+    local budget = { count = 0 }
+    local ok, dumped = pcall(safeDumpValue, data, 0, budget)
+    if not ok then
+        print("|cffff0000WFT legacytreedatadump error:|r " .. tostring(dumped))
+        return
+    end
+
+    local ok2, json = pcall(jsonEncode, dumped)
+    if not ok2 then
+        print("|cffff0000WFT legacytreedatadump JSON error:|r " .. tostring(json))
+        return
+    end
+    print(("  Dumped %d table entries (capped) - copy/paste the export window back."):format(budget.count))
+    showExportWindow(json)
+end
+
+----------------------------------------------------------------------
+-- /wft legacyframetreedump (2026-09-27) - LegacyTreeData turned out to just
+-- be the 3 tab definitions (Professions/Adventure/Resourcefulness - a
+-- SPENDING tree for points, not the earning side), a dead end for finding
+-- per-achievement point values. Rather than keep guessing table names, this
+-- walks the REAL, currently-rendered widget tree under LegacySystemFrame
+-- (only works while the Legacy Challenges panel is actually open, since
+-- Blizzard's modern list UIs pool/recycle row frames - they don't exist
+-- until shown) so the actual frame names can be read directly, same
+-- philosophy as /fstack. Once we see a real row frame's name (e.g. some
+-- "...Row3.PointsText" or a "...ScrollBox"), that's something a future
+-- command can query directly instead of guessing. Diagnostic only, no
+-- version bump.
+----------------------------------------------------------------------
+
+-- widgetOwnText/regionTexts now live up in the shared helpers section near
+-- safeGet/safeCall (2026-09-27) - scanLegacyPointsFromUI needs them too, not
+-- just this diagnostic.
+local function dumpFrameTree(frame, depth, budget, out)
+    if not frame or depth > 6 or budget.count > 600 then
+        return
+    end
+    local ok, children = pcall(function()
+        return { frame:GetChildren() }
+    end)
+    if not ok or not children then
+        return
+    end
+    for _, child in ipairs(children) do
+        budget.count = budget.count + 1
+        if budget.count > 600 then
+            table.insert(out, string.rep("  ", depth) .. "...(truncated at 600 widgets)")
+            break
+        end
+        local okName, name = pcall(function()
+            return child.GetName and child:GetName()
+        end)
+        local okType, objType = pcall(function()
+            return child.GetObjectType and child:GetObjectType()
+        end)
+        local ownText = widgetOwnText(child)
+        local texts = regionTexts(child, budget)
+        local label = ((okName and name) or "<unnamed>") .. " [" .. ((okType and objType) or "?") .. "]"
+        if ownText then
+            label = label .. ' ownText="' .. ownText .. '"'
+        end
+        if #texts > 0 then
+            label = label .. " regionTexts=[" .. table.concat(texts, " | ") .. "]"
+        end
+        table.insert(out, string.rep("  ", depth) .. label)
+        dumpFrameTree(child, depth + 1, budget, out)
+    end
+end
+
+local function cmdLegacyFrameTreeDump()
+    print("|cffffcc00WFT legacyframetreedump - walking LegacySystemFrame's real widget tree:|r")
+    local frame = _G.LegacySystemFrame
+    if not frame or type(frame.GetChildren) ~= "function" then
+        print("  LegacySystemFrame isn't a real frame yet - run /wft legacysystemprobe first this session.")
+        return
+    end
+    local okShown, shown = pcall(function()
+        return frame.IsShown and frame:IsShown()
+    end)
+    if okShown and not shown then
+        print("  LegacySystemFrame isn't currently shown - open the Legacy Challenges panel in game FIRST, then run this command (recycled row frames don't exist until shown).")
+        return
+    end
+
+    local out = {}
+    local budget = { count = 0 }
+    local ok, err = pcall(dumpFrameTree, frame, 0, budget, out)
+    if not ok then
+        print("|cffff0000WFT legacyframetreedump error:|r " .. tostring(err))
+        return
+    end
+    print(("  %d widgets found - copy/paste the export window back."):format(#out))
+    showExportWindow(table.concat(out, "\n"))
+end
+
 SLASH_WFT1 = "/wft"
 SlashCmdList["WFT"] = function(rawMsg)
     -- Kept in its original case (profession names are case-sensitive, e.g.
@@ -2632,6 +3098,14 @@ SlashCmdList["WFT"] = function(rawMsg)
         cmdStatsProbe()
     elseif msg == "achievementsprobe" then
         cmdAchievementsProbe()
+    elseif msg == "legacypointsprobe" then
+        cmdLegacyPointsProbe()
+    elseif msg == "legacysystemprobe" then
+        cmdLegacySystemProbe()
+    elseif msg == "legacytreedatadump" then
+        cmdLegacyTreeDataDump()
+    elseif msg == "legacyframetreedump" then
+        cmdLegacyFrameTreeDump()
     elseif msg == "recipeprobe" then
         cmdRecipeProbe()
     elseif msg == "recipeschema" then
@@ -2665,6 +3139,10 @@ SlashCmdList["WFT"] = function(rawMsg)
         print("  /wft counters - show your current death count (PvP kill tracking is paused)")
         print("  /wft statsprobe - check for a Statistics-pane API on this client (diagnostic, for me to look at)")
         print("  /wft achievementsprobe - dump the real Achievements/Legacy Challenges tree with completion state and checklists (diagnostic, for me to look at)")
+        print("  /wft legacypointsprobe - hunt for where the in-game 'Legacy Points' number actually comes from (diagnostic, for me to look at)")
+        print("  /wft legacysystemprobe - force-load Blizzard's Legacy System UI module and check what API appears (diagnostic, for me to look at - run this with the Legacy Challenges panel closed first)")
+        print("  /wft legacytreedatadump - dump LegacyTreeData, found via legacysystemprobe (diagnostic, for me to look at - run legacysystemprobe first this session)")
+        print("  /wft legacyframetreedump - dump the real widget names under the Legacy Challenges panel (diagnostic, for me to look at - OPEN the panel in game first, then run this)")
         print("  /wft recipeprobe - check for a recipe-listing API on this client (diagnostic, for me to look at)")
         print("  /wft recipeschema - check whether this client can give back a recipe's reagents/description too, not just its name (diagnostic, for me to look at - run /wft recipescan at least once first)")
         print("  /wft recipescan [profession name] - with a profession window open, try reading its known recipes right now; pass a name (e.g. /wft recipescan Blacksmithing) if it can't tell which one is open")

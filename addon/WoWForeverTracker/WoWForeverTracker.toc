@@ -2,7 +2,7 @@
 ## Title: WoW Forever Tracker
 ## Notes: Exports your character's stats, gear, professions and (experimental) talent/legacy data as JSON you paste into the WoW Forever Tracker website.
 ## Author: You
-## Version: 1.8.7
+## Version: 1.8.8
 ## IconTexture: Interface\Icons\INV_Misc_Note_01
 ## SavedVariablesPerCharacter: WFTTestDB, WFTSyncDB
 

@@ -160,11 +160,18 @@ export type ParsedExport = {
     // rather than a generic placeholder. Undefined on exports from an
     // older addon version.
     icon?: number;
-    // Blizzard's own achievement point value (addon 1.8.7+) - used as this
-    // achievement's flat point award on the site (see
-    // achievementBoard.ts's buildLegacyAchievementItems). Undefined on
-    // exports from an older addon version, or if Blizzard reports 0/none.
+    // Blizzard's own achievement point value (addon 1.8.7+) - CONFIRMED
+    // WRONG/UNRELATED as of 2026-09-27 (comes back 0 for achievements that
+    // genuinely award real Legacy Points in game). Kept for reference only -
+    // the site does NOT use this for scoring. See uiPoints below.
     points?: number;
+    // The REAL Legacy Point value (addon 1.8.8+), scraped straight off the
+    // rendered Legacy Challenges panel UI since no API exposes it - see the
+    // addon's scanLegacyPointsFromUI(). Undefined until that achievement's
+    // row has actually been seen on screen at least once (any character, any
+    // session - builds up over time as the panel gets browsed), or on
+    // exports from an older addon version.
+    uiPoints?: number;
   }[];
 };
 
@@ -954,6 +961,7 @@ export async function applyImport(
       criteria: a.criteria && a.criteria.length > 0 ? a.criteria : null,
       icon: a.icon ?? null,
       points: a.points ?? null,
+      ui_points: a.uiPoints ?? null,
       updated_at: new Date().toISOString(),
     }));
     const { error } = await supabase
