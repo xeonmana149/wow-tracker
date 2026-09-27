@@ -1119,6 +1119,11 @@ local function collectLegacyAchievements()
                         completed = completed and true or false,
                         description = description,
                         icon = icon,
+                        -- Blizzard's own achievement point value (2026-09-27)
+                        -- - used on the website as this achievement's flat
+                        -- point award instead of a guessed default, when
+                        -- Blizzard reports one.
+                        points = points,
                     }
                     if type(getNumCriteria) == "function" then
                         local okC, numCriteria = safeCall(getNumCriteria, id)
@@ -1151,7 +1156,7 @@ local function buildExport()
     local tocversion = select(4, safeGet("GetBuildInfo"))
     local okDate, timestamp = safeCall(_G.date, "%Y-%m-%d %H:%M:%S")
     out.meta = {
-        addonVersion = "1.8.6",
+        addonVersion = "1.8.7",
         tocversion = tocversion,
         exportedAt = okDate and timestamp or nil,
     }

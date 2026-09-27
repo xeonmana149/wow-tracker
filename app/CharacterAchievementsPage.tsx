@@ -4,11 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
 import { localBadgeIconSrc, TIER_FRAME_SRC, FRAME_HOLE_RATIO, TIER_MEDAL_SRC } from "../lib/badgeFrames";
+import { iconUrlForFileId } from "../lib/icons";
 import { FAMILY_META, type AchievementFamily, type AchievementTier } from "../lib/achievements";
-import { buildAchievementItems, SHOWCASE_LIMIT, type AchievementBoardItem } from "./achievementBoard";
+import {
+  buildAchievementItems,
+  buildLegacyAchievementItems,
+  SHOWCASE_LIMIT,
+  type AchievementBoardItem,
+  type LegacyAchievementRow,
+} from "./achievementBoard";
 import MilestoneBar from "./MilestoneBar";
 import BadgePlaceholder from "./BadgePlaceholder";
-import LegacyChallengesSection from "./LegacyChallengesSection";
 
 // The full achievement browser for one character - everything the compact
 // header showcase (AchievementShowcase.tsx) deliberately leaves out:
@@ -31,14 +37,7 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
   // social, pvp, professions) rather than having one of their own, so this
   // is a cross-cutting filter ("show me every non-tiered achievement")
   // rather than another entry in the family list.
-  // "legacy" (2026-09-27) is another cross-cutting filter like "oneOff" -
-  // selecting it swaps the whole grid below for LegacyChallengesSection
-  // (the real Blizzard Achievements pane data, character_legacy_achievements)
-  // instead of filtering `items`, since those achievements aren't part of
-  // this site's own tiered/flat/points system at all. Living as a tab here
-  // rather than only on its own /legacy page is what makes the two feel
-  // like one achievement system instead of two separate features.
-  const [family, setFamily] = useState<AchievementFamily | "all" | "oneOff" | "legacy">("all");
+  const [family, setFamily] = useState<AchievementFamily | "all" | "oneOff">("all");
   const [sort, setSort] = useState<SortMode>("category");
 
   // Showcase pinning - which earned achievements show up in the compact
@@ -52,14 +51,28 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
 
   useEffect(() => {
     async function load() {
-      const [{ data: character }, { data: achievementRows }, { data: statRows }, { data: professionRows }, { data: userData }] =
-        await Promise.all([
-          supabase.from("characters").select("name, user_id, showcase_kinds").eq("id", characterId).single(),
-          supabase.from("achievements").select("kind, tier, earned_at").eq("character_id", characterId),
-          supabase.from("character_statistics").select("category, name, value").eq("character_id", characterId),
-          supabase.from("character_professions").select("recipes").eq("character_id", characterId),
-          supabase.auth.getUser(),
-        ]);
+      const [
+        { data: character },
+        { data: achievementRows },
+        { data: statRows },
+        { data: professionRows },
+        { data: userData },
+        { data: legacyRows },
+      ] = await Promise.all([
+        supabase.from("characters").select("name, user_id, showcase_kinds").eq("id", characterId).single(),
+        supabase.from("achievements").select("kind, tier, earned_at").eq("character_id", characterId),
+        supabase.from("character_statistics").select("category, name, value").eq("character_id", characterId),
+        supabase.from("character_professions").select("recipes").eq("character_id", characterId),
+        supabase.auth.getUser(),
+        // Legacy Challenges - the real Blizzard Achievements pane, merged
+        // into the exact same list below via buildLegacyAchievementItems
+        // rather than shown as a separate section, so they feel like part
+        // of this one achievement system.
+        supabase
+          .from("character_legacy_achievements")
+          .select("achievement_id, name, description, completed, criteria, icon, points")
+          .eq("character_id", characterId),
+      ]);
 
       setCharacterName(character?.name ?? "");
       setIsOwner(!!character?.user_id && userData.user?.id === character.user_id);
@@ -70,8 +83,8 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
         0
       );
 
-      setItems(
-        buildAchievementItems({
+      setItems([
+        ...buildAchievementItems({
           achievementRows: (achievementRows ?? []) as {
             kind: string;
             tier: AchievementTier | null;
@@ -79,8 +92,9 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
           }[],
           statRows: (statRows ?? []) as { category: string; name: string; value: string }[],
           recipesCount,
-        })
-      );
+        }),
+        ...buildLegacyAchievementItems((legacyRows ?? []) as LegacyAchievementRow[]),
+      ]);
       setLoading(false);
     }
     load();
@@ -108,7 +122,19 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
     }
   }
 
-  const totalPoints = useMemo(() => items.reduce((sum, i) => sum + i.points, 0), [items]);
+  // Legacy Challenges award their own separate "Legacy Points" tally rather
+  // than folding into Achievement Points - the one deliberate difference
+  // from a normal community achievement, per 2026-09-27 ("the only
+  // difference is they also give legacy points"). Everything else about
+  // how they render (borders, tier frames, milestone bars) is identical.
+  const totalPoints = useMemo(
+    () => items.filter((i) => i.family !== "legacy").reduce((sum, i) => sum + i.points, 0),
+    [items]
+  );
+  const legacyPoints = useMemo(
+    () => items.filter((i) => i.family === "legacy").reduce((sum, i) => sum + i.points, 0),
+    [items]
+  );
   const tierCounts = useMemo(() => {
     const counts: Record<AchievementTier, number> = { Platinum: 0, Gold: 0, Silver: 0, Copper: 0 };
     for (const i of items) if (i.tier) counts[i.tier] += 1;
@@ -185,7 +211,12 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
           </Link>
           <h1 className="text-3xl font-bold">Achievements</h1>
         </div>
-        <div className="text-lg font-bold text-[#c9a566]">{totalPoints.toLocaleString()} Achievement Points</div>
+        <div className="flex items-baseline gap-3">
+          <div className="text-lg font-bold text-[#c9a566]">{totalPoints.toLocaleString()} Achievement Points</div>
+          {legacyPoints > 0 && (
+            <div className="text-sm font-bold text-amber-400">{legacyPoints.toLocaleString()} Legacy Points</div>
+          )}
+        </div>
       </div>
 
       <div className="mt-4 rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
@@ -237,16 +268,6 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
         >
           🎖️ One-Off <span className="font-normal text-gray-400">({oneOffCount})</span>
         </button>
-        <button
-          type="button"
-          onClick={() => setFamily("legacy")}
-          title="Blizzard's own Achievements pane - dungeons, raids, exploration and profession/class milestones"
-          className={`rounded px-3 py-1.5 text-sm font-semibold ${
-            family === "legacy" ? "bg-red-700 text-white" : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
-          }`}
-        >
-          🏆 Legacy Challenges
-        </button>
         {familiesPresent.map((f) => (
           <button
             key={f}
@@ -260,54 +281,46 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
           </button>
         ))}
 
-        {family !== "legacy" && (
-          <>
-            <span className="mx-1 h-5 w-px bg-neutral-700" />
+        <span className="mx-1 h-5 w-px bg-neutral-700" />
 
-            <label className="flex items-center gap-1.5 text-sm text-gray-400">
-              Sort by
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortMode)}
-                className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-gray-200"
-              >
-                <option value="category">Category</option>
-                <option value="alphabetical">Alphabetical</option>
-                <option value="closest">Closest to completion</option>
-                <option value="highestTier">Highest tier</option>
-                <option value="recent">Recently progressed</option>
-              </select>
-            </label>
-          </>
-        )}
+        <label className="flex items-center gap-1.5 text-sm text-gray-400">
+          Sort by
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortMode)}
+            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-gray-200"
+          >
+            <option value="category">Category</option>
+            <option value="alphabetical">Alphabetical</option>
+            <option value="closest">Closest to completion</option>
+            <option value="highestTier">Highest tier</option>
+            <option value="recent">Recently progressed</option>
+          </select>
+        </label>
       </div>
 
-      {family === "legacy" ? (
-        <LegacyChallengesSection characterId={characterId} />
-      ) : (
-        <div className="mt-4 flex flex-col gap-6">
-          {grouped.map((group) => (
-            <div key={group.family ?? "flat"}>
-              {group.family && (
-                <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-gray-400">
-                  {FAMILY_META[group.family].icon} {FAMILY_META[group.family].label}
-                </h2>
-              )}
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                {group.items.map((item) => (
-                  <AchievementRow
-                    key={item.key}
-                    item={item}
-                    isOwner={isOwner}
-                    pinned={pinned.includes(item.key)}
-                    onTogglePin={() => togglePin(item.key)}
-                  />
-                ))}
-              </div>
+      <div className="mt-4 flex flex-col gap-6">
+        {grouped.map((group) => (
+          <div key={group.family ?? "flat"}>
+            {group.family && (
+              <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-gray-400">
+                {FAMILY_META[group.family].icon} {FAMILY_META[group.family].label}
+              </h2>
+            )}
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              {group.items.map((item) => (
+                <AchievementRow
+                  key={item.key}
+                  item={item}
+                  isOwner={isOwner}
+                  pinned={pinned.includes(item.key)}
+                  onTogglePin={() => togglePin(item.key)}
+                />
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
     </main>
   );
 }
@@ -343,6 +356,14 @@ function AchievementRow({
   const previewInner = Math.round(previewSize * FRAME_HOLE_RATIO);
   const previewInset = Math.round((previewSize - previewInner) / 2);
 
+  // Legacy Challenges (2026-09-27) have no hand-picked local art - there
+  // are 111 of them, straight from Blizzard - so they fall back to the
+  // real WoW icon via remoteIcon/iconUrlForFileId instead. Framed with the
+  // exact same tier-frame/greyed-border treatment as a localIcon below, so
+  // they're visually indistinguishable from a community achievement except
+  // for which icon shows through the frame.
+  const iconSrc = item.localIcon ? localBadgeIconSrc(item.localIcon) : iconUrlForFileId(item.remoteIcon);
+
   return (
     <div
       id={item.key}
@@ -351,11 +372,11 @@ function AchievementRow({
       }`}
     >
       <span className="group/rowicon relative inline-block shrink-0" style={{ width: size, height: size }}>
-        {item.localIcon ? (
+        {iconSrc ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={localBadgeIconSrc(item.localIcon)}
+              src={iconSrc}
               alt=""
               draggable={false}
               className={`absolute rounded-sm object-cover ${!item.earned ? "grayscale" : ""}`}
@@ -402,11 +423,11 @@ function AchievementRow({
           className="pointer-events-none absolute left-0 top-full z-30 mt-2 scale-95 rounded-lg border border-amber-700/70 bg-neutral-950 p-2 opacity-0 shadow-lg shadow-black/60 transition-all duration-100 group-hover/rowicon:scale-100 group-hover/rowicon:opacity-100"
         >
           <span className="relative block" style={{ width: previewSize, height: previewSize }}>
-            {item.localIcon ? (
+            {iconSrc ? (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={localBadgeIconSrc(item.localIcon)}
+                  src={iconSrc}
                   alt=""
                   draggable={false}
                   className={`absolute rounded object-cover ${!item.earned ? "grayscale" : ""}`}

@@ -40,6 +40,13 @@ export type AchievementBoardItem = {
   // upload" - there used to be a `cdnIcon` field here for exactly that
   // fallback, removed along with the fallback itself).
   localIcon: string | null;
+  // Blizzard's own icon fileID for a Legacy Challenge (2026-09-27) - used
+  // instead of localIcon when there's no hand-picked art for this item
+  // (every legacy achievement, since there are 111 of them and they're
+  // Blizzard's own content, not something to commission art for). null for
+  // every non-legacy item, which always has localIcon or BadgePlaceholder
+  // instead.
+  remoteIcon: number | null;
   earned: boolean;
   tier: AchievementTier | null; // tiered only
   points: number; // points earned so far from this one item (0 if unearned)
@@ -75,6 +82,7 @@ export function buildAchievementItems({
       description: tierDescription(kind),
       family: tierFamily(kind),
       localIcon: TIERED_LOCAL_ICONS[kind] ?? null,
+      remoteIcon: null,
       earned: tier !== null,
       tier,
       points: tier ? TIER_POINTS[tier] : 0,
@@ -95,6 +103,7 @@ export function buildAchievementItems({
       description: badge.label,
       family: FLAT_ACHIEVEMENT_FAMILY[kind],
       localIcon: FLAT_LOCAL_ICONS[kind] ?? null,
+      remoteIcon: null,
       earned: !!row,
       tier: null,
       points: row ? FLAT_ACHIEVEMENT_POINTS : 0,
@@ -106,6 +115,103 @@ export function buildAchievementItems({
   }
 
   return items;
+}
+
+// Legacy Challenges (2026-09-27) - the real Blizzard-server Achievements
+// pane (character_legacy_achievements, synced via the addon's
+// collectLegacyAchievements()), turned into the exact same
+// AchievementBoardItem shape as everything above so they render with
+// identical borders, tier frames and milestone bars instead of a
+// separately-styled section. The only real difference from a community
+// achievement is where the points/tiers come from:
+//   - A Legacy Challenge with 0 or 1 criteria (a plain "reach level 60")
+//     becomes a flat item, same as a one-off site achievement - earned or
+//     not, worth its own Blizzard achievement points (or
+//     FLAT_ACHIEVEMENT_POINTS if Blizzard didn't report any).
+//   - A Legacy Challenge with more than 1 criterion (e.g. "Explore
+//     Durotar" - several zones to visit) becomes a tiered item, with
+//     Copper/Silver/Gold/Platinum thresholds set at roughly 25/50/75/100%
+//     of ITS OWN criteria count (see legacyThresholds below) - Blizzard
+//     doesn't tier these itself, this site's cards do, for every
+//     achievement, always.
+export type LegacyAchievementRow = {
+  achievement_id: number;
+  name: string;
+  description: string | null;
+  completed: boolean;
+  criteria: { text: string; completed: boolean }[] | null;
+  icon: number | null;
+  points: number | null;
+};
+
+// Copper/Silver/Gold/Platinum at ~25/50/75/100% of a legacy achievement's
+// own criteria count. Fractions are rounded and deduped (Set) so a short
+// checklist doesn't get several tiers landing on the same number; if
+// dedup leaves fewer than 4 distinct values, the tier NAMES are
+// right-aligned to the list (a 2-criteria achievement gets Gold at 1/2 and
+// Platinum at 2/2, not Copper/Silver) so the achievement is never
+// "maxed out" at anything less than Platinum.
+const LEGACY_TIER_NAMES: AchievementTier[] = ["Copper", "Silver", "Gold", "Platinum"];
+
+function legacyThresholds(total: number): { tier: AchievementTier; value: number }[] {
+  const values = Array.from(
+    new Set([0.25, 0.5, 0.75, 1].map((f) => Math.min(total, Math.max(1, Math.round(total * f)))))
+  ).sort((a, b) => a - b);
+  // Force the top threshold to exactly the full criteria count - rounding
+  // above can otherwise leave Platinum one short of "everything done".
+  values[values.length - 1] = total;
+  const names = LEGACY_TIER_NAMES.slice(LEGACY_TIER_NAMES.length - values.length);
+  return values.map((value, i) => ({ tier: names[i], value }));
+}
+
+export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): AchievementBoardItem[] {
+  return rows.map((row) => {
+    const criteria = row.criteria ?? [];
+    const total = criteria.length;
+    const done = criteria.filter((c) => c.completed).length;
+    const blizzardPoints = row.points && row.points > 0 ? row.points : FLAT_ACHIEVEMENT_POINTS;
+    const key = `legacy_${row.achievement_id}`;
+
+    if (total <= 1) {
+      return {
+        key,
+        tiered: false,
+        name: row.name,
+        description: row.description ?? "",
+        family: "legacy",
+        localIcon: null,
+        remoteIcon: row.icon ?? null,
+        earned: row.completed,
+        tier: null,
+        points: row.completed ? blizzardPoints : 0,
+        value: null,
+        nextThreshold: null,
+        thresholds: null,
+        earnedAt: null,
+      };
+    }
+
+    const thresholds = legacyThresholds(total);
+    const tier = [...thresholds].reverse().find((t) => done >= t.value)?.tier ?? null;
+    const nextThreshold = thresholds.find((t) => t.value > done)?.value ?? null;
+
+    return {
+      key,
+      tiered: true,
+      name: row.name,
+      description: row.description ?? "",
+      family: "legacy",
+      localIcon: null,
+      remoteIcon: row.icon ?? null,
+      earned: tier !== null,
+      tier,
+      points: tier ? TIER_POINTS[tier] : 0,
+      value: done,
+      nextThreshold,
+      thresholds,
+      earnedAt: null,
+    };
+  });
 }
 
 // How many achievements the character-page showcase can hold - shared by

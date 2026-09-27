@@ -160,6 +160,11 @@ export type ParsedExport = {
     // rather than a generic placeholder. Undefined on exports from an
     // older addon version.
     icon?: number;
+    // Blizzard's own achievement point value (addon 1.8.7+) - used as this
+    // achievement's flat point award on the site (see
+    // achievementBoard.ts's buildLegacyAchievementItems). Undefined on
+    // exports from an older addon version, or if Blizzard reports 0/none.
+    points?: number;
   }[];
 };
 
@@ -944,6 +949,7 @@ export async function applyImport(
       completed: a.completed,
       criteria: a.criteria && a.criteria.length > 0 ? a.criteria : null,
       icon: a.icon ?? null,
+      points: a.points ?? null,
       updated_at: new Date().toISOString(),
     }));
     const { error } = await supabase

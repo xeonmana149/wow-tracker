@@ -147,7 +147,14 @@ export type AchievementFamily =
   | "professions"
   | "wealth"
   | "character"
-  | "social";
+  | "social"
+  // Legacy Challenges (2026-09-27) - the real Blizzard-server Achievements
+  // pane (character_legacy_achievements), turned into ordinary
+  // AchievementBoardItems by achievementBoard.ts's
+  // buildLegacyAchievementItems() so they show up as just another category
+  // on the achievements page - same borders, tier frames and milestone
+  // bars as every other family, not a separately-styled section.
+  | "legacy";
 
 export const FAMILY_META: Record<AchievementFamily, { label: string; icon: string }> = {
   combat: { label: "Combat", icon: "⚔️" },
@@ -157,6 +164,7 @@ export const FAMILY_META: Record<AchievementFamily, { label: string; icon: strin
   wealth: { label: "Wealth", icon: "💰" },
   character: { label: "Character", icon: "🧝" },
   social: { label: "Social", icon: "🎭" },
+  legacy: { label: "Legacy Challenges", icon: "🏆" },
 };
 
 // Each threshold table is ordered Platinum-first so `.find()` picks the
