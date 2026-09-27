@@ -54,12 +54,12 @@ export default function CharacterLegacyPage({ characterId }: { characterId: stri
     return Array.from(set).sort();
   }, [rows]);
 
-  const completedCount = rows.filter((r) => r.completed).length;
+  const completedCount = rows.filter((r) => legacyStatus(r) === "done").length;
 
   const filtered = useMemo(() => {
     return rows
       .filter((r) => category === "all" || r.category === category)
-      .filter((r) => !hideCompleted || !r.completed);
+      .filter((r) => !hideCompleted || legacyStatus(r) !== "done");
   }, [rows, category, hideCompleted]);
 
   const grouped = useMemo(() => {
@@ -165,27 +165,55 @@ export default function CharacterLegacyPage({ characterId }: { characterId: stri
   );
 }
 
+// Blizzard's own top-level "completed" flag isn't reliable for a
+// multi-criteria achievement on this server (e.g. a zone-exploration
+// achievement showing 3/10 sub-areas checked off can still come back
+// completed=false, which is correct, but there's no equivalent
+// "in progress" signal from the game at all) - so the status shown here is
+// derived from the criteria checklist itself whenever one exists, and only
+// falls back to the bare completed flag for achievements with no
+// criteria (a plain one-shot "reach level 60", say).
+type LegacyStatus = "done" | "inProgress" | "notStarted";
+
+function legacyStatus(item: LegacyRow): LegacyStatus {
+  const total = item.criteria?.length ?? 0;
+  if (total === 0) return item.completed ? "done" : "notStarted";
+  const done = item.criteria!.filter((c) => c.completed).length;
+  if (done >= total) return "done";
+  if (done > 0) return "inProgress";
+  return "notStarted";
+}
+
+const STATUS_LABEL: Record<LegacyStatus, string> = {
+  done: "Done",
+  inProgress: "In Progress",
+  notStarted: "Not Started",
+};
+
+const STATUS_CLASS: Record<LegacyStatus, string> = {
+  done: "bg-emerald-900/50 text-emerald-300",
+  inProgress: "bg-amber-900/50 text-amber-300",
+  notStarted: "bg-neutral-800 text-gray-500",
+};
+
 function LegacyRowCard({ item }: { item: LegacyRow }) {
   const criteriaDone = (item.criteria ?? []).filter((c) => c.completed).length;
   const criteriaTotal = item.criteria?.length ?? 0;
+  const status = legacyStatus(item);
 
   return (
     <div
       className={`rounded-lg border p-3 ${
-        item.completed ? "border-neutral-700 bg-neutral-900/40" : "border-neutral-800 bg-neutral-900/20"
+        status === "done" ? "border-neutral-700 bg-neutral-900/40" : "border-neutral-800 bg-neutral-900/20"
       }`}
     >
       <div className="flex items-start justify-between gap-2">
         <div>
-          <span className={`font-bold ${item.completed ? "text-white" : "text-gray-400"}`}>{item.name}</span>
+          <span className={`font-bold ${status === "done" ? "text-white" : "text-gray-400"}`}>{item.name}</span>
           {item.description && <div className="mt-0.5 text-xs text-gray-500">{item.description}</div>}
         </div>
-        <span
-          className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-bold ${
-            item.completed ? "bg-emerald-900/50 text-emerald-300" : "bg-neutral-800 text-gray-500"
-          }`}
-        >
-          {item.completed ? "Done" : "Incomplete"}
+        <span className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-bold ${STATUS_CLASS[status]}`}>
+          {STATUS_LABEL[status]}
         </span>
       </div>
 
