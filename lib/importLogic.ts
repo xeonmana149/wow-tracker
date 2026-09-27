@@ -139,6 +139,22 @@ export type ParsedExport = {
   // wasn't grabbed before. value is already formatted by the client
   // ("1,502", or "--" for a stat never recorded) and stored as-is.
   statistics?: { id: number; category: string; name: string; value: string }[];
+  // "Legacy Challenges" - the REAL Blizzard-server Achievements pane
+  // (GetCategoryList/GetAchievementInfo/GetAchievementCriteriaInfo), a
+  // completely separate system from the Statistics pane above. Confirmed
+  // small (111 achievements/29 categories) via the addon's
+  // `/wft achievementsprobe` diagnostic on 2026-09-27, so synced wholesale
+  // rather than a curated subset - see collectLegacyAchievements() in the
+  // addon. criteria is the per-achievement checklist (e.g. one entry per
+  // required dungeon/zone), undefined for achievements with none.
+  legacyAchievements?: {
+    id: number;
+    category: string;
+    name: string;
+    completed: boolean;
+    description?: string;
+    criteria?: { text: string; completed: boolean }[];
+  }[];
 };
 
 // Addon gear key -> the site's Equipped Gear slot name. "shirt" and
@@ -903,6 +919,30 @@ export async function applyImport(
         });
       }
     }
+  }
+
+  // Legacy Challenges - the real Blizzard Achievements pane (see the
+  // ParsedExport.legacyAchievements comment above). One upsert row per
+  // achievement, keyed on (character_id, achievement_id), so a sync just
+  // overwrites each achievement's current completed/criteria state in
+  // place - there's no tier/points system here to award separately, this
+  // is display-only data straight from the game's own pane.
+  if (parsed.legacyAchievements && parsed.legacyAchievements.length > 0) {
+    const legacyRows = parsed.legacyAchievements.map((a) => ({
+      character_id: characterId,
+      user_id: before.user_id,
+      achievement_id: a.id,
+      category: a.category,
+      name: a.name,
+      description: a.description ?? null,
+      completed: a.completed,
+      criteria: a.criteria && a.criteria.length > 0 ? a.criteria : null,
+      updated_at: new Date().toISOString(),
+    }));
+    const { error } = await supabase
+      .from("character_legacy_achievements")
+      .upsert(legacyRows, { onConflict: "character_id,achievement_id" });
+    if (error) throw new Error(error.message);
   }
 
   // Account-wide achievements - re-checked on every sync since any of the

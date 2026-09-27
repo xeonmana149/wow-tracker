@@ -177,7 +177,12 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
           </Link>
           <h1 className="text-3xl font-bold">Achievements</h1>
         </div>
-        <div className="text-lg font-bold text-[#c9a566]">{totalPoints.toLocaleString()} Achievement Points</div>
+        <div className="flex items-center gap-4">
+          <Link href={`/character/${characterId}/legacy`} className="text-sm text-gray-400 hover:underline">
+            Legacy Challenges →
+          </Link>
+          <div className="text-lg font-bold text-[#c9a566]">{totalPoints.toLocaleString()} Achievement Points</div>
+        </div>
       </div>
 
       <div className="mt-4 rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
