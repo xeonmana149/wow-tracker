@@ -27,6 +27,11 @@ export default function AccountLegacyPage() {
   const [items, setItems] = useState<AchievementBoardItem[]>([]);
   const [category, setCategory] = useState<string | "all">("all");
   const [hideCompleted, setHideCompleted] = useState(false);
+  // "show which ones earn you legacy points and which give nothing"
+  // (2026-09-27) - most of the 111 are worth 0 (class/profession-only, not
+  // part of the game's own 65-point Legacy Points total), so this lets
+  // Jordan isolate just the ones that actually count.
+  const [pointFilter, setPointFilter] = useState<"all" | "earns" | "none">("all");
 
   useEffect(() => {
     async function load() {
@@ -57,6 +62,11 @@ export default function AccountLegacyPage() {
   // achievementBoard.ts), so they're the right signal for "done" here too.
   const completedCount = items.filter((i) => i.points > 0).length;
 
+  // How many of the 111 actually count toward the game's 65-point total,
+  // vs. how many are just regular achievements sharing this panel.
+  const earnsPointsCount = items.filter((i) => (i.legacyPointValue ?? 0) > 0).length;
+  const noPointsCount = items.length - earnsPointsCount;
+
   const categories = useMemo(() => {
     const set = new Set<string>();
     for (const i of items) set.add(i.legacyCategory ?? "Other");
@@ -66,8 +76,13 @@ export default function AccountLegacyPage() {
   const filtered = useMemo(() => {
     return items
       .filter((i) => category === "all" || (i.legacyCategory ?? "Other") === category)
-      .filter((i) => !hideCompleted || i.points === 0);
-  }, [items, category, hideCompleted]);
+      .filter((i) => !hideCompleted || i.points === 0)
+      .filter((i) => {
+        if (pointFilter === "all") return true;
+        const earnsPoints = (i.legacyPointValue ?? 0) > 0;
+        return pointFilter === "earns" ? earnsPoints : !earnsPoints;
+      });
+  }, [items, category, hideCompleted, pointFilter]);
 
   const grouped = useMemo(() => groupByLegacyCategory(filtered), [filtered]);
 
@@ -118,9 +133,44 @@ export default function AccountLegacyPage() {
         <span className="text-sm text-gray-400">
           {completedCount} / {items.length} completed
         </span>
+        <span className="mx-2 text-neutral-700">·</span>
+        <span className="text-sm text-gray-400">
+          <span className="font-semibold text-amber-400">{earnsPointsCount}</span> earn Legacy Points,{" "}
+          <span className="font-semibold text-gray-500">{noPointsCount}</span> don&apos;t
+        </span>
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setPointFilter("all")}
+          className={`rounded px-3 py-1.5 text-sm font-semibold ${
+            pointFilter === "all" ? "bg-amber-700 text-white" : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
+          }`}
+        >
+          All
+        </button>
+        <button
+          type="button"
+          onClick={() => setPointFilter("earns")}
+          className={`rounded px-3 py-1.5 text-sm font-semibold ${
+            pointFilter === "earns" ? "bg-amber-700 text-white" : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
+          }`}
+        >
+          👑 Earns points
+        </button>
+        <button
+          type="button"
+          onClick={() => setPointFilter("none")}
+          className={`rounded px-3 py-1.5 text-sm font-semibold ${
+            pointFilter === "none" ? "bg-amber-700 text-white" : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
+          }`}
+        >
+          No points
+        </button>
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setCategory("all")}
@@ -128,7 +178,7 @@ export default function AccountLegacyPage() {
             category === "all" ? "bg-red-700 text-white" : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
           }`}
         >
-          All
+          All categories
         </button>
         {categories.map((c) => (
           <button

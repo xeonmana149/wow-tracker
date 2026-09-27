@@ -65,6 +65,14 @@ export type AchievementBoardItem = {
   // open the same way the in-game achievement pane's own +/- does. null
   // when there's nothing to expand (no criteria, or a non-legacy item).
   criteria: { text: string; completed: boolean }[] | null;
+  // Legacy Challenges only (2026-09-27, "show which ones earn you legacy
+  // points and which give nothing") - Blizzard's own row.points value,
+  // shown regardless of whether this item is earned yet, so the UI can
+  // flag "this one's worth nothing" up front rather than only after you've
+  // completed it and gotten 0. null for non-legacy items (points there
+  // always equal the achievement's fixed value once earned, no separate
+  // "is this even eligible" question to answer).
+  legacyPointValue: number | null;
 };
 
 export function buildAchievementItems({
@@ -103,6 +111,7 @@ export function buildAchievementItems({
       earnedAt: row?.earned_at ?? null,
       legacyCategory: null,
       criteria: null,
+      legacyPointValue: null,
     });
   }
 
@@ -126,6 +135,7 @@ export function buildAchievementItems({
       earnedAt: row?.earned_at ?? null,
       legacyCategory: null,
       criteria: null,
+      legacyPointValue: null,
     });
   }
 
@@ -220,6 +230,7 @@ export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): Achie
         // 0-1 criteria means there's nothing worth collapsing/expanding -
         // the description line above already says everything there is.
         criteria: null,
+        legacyPointValue: pointValue,
       };
     }
 
@@ -245,6 +256,7 @@ export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): Achie
       earnedAt: null,
       legacyCategory: row.category,
       criteria,
+      legacyPointValue: pointValue,
     };
   });
 }

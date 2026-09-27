@@ -180,6 +180,23 @@ export default function AchievementRow({
               {item.tier}
             </span>
           )}
+          {/* Legacy Challenges only - flags up front whether this one is
+              even eligible for Legacy Points, independent of whether it's
+              earned yet (2026-09-27, "show which ones earn you legacy
+              points and which give nothing" - most of the 111 give 0, only
+              the Adventure-category ones and a few others actually count
+              toward the game's own 65). */}
+          {item.legacyPointValue !== null && (
+            item.legacyPointValue > 0 ? (
+              <span className="flex items-center gap-1 rounded-full border border-amber-700/60 bg-amber-950/40 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+                👑 Earns {item.legacyPointValue} Legacy Point{item.legacyPointValue === 1 ? "" : "s"}
+              </span>
+            ) : (
+              <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+                No Legacy Points
+              </span>
+            )
+          )}
         </div>
         <div className="text-xs text-gray-500">{item.description}</div>
 
