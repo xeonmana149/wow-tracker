@@ -340,6 +340,10 @@ export const TIERED_LOCAL_ICONS: Partial<Record<TieredAchievementKind, string>> 
   // 2026-09-27 icon batch - the last tiered kind that still had no local
   // art (was falling back to the generic "trade_cooking" CDN icon + ring).
   master_chef: "master-chef",
+  // Addicted (2026-09-27) - last remaining tiered kind with no local art,
+  // now covered (was falling back to the generic "inv_misc_pocketwatch_01"
+  // CDN icon + ring).
+  addicted: "addicted",
 };
 
 // Same idea for the flat (no-tier) achievement badges that got local art -
