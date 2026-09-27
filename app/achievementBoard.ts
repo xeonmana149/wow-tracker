@@ -180,22 +180,25 @@ function legacyThresholds(total: number): { tier: AchievementTier; value: number
   return values.map((value, i) => ({ tier: names[i], value }));
 }
 
-// Legacy Points (2026-09-27, "make the legacy points equal to the game") -
-// each Legacy Challenge is worth exactly 1 point when fully completed, 0
-// otherwise - not Blizzard's own achievement point value (row.points, still
-// captured but no longer used for scoring) and not scaled by tier. A
-// partially-progressed multi-criteria achievement still shows a live
-// Copper/Silver/Gold/Platinum tier for visual progress, but only pays out
-// its 1 point at Platinum (every criterion done) - "completed" is binary,
-// same as the in-game panel's own checkmark.
-const LEGACY_POINTS_PER_CHALLENGE = 1;
-
+// Legacy Points (2026-09-27, corrected same day after Jordan found the
+// in-game "Legacy Points 0/65" header + each achievement's own shield badge
+// tooltip, "Earn 1 Legacy Point") - that badge IS Blizzard's own
+// GetAchievementInfo `points` field, just repurposed by this server as the
+// Legacy Point value instead of the usual 5/10/25 achievement-point scale.
+// Confirmed: only some achievements (e.g. the ones under "Adventure") carry
+// a nonzero points value at all - the other ~46 (class-only, profession-only,
+// etc.) are just regular achievements sharing this same panel and report 0.
+// So this is NOT a flat 1-per-challenge award (that was wrong - it would
+// total 111 once everything's done, not 65) - it pays out row.points itself,
+// which is already captured by the addon and naturally sums to 65 across the
+// account once every legacy-point-eligible achievement is completed.
 export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): AchievementBoardItem[] {
   return rows.map((row) => {
     const criteria = row.criteria ?? [];
     const total = criteria.length;
     const done = criteria.filter((c) => c.completed).length;
     const key = `legacy_${row.achievement_id}`;
+    const pointValue = row.points ?? 0;
 
     if (total <= 1) {
       return {
@@ -208,7 +211,7 @@ export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): Achie
         remoteIcon: row.icon ?? null,
         earned: row.completed,
         tier: null,
-        points: row.completed ? LEGACY_POINTS_PER_CHALLENGE : 0,
+        points: row.completed ? pointValue : 0,
         value: null,
         nextThreshold: null,
         thresholds: null,
@@ -235,7 +238,7 @@ export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): Achie
       remoteIcon: row.icon ?? null,
       earned: tier !== null,
       tier,
-      points: fullyDone ? LEGACY_POINTS_PER_CHALLENGE : 0,
+      points: fullyDone ? pointValue : 0,
       value: done,
       nextThreshold,
       thresholds,
