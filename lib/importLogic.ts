@@ -950,8 +950,27 @@ export async function applyImport(
   // overwrites the account's current completed/criteria state in place -
   // there's no tier/points system here to award separately, this is
   // display-only data straight from the game's own pane.
+  //
+  // ui_points needs SEPARATE, more careful handling than everything else
+  // here (2026-09-27, caught before it shipped a data-loss bug): it comes
+  // from the addon's passive UI scan (see scanLegacyPointsFromUI), cached in
+  // WFTSyncDB - which is SavedVariablesPerCharacter, NOT shared across
+  // alts. So character A might have browsed the Adventure/Alchemy/etc. tabs
+  // and captured real ui_points values, while character B - who's never
+  // opened the Legacy Challenges panel at all - has an empty cache and syncs
+  // `uiPoints: undefined` for every single achievement. If that were upserted
+  // as `ui_points: null` like every other field here, character B's sync
+  // would silently WIPE OUT every ui_points value character A already
+  // captured, every time B syncs - a real point value should never be
+  // erased just because THIS sync's character happens not to have seen it.
+  // So achievements with a real captured value this sync go through one
+  // upsert that includes ui_points (so a NEWLY discovered value does get
+  // written); achievements with no value THIS sync go through a separate
+  // upsert that omits the ui_points key entirely, so Postgres's ON CONFLICT
+  // DO UPDATE simply never touches that column and whatever's already
+  // recorded stays exactly as it was.
   if (parsed.legacyAchievements && parsed.legacyAchievements.length > 0) {
-    const legacyRows = parsed.legacyAchievements.map((a) => ({
+    const baseRow = (a: NonNullable<ParsedExport["legacyAchievements"]>[number]) => ({
       user_id: before.user_id,
       achievement_id: a.id,
       category: a.category,
@@ -961,13 +980,28 @@ export async function applyImport(
       criteria: a.criteria && a.criteria.length > 0 ? a.criteria : null,
       icon: a.icon ?? null,
       points: a.points ?? null,
-      ui_points: a.uiPoints ?? null,
       updated_at: new Date().toISOString(),
-    }));
-    const { error } = await supabase
-      .from("account_legacy_achievements")
-      .upsert(legacyRows, { onConflict: "user_id,achievement_id" });
-    if (error) throw new Error(error.message);
+    });
+
+    const withUiPoints = parsed.legacyAchievements
+      .filter((a) => typeof a.uiPoints === "number")
+      .map((a) => ({ ...baseRow(a), ui_points: a.uiPoints }));
+    const withoutUiPoints = parsed.legacyAchievements
+      .filter((a) => typeof a.uiPoints !== "number")
+      .map((a) => baseRow(a));
+
+    if (withUiPoints.length > 0) {
+      const { error } = await supabase
+        .from("account_legacy_achievements")
+        .upsert(withUiPoints, { onConflict: "user_id,achievement_id" });
+      if (error) throw new Error(error.message);
+    }
+    if (withoutUiPoints.length > 0) {
+      const { error } = await supabase
+        .from("account_legacy_achievements")
+        .upsert(withoutUiPoints, { onConflict: "user_id,achievement_id" });
+      if (error) throw new Error(error.message);
+    }
   }
 
   // Account-wide achievements - re-checked on every sync since any of the
