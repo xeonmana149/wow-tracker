@@ -149,7 +149,7 @@ function labelFor(kind: TieredAchievementKind, tier: AchievementTier): string {
 // TieredAchievementKind (which still includes "recipes" as a possibility)
 // into .indexOf() below.
 const STAT_TESTABLE_KINDS: TieredAchievementKind[] = TIERED_ACHIEVEMENT_KINDS.filter(
-  (k) => k !== "recipes" && k !== "master_chef"
+  (k) => k !== "recipes" && k !== "master_chef" && k !== "addicted"
 );
 
 type StatRow = { category: string; name: string; value: string };

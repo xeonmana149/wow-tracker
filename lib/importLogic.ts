@@ -44,6 +44,14 @@ export type ParsedExport = {
     // to fill; the site treats that as "no live XP bar" rather than 0%.
     xp?: number;
     xpMax?: number;
+    // Total time played, in seconds (2026-09-27, "Addicted" achievement).
+    // Fetched by the addon via the async RequestTimePlayed()/TIME_PLAYED_MSG
+    // pair, not part of the Statistics-pane sweep - see the addon's
+    // collectBasic() and lib/achievements.ts's TieredAchievementKind
+    // comment for why this is handled separately from every other tiered
+    // achievement. Missing/undefined until that event has fired at least
+    // once on the player's client.
+    timePlayedSeconds?: number;
   };
   stats?: {
     maxHealth?: number;
@@ -592,6 +600,28 @@ export async function applyImport(
         achievement_kind: "master_chef",
         achievement_tier: masterChefTier,
         message: tierMessage("master_chef", before.name, masterChefTier),
+      });
+    }
+  }
+
+  // Addicted (2026-09-27) - total time played, converted from the addon's
+  // raw seconds to whole hours (TIER_DEFS.addicted's thresholds are in
+  // hours - much more readable than a seconds count). Same "computed
+  // outside character_statistics" special case as recipes/master_chef
+  // above, just sourced from parsed.basic instead of character_professions.
+  // Skipped entirely (not even a 0-hour award attempt) until the addon's
+  // async time-played fetch has actually returned something.
+  if (typeof parsed.basic?.timePlayedSeconds === "number" && parsed.basic.timePlayedSeconds > 0) {
+    const hoursPlayed = Math.floor(parsed.basic.timePlayedSeconds / 3600);
+    const addictedTier = await awardTier(supabase, characterId, "addicted", hoursPlayed);
+    if (addictedTier) {
+      events.push({
+        character_id: characterId,
+        user_id: before.user_id,
+        kind: "achievement_earned",
+        achievement_kind: "addicted",
+        achievement_tier: addictedTier,
+        message: tierMessage("addicted", before.name, addictedTier),
       });
     }
   }

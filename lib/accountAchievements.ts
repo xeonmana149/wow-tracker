@@ -13,7 +13,12 @@ export type AccountAchievementKind =
   | "master_of_all_trades"
   | "tycoon"
   | "big_family"
-  | "pvp_dynasty";
+  | "pvp_dynasty"
+  // One-Man Army (2026-09-27) - 3+ characters at the level cap on one
+  // account. Distinct from class_collector (every class, one each) and
+  // pvp_dynasty (top rank, not level) - this is just "you've maxed out a
+  // small army", no class/race/PvP requirement at all.
+  | "one_man_army";
 
 // Icon names are real WoW icon names, resolved to actual game art through
 // wowIconUrl() (see lib/icons.ts) by whatever renders these - AccountBadges
@@ -51,6 +56,10 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
     icon: "inv_jewelry_ring_03",
     label: "PvP Dynasty - 2 or more characters at the top PvP rank",
   },
+  one_man_army: {
+    icon: "achievement_bg_killxenemies_generalsroom",
+    label: "One-Man Army - 3 or more characters at the level cap",
+  },
 };
 
 const ACCOUNT_ACHIEVEMENT_MESSAGE: Record<AccountAchievementKind, (name: string) => string> = {
@@ -62,6 +71,7 @@ const ACCOUNT_ACHIEVEMENT_MESSAGE: Record<AccountAchievementKind, (name: string)
   tycoon: (name) => `${name} has amassed 10,000 gold across their characters!`,
   big_family: (name) => `${name} is running a full roster - 10+ characters!`,
   pvp_dynasty: (name) => `${name} has 2+ characters at the top PvP rank!`,
+  one_man_army: (name) => `${name} has 3+ characters at the level cap - One-Man Army!`,
 };
 
 const MAX_CHARACTER_LEVEL = 60;
@@ -71,6 +81,7 @@ const ALL_PROFESSIONS = [...PRIMARY_PROFESSIONS, ...SECONDARY_PROFESSIONS];
 const BIG_FAMILY_THRESHOLD = 10;
 const TYCOON_GOLD = 10000;
 const PVP_DYNASTY_THRESHOLD = 2;
+const ONE_MAN_ARMY_THRESHOLD = 3;
 
 async function award(
   supabase: SupabaseClient,
@@ -121,6 +132,10 @@ export async function checkAccountAchievements(
   const maxedClasses = new Set(maxedChars.map((c) => c.class));
   if (CLASSES.every((cls) => maxedClasses.has(cls))) {
     await tryAward("class_collector");
+  }
+
+  if (maxedChars.length >= ONE_MAN_ARMY_THRESHOLD) {
+    await tryAward("one_man_army");
   }
 
   const maxedRaces = new Set(maxedChars.map((c) => c.race));

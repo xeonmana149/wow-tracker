@@ -44,10 +44,12 @@ export const ACHIEVEMENT_BADGES: Record<AchievementKind, { icon: string; label: 
   // Batch 2 feats (2026-09-25) - one-off, sourced from real death/character
   // stats. Icons are close-enough stand-ins, swappable from /dev/badges.
   standing_in_fire: { icon: "spell_fire_selfdestruct", label: "Standing in Fire - died to fire or lava 10+ times" },
-  hoggers_plaything: { icon: "inv_misc_head_dog_01", label: "Hogger's Plaything - died to Hogger" },
   cant_swim: { icon: "spell_frost_frostbolt02", label: "Can't Swim - drowned 10+ times" },
   gravity_challenged: { icon: "spell_magic_featherfall", label: "Gravity Challenged - died from falling 10+ times" },
   identity_crisis: { icon: "spell_nature_polymorph", label: "Identity Crisis - respec'd 10+ times" },
+  // 2026-09-27 batch - "hoggers_plaything" was removed here (see
+  // achievements.ts for why) and this one added.
+  quitter: { icon: "ability_rogue_sprint", label: "Quitter - abandoned 25+ quests" },
   // Level milestones (2026-09-25) - one-off callouts every 10 levels short
   // of the cap. `icon` is legacy/unused now that badge rendering no longer
   // falls back to a WoW CDN icon (see the 2026-09-25 "remove the old wow
@@ -260,6 +262,13 @@ export const MASTER_CHEF_TIER_BADGE = ringBadge(
   (tier) =>
     `Master Chef - ${tier} tier - ${{ Copper: 15, Silver: 30, Gold: 60, Platinum: 100 }[tier]}+ Cooking recipes known`
 );
+// Addicted (2026-09-27) - total time played, in hours. No local art yet,
+// same reasoning as Master Chef (nothing to pick until real art exists).
+export const ADDICTED_TIER_BADGE = ringBadge(
+  "inv_misc_pocketwatch_01",
+  (tier) =>
+    `Addicted - ${tier} tier - ${{ Copper: 24, Silver: 100, Gold: 300, Platinum: 750 }[tier].toLocaleString()}+ hours played`
+);
 
 // One lookup covering every ring-style tiered badge (everything except
 // "gold", which is handled separately above via GOLD_TIER_LABEL) so the
@@ -290,6 +299,7 @@ export const RING_TIER_BADGES: Partial<Record<TieredAchievementKind, TierRingBad
   auctions_posted: AUCTIONS_POSTED_TIER_BADGE,
   auction_gold: AUCTION_GOLD_TIER_BADGE,
   master_chef: MASTER_CHEF_TIER_BADGE,
+  addicted: ADDICTED_TIER_BADGE,
 };
 
 // Local custom artwork (2026-09-25) - icon slugs live at
@@ -343,7 +353,6 @@ export const FLAT_LOCAL_ICONS: Partial<Record<AchievementKind, string>> = {
   maxed_profession: "maxed-profession",
   renaissance: "renaissance",
   standing_in_fire: "standing-in-fire",
-  hoggers_plaything: "hoggers-plaything",
   cant_swim: "cant-swim",
   gravity_challenged: "gravity-challenged",
   identity_crisis: "identity-crisis",

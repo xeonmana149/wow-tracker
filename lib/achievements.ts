@@ -23,11 +23,20 @@ export type AchievementKind =
   // real Statistics-pane stat each, same pattern as the personality
   // badges above (grouped separately below in FEAT_THRESHOLDS since they
   // came from a different brainstorm, but mechanically identical).
+  // "hoggers_plaything" (Deaths from Hogger) was removed 2026-09-27 - it's
+  // a real Blizzard-tracked stat, but Blizzard only special-cased Hogger
+  // specifically as an easter egg, with no equivalent stat for any
+  // Horde-side rare, making it structurally unfair to Horde characters.
+  // Any earned rows for it stay in the database untouched (harmless, just
+  // no longer read by anything) rather than being migrated/deleted.
   | "standing_in_fire"
-  | "hoggers_plaything"
   | "cant_swim"
   | "gravity_challenged"
   | "identity_crisis"
+  // Quitter (2026-09-27) - same one-stat-crosses-threshold personality-
+  // badge mechanism as the others, sourced from the real "Quests abandoned"
+  // stat (confirmed against a live character_statistics dump).
+  | "quitter"
   // Level milestones (2026-09-25) - one-off callouts every 10 levels on
   // the way to the cap, so leveling up feels like it's earning something
   // the whole way rather than only at max_level (60). Awarded the same way
@@ -89,7 +98,17 @@ export type TieredAchievementKind =
   // scoped to ONLY the Cooking profession's known recipes rather than
   // every profession summed together. See TIER_COUNTERS below (also left
   // empty, same reason) and importLogic.ts's dedicated Cooking-only query.
-  | "master_chef"; // "Master Chef"
+  | "master_chef" // "Master Chef"
+  // Addicted (2026-09-27) - total time played. Not sourced from
+  // character_statistics at all (classic /played data isn't part of the
+  // Statistics-pane sweep the addon does) - the addon fetches it
+  // separately via RequestTimePlayed()/TIME_PLAYED_MSG and sends it as
+  // parsed.basic.timePlayedSeconds instead, so this is a third
+  // "computed outside character_statistics" special case alongside
+  // recipes/master_chef (see TIER_COUNTERS below and importLogic.ts's
+  // dedicated handling). Thresholds are in whole HOURS played, not
+  // seconds - importLogic.ts converts before calling awardTier.
+  | "addicted"; // "Addicted"
 
 export type AchievementTier = "Copper" | "Silver" | "Gold" | "Platinum";
 // Kept as an alias so older code that still says GoldTier keeps working -
@@ -449,6 +468,20 @@ const TIER_DEFS: Record<TieredAchievementKind, TierDef> = {
     ],
     format: (name, tier, value) => `${name} knows ${value}+ Cooking recipes - ${tier} tier!`,
   },
+  addicted: {
+    label: "Addicted",
+    description: "Total time played.",
+    family: "character",
+    // In HOURS, not seconds - see the TieredAchievementKind comment above.
+    // Starting estimates, not tuned against real playtime data yet.
+    thresholds: [
+      { tier: "Platinum", value: 750 },
+      { tier: "Gold", value: 300 },
+      { tier: "Silver", value: 100 },
+      { tier: "Copper", value: 24 },
+    ],
+    format: (name, tier, value) => `${name} has played ${value.toLocaleString()}+ hours - ${tier} tier!`,
+  },
 };
 
 export const ACHIEVEMENT_MESSAGE: Record<AchievementKind, (name: string) => string> = {
@@ -465,10 +498,10 @@ export const ACHIEVEMENT_MESSAGE: Record<AchievementKind, (name: string) => stri
   tiny_violinist: (name) => `${name} has played the world's smallest violin 100+ times - Tiny Violinist!`,
   greeter: (name) => `${name} has waved 250+ times - Greeter!`,
   standing_in_fire: (name) => `${name} has died to fire or lava 10+ times - Standing in Fire!`,
-  hoggers_plaything: (name) => `${name} has died to Hogger - Hogger's Plaything!`,
   cant_swim: (name) => `${name} has drowned 10+ times - Can't Swim!`,
   gravity_challenged: (name) => `${name} has died from falling 10+ times - Gravity Challenged!`,
   identity_crisis: (name) => `${name} has respec'd 10+ times - Identity Crisis!`,
+  quitter: (name) => `${name} has abandoned 25+ quests - Quitter!`,
   level_10: (name) => `${name} reached level 10!`,
   level_20: (name) => `${name} reached level 20!`,
   level_30: (name) => `${name} reached level 30!`,
@@ -513,10 +546,12 @@ export const PERSONALITY_BADGES: {
   // Batch 2 "feats" - same one-stat-crosses-threshold mechanism, just
   // sourced from World/Character categories instead of Social.
   { kind: "standing_in_fire", category: "World", name: "Deaths from fire and lava", threshold: 10 },
-  { kind: "hoggers_plaything", category: "World", name: "Deaths from Hogger", threshold: 1 },
   { kind: "cant_swim", category: "World", name: "Deaths from drowning", threshold: 10 },
   { kind: "gravity_challenged", category: "World", name: "Deaths from falling", threshold: 10 },
   { kind: "identity_crisis", category: "Character", name: "Talent tree respecs", threshold: 10 },
+  // Quitter (2026-09-27) - confirmed against a real character_statistics
+  // dump: category "Quests", name "Quests abandoned".
+  { kind: "quitter", category: "Quests", name: "Quests abandoned", threshold: 25 },
 ];
 
 // Which character_statistics rows feed each tiered achievement's counter.
@@ -588,6 +623,9 @@ export const TIER_COUNTERS: Record<TieredAchievementKind, StatSelector[]> = {
   auctions_posted: [{ category: "Wealth", name: "Auctions posted" }],
   auction_gold: [{ category: "Wealth", name: "Gold earned from auctions" }],
   master_chef: [],
+  // "addicted" is computed from parsed.basic.timePlayedSeconds, not from
+  // character_statistics - see the TieredAchievementKind comment above.
+  addicted: [],
 };
 
 // Sums whichever raw stats feed a given tiered kind, out of an arbitrary
@@ -708,6 +746,7 @@ export const TIERED_ACHIEVEMENT_KINDS: TieredAchievementKind[] = [
   "auctions_posted",
   "auction_gold",
   "master_chef",
+  "addicted",
 ];
 
 export function tierLabel(kind: TieredAchievementKind): string {
