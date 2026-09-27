@@ -337,6 +337,9 @@ export const TIERED_LOCAL_ICONS: Partial<Record<TieredAchievementKind, string>> 
   healing_done: "lifebringer",
   loot_rolls: "loot-goblin",
   auction_gold: "trader",
+  // 2026-09-27 icon batch - the last tiered kind that still had no local
+  // art (was falling back to the generic "trade_cooking" CDN icon + ring).
+  master_chef: "master-chef",
 };
 
 // Same idea for the flat (no-tier) achievement badges that got local art -
@@ -356,4 +359,18 @@ export const FLAT_LOCAL_ICONS: Partial<Record<AchievementKind, string>> = {
   cant_swim: "cant-swim",
   gravity_challenged: "gravity-challenged",
   identity_crisis: "identity-crisis",
+  // 2026-09-27 icon batch - every remaining flat achievement kind that had
+  // no local art yet (personality badges, level milestones, and
+  // character_created), all now covered.
+  hugger: "hugger",
+  comedian: "comedian",
+  drama_queen: "drama-queen",
+  tiny_violinist: "tiny-violinist",
+  quitter: "quitter",
+  level_10: "level-10",
+  level_20: "level-20",
+  level_30: "level-30",
+  level_40: "level-40",
+  level_50: "level-50",
+  character_created: "character-created",
 };
