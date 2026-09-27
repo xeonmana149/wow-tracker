@@ -1103,7 +1103,13 @@ local function collectLegacyAchievements()
         if numEntries > 0 and type(getAchievementInfo) == "function" then
             for i = 1, numEntries do
                 if #out >= LEGACY_ACHIEVEMENTS_MAX then break end
-                local okA, id, name, points, completed, _month, _day, _year, description =
+                -- 10th return value is the achievement's own icon fileID
+                -- (2026-09-27, added so the website can show the real
+                -- Blizzard icon instead of a generic placeholder) -
+                -- GetAchievementInfo's full signature is id, name, points,
+                -- completed, month, day, year, description, flags, icon,
+                -- rewardText, isGuild, wasEarnedByMe, earnedBy.
+                local okA, id, name, points, completed, _month, _day, _year, description, _flags, icon =
                     safeCall(getAchievementInfo, catID, i)
                 if okA and id then
                     local row = {
@@ -1112,6 +1118,7 @@ local function collectLegacyAchievements()
                         name = name,
                         completed = completed and true or false,
                         description = description,
+                        icon = icon,
                     }
                     if type(getNumCriteria) == "function" then
                         local okC, numCriteria = safeCall(getNumCriteria, id)
@@ -1144,7 +1151,7 @@ local function buildExport()
     local tocversion = select(4, safeGet("GetBuildInfo"))
     local okDate, timestamp = safeCall(_G.date, "%Y-%m-%d %H:%M:%S")
     out.meta = {
-        addonVersion = "1.8.5",
+        addonVersion = "1.8.6",
         tocversion = tocversion,
         exportedAt = okDate and timestamp or nil,
     }

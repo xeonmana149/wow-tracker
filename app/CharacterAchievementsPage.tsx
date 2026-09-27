@@ -8,6 +8,7 @@ import { FAMILY_META, type AchievementFamily, type AchievementTier } from "../li
 import { buildAchievementItems, SHOWCASE_LIMIT, type AchievementBoardItem } from "./achievementBoard";
 import MilestoneBar from "./MilestoneBar";
 import BadgePlaceholder from "./BadgePlaceholder";
+import LegacyChallengesSection from "./LegacyChallengesSection";
 
 // The full achievement browser for one character - everything the compact
 // header showcase (AchievementShowcase.tsx) deliberately leaves out:
@@ -30,7 +31,14 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
   // social, pvp, professions) rather than having one of their own, so this
   // is a cross-cutting filter ("show me every non-tiered achievement")
   // rather than another entry in the family list.
-  const [family, setFamily] = useState<AchievementFamily | "all" | "oneOff">("all");
+  // "legacy" (2026-09-27) is another cross-cutting filter like "oneOff" -
+  // selecting it swaps the whole grid below for LegacyChallengesSection
+  // (the real Blizzard Achievements pane data, character_legacy_achievements)
+  // instead of filtering `items`, since those achievements aren't part of
+  // this site's own tiered/flat/points system at all. Living as a tab here
+  // rather than only on its own /legacy page is what makes the two feel
+  // like one achievement system instead of two separate features.
+  const [family, setFamily] = useState<AchievementFamily | "all" | "oneOff" | "legacy">("all");
   const [sort, setSort] = useState<SortMode>("category");
 
   // Showcase pinning - which earned achievements show up in the compact
@@ -177,12 +185,7 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
           </Link>
           <h1 className="text-3xl font-bold">Achievements</h1>
         </div>
-        <div className="flex items-center gap-4">
-          <Link href={`/character/${characterId}/legacy`} className="text-sm text-gray-400 hover:underline">
-            Legacy Challenges →
-          </Link>
-          <div className="text-lg font-bold text-[#c9a566]">{totalPoints.toLocaleString()} Achievement Points</div>
-        </div>
+        <div className="text-lg font-bold text-[#c9a566]">{totalPoints.toLocaleString()} Achievement Points</div>
       </div>
 
       <div className="mt-4 rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
@@ -234,6 +237,16 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
         >
           🎖️ One-Off <span className="font-normal text-gray-400">({oneOffCount})</span>
         </button>
+        <button
+          type="button"
+          onClick={() => setFamily("legacy")}
+          title="Blizzard's own Achievements pane - dungeons, raids, exploration and profession/class milestones"
+          className={`rounded px-3 py-1.5 text-sm font-semibold ${
+            family === "legacy" ? "bg-red-700 text-white" : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
+          }`}
+        >
+          🏆 Legacy Challenges
+        </button>
         {familiesPresent.map((f) => (
           <button
             key={f}
@@ -247,46 +260,54 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
           </button>
         ))}
 
-        <span className="mx-1 h-5 w-px bg-neutral-700" />
+        {family !== "legacy" && (
+          <>
+            <span className="mx-1 h-5 w-px bg-neutral-700" />
 
-        <label className="flex items-center gap-1.5 text-sm text-gray-400">
-          Sort by
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortMode)}
-            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-gray-200"
-          >
-            <option value="category">Category</option>
-            <option value="alphabetical">Alphabetical</option>
-            <option value="closest">Closest to completion</option>
-            <option value="highestTier">Highest tier</option>
-            <option value="recent">Recently progressed</option>
-          </select>
-        </label>
+            <label className="flex items-center gap-1.5 text-sm text-gray-400">
+              Sort by
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortMode)}
+                className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-gray-200"
+              >
+                <option value="category">Category</option>
+                <option value="alphabetical">Alphabetical</option>
+                <option value="closest">Closest to completion</option>
+                <option value="highestTier">Highest tier</option>
+                <option value="recent">Recently progressed</option>
+              </select>
+            </label>
+          </>
+        )}
       </div>
 
-      <div className="mt-4 flex flex-col gap-6">
-        {grouped.map((group) => (
-          <div key={group.family ?? "flat"}>
-            {group.family && (
-              <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-gray-400">
-                {FAMILY_META[group.family].icon} {FAMILY_META[group.family].label}
-              </h2>
-            )}
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              {group.items.map((item) => (
-                <AchievementRow
-                  key={item.key}
-                  item={item}
-                  isOwner={isOwner}
-                  pinned={pinned.includes(item.key)}
-                  onTogglePin={() => togglePin(item.key)}
-                />
-              ))}
+      {family === "legacy" ? (
+        <LegacyChallengesSection characterId={characterId} />
+      ) : (
+        <div className="mt-4 flex flex-col gap-6">
+          {grouped.map((group) => (
+            <div key={group.family ?? "flat"}>
+              {group.family && (
+                <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-gray-400">
+                  {FAMILY_META[group.family].icon} {FAMILY_META[group.family].label}
+                </h2>
+              )}
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                {group.items.map((item) => (
+                  <AchievementRow
+                    key={item.key}
+                    item={item}
+                    isOwner={isOwner}
+                    pinned={pinned.includes(item.key)}
+                    onTogglePin={() => togglePin(item.key)}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </main>
   );
 }

@@ -154,6 +154,12 @@ export type ParsedExport = {
     completed: boolean;
     description?: string;
     criteria?: { text: string; completed: boolean }[];
+    // The achievement's own Blizzard icon fileID (addon 1.8.6+) - fed
+    // through the same iconUrlForFileId() helper as item/gear icons
+    // elsewhere on the site, so these read as real WoW achievement icons
+    // rather than a generic placeholder. Undefined on exports from an
+    // older addon version.
+    icon?: number;
   }[];
 };
 
@@ -937,6 +943,7 @@ export async function applyImport(
       description: a.description ?? null,
       completed: a.completed,
       criteria: a.criteria && a.criteria.length > 0 ? a.criteria : null,
+      icon: a.icon ?? null,
       updated_at: new Date().toISOString(),
     }));
     const { error } = await supabase
