@@ -379,9 +379,65 @@ export function legacyCategoryGroup(rawCategory: string | null): string {
   return LEGACY_CATEGORY_GROUPS[rawCategory] ?? "Adventure";
 }
 
+// Rank-word ladder order (2026-09-28, Jordan's request) - within a group,
+// items used to sort plain alphabetically, which scattered a single
+// profession's or class's own tiers apart (e.g. "Artisan Alchemist" landing
+// nowhere near "Journeyman Alchemist" just because A < J). Recognized rank
+// words are ordered low to high; anything with two names for the same idea
+// (Adept/Experienced, Veteran/Artisan) shares a rank so neither naming
+// convention breaks the sort.
+const LEGACY_RANK_ORDER: Record<string, number> = {
+  novice: 0,
+  apprentice: 1,
+  journeyman: 2,
+  adept: 2,
+  experienced: 2,
+  expert: 3,
+  veteran: 4,
+  artisan: 4,
+  master: 5,
+  "grand master": 6,
+  legendary: 7,
+};
+
+function legacyRankOf(name: string): number | null {
+  const firstWord = name.trim().split(/\s+/)[0]?.toLowerCase();
+  return firstWord && firstWord in LEGACY_RANK_ORDER ? LEGACY_RANK_ORDER[firstWord] : null;
+}
+
+// Everything after the rank word - "Journeyman Alchemist" -> "Alchemist",
+// "Novice Warrior" -> "Warrior" - so items sort by ladder groups (Alchemist,
+// Alchemist, Alchemist, then Blacksmith, Blacksmith, ...) instead of by
+// rank word first (Artisan Alchemist next to Artisan Blacksmith).
+function legacyBaseNameOf(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return parts.length > 1 ? parts.slice(1).join(" ") : name;
+}
+
+// Ladder items (a recognized rank word) cluster by base name, lowest rank
+// first, so a whole profession/class chain reads top to bottom in order.
+// Everything else (one-off achievements like "Explorer" or "Rank 3" with no
+// recognized rank word) sorts after every ladder, alphabetically by name.
+function sortLegacyItems(items: AchievementBoardItem[]): AchievementBoardItem[] {
+  return [...items].sort((a, b) => {
+    const rankA = legacyRankOf(a.name);
+    const rankB = legacyRankOf(b.name);
+    if (rankA !== null && rankB !== null) {
+      const baseA = legacyBaseNameOf(a.name);
+      const baseB = legacyBaseNameOf(b.name);
+      if (baseA !== baseB) return baseA.localeCompare(baseB);
+      return rankA - rankB;
+    }
+    if (rankA !== null) return -1;
+    if (rankB !== null) return 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 // Splits a set of Legacy Challenge items into the 6 condensed groups above
 // for the mini-header layout on AccountLegacyPage - fixed order (see
-// LEGACY_CATEGORY_GROUP_ORDER), not alphabetical.
+// LEGACY_CATEGORY_GROUP_ORDER), not alphabetical. Items within each group
+// are sorted by sortLegacyItems (see above) rather than alphabetically.
 export function groupByLegacyCategory(items: AchievementBoardItem[]): [string, AchievementBoardItem[]][] {
   const map = new Map<string, AchievementBoardItem[]>();
   for (const item of items) {
@@ -390,9 +446,11 @@ export function groupByLegacyCategory(items: AchievementBoardItem[]): [string, A
     list.push(item);
     map.set(group, list);
   }
-  return Array.from(map.entries()).sort(([a], [b]) => {
-    const ai = LEGACY_CATEGORY_GROUP_ORDER.indexOf(a);
-    const bi = LEGACY_CATEGORY_GROUP_ORDER.indexOf(b);
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-  });
+  return Array.from(map.entries())
+    .map(([group, list]): [string, AchievementBoardItem[]] => [group, sortLegacyItems(list)])
+    .sort(([a], [b]) => {
+      const ai = LEGACY_CATEGORY_GROUP_ORDER.indexOf(a);
+      const bi = LEGACY_CATEGORY_GROUP_ORDER.indexOf(b);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
 }
