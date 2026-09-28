@@ -4,6 +4,7 @@ import { Cinzel, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
 import "./theme.css";
 import SiteNav from "./SiteNav";
+import SiteSidebar from "./SiteSidebar";
 import LaunchCountdown from "./LaunchCountdown";
 import ActivitySidebar from "./ActivitySidebar";
 
@@ -40,11 +41,24 @@ export default function RootLayout({
           />
         </div>
 
-        <div className="mx-auto max-w-[1500px] px-4 pt-4 md:px-6 md:pt-6">
-          <SiteNav />
-          <LaunchCountdown />
+        {/* 2026-09-28 layout rework - a persistent left sidebar (real nav,
+            see app/navLinks.tsx) sits beside everything else instead of the
+            old single centered column. SiteSidebar handles its own mobile
+            off-canvas behavior, so this row just needs to be a flex
+            container; nothing else about how pages render below changes -
+            each page still centers itself with its own mx-auto max-w-...
+            wrapper, just now within the remaining width next to the rail. */}
+        <div className="flex min-h-screen">
+          <SiteSidebar />
+
+          <div className="min-w-0 flex-1">
+            <div className="mx-auto max-w-[1500px] px-4 pt-4 md:px-6 md:pt-6">
+              <SiteNav />
+              <LaunchCountdown />
+            </div>
+            {children}
+          </div>
         </div>
-        {children}
 
         {/* Floating activity feed, docked to the right on wide screens only -
             lives here (not inside any one page) so it's the same on every
