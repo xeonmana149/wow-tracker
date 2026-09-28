@@ -6,6 +6,8 @@ import { supabase } from "../lib/supabase";
 import {
   buildLegacyAchievementItems,
   groupByLegacyCategory,
+  legacyCategoryGroup,
+  LEGACY_CATEGORY_GROUP_ORDER,
   type AchievementBoardItem,
   type LegacyAchievementRow,
 } from "./achievementBoard";
@@ -67,15 +69,18 @@ export default function AccountLegacyPage() {
   const earnsPointsCount = items.filter((i) => (i.legacyPointValue ?? 0) > 0).length;
   const noPointsCount = items.length - earnsPointsCount;
 
+  // Condensed groups (2026-09-28) instead of Blizzard's ~24 raw category
+  // names - only shows groups that actually have at least one item, in the
+  // fixed LEGACY_CATEGORY_GROUP_ORDER order rather than alphabetically.
   const categories = useMemo(() => {
-    const set = new Set<string>();
-    for (const i of items) set.add(i.legacyCategory ?? "Other");
-    return Array.from(set).sort();
+    const present = new Set<string>();
+    for (const i of items) present.add(legacyCategoryGroup(i.legacyCategory));
+    return LEGACY_CATEGORY_GROUP_ORDER.filter((g) => present.has(g));
   }, [items]);
 
   const filtered = useMemo(() => {
     return items
-      .filter((i) => category === "all" || (i.legacyCategory ?? "Other") === category)
+      .filter((i) => category === "all" || legacyCategoryGroup(i.legacyCategory) === category)
       .filter((i) => !hideCompleted || i.points === 0)
       .filter((i) => {
         if (pointFilter === "all") return true;

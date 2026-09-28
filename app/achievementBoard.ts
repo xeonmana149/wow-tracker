@@ -328,22 +328,71 @@ export function pickShowcaseItems(
     .slice(0, limit);
 }
 
-// Splits a set of Legacy Challenge items into Blizzard's own sub-categories
-// (e.g. "Dungeons", "Explorer", "Eastern Kingdoms") for the mini-header
-// layout on AccountLegacyPage - alphabetical, "Other" (achievements synced
-// before the addon captured a category) sorted last rather than wherever
-// "O" happens to land.
+// Condenses Blizzard's ~24 raw Legacy Challenge categories (its own class,
+// profession, PvP-rank and zone names) down into 6 broad groups for
+// AccountLegacyPage's filter pills and section headers (2026-09-28, Jordan's
+// request - the raw list ("Adventure", "Alchemy", "Blacksmithing", "Druid",
+// "Dungeons", "Eastern Kingdoms", "Enchanting", "Engineering", "Explorer",
+// "Hunter", "Kalimdor", "Leatherworking", "Mage", "Paladin", "Priest",
+// "Raids", "Ranks", "Reputations", "Rogue", "Season Journey", "Shaman",
+// "Tailoring", "Warlock", "Warrior") was too long to scan at a glance).
+// Anything not explicitly mapped falls back to "Adventure" rather than an
+// awkward extra "Other" bucket - every raw category seen so far that isn't a
+// class, a profession, a PvP rank, Dungeons or Raids (Adventure, Explorer,
+// Eastern Kingdoms, Kalimdor, Reputations, Season Journey) is
+// exploration/world content anyway, so that's the natural catch-all.
+const LEGACY_CATEGORY_GROUPS: Record<string, string> = {
+  Druid: "Classes",
+  Hunter: "Classes",
+  Mage: "Classes",
+  Paladin: "Classes",
+  Priest: "Classes",
+  Rogue: "Classes",
+  Shaman: "Classes",
+  Warlock: "Classes",
+  Warrior: "Classes",
+  Alchemy: "Tradeskills",
+  Blacksmithing: "Tradeskills",
+  Enchanting: "Tradeskills",
+  Engineering: "Tradeskills",
+  Leatherworking: "Tradeskills",
+  Tailoring: "Tradeskills",
+  Ranks: "Player vs. Player",
+  Dungeons: "Dungeons",
+  Raids: "Raids",
+};
+
+// Fixed display order for the 6 groups - not alphabetical, matches how
+// Jordan actually thinks about them (Classes/Tradeskills/PvP first as the
+// "systems", then the 3 content buckets).
+export const LEGACY_CATEGORY_GROUP_ORDER = [
+  "Classes",
+  "Tradeskills",
+  "Player vs. Player",
+  "Adventure",
+  "Dungeons",
+  "Raids",
+];
+
+export function legacyCategoryGroup(rawCategory: string | null): string {
+  if (!rawCategory) return "Adventure";
+  return LEGACY_CATEGORY_GROUPS[rawCategory] ?? "Adventure";
+}
+
+// Splits a set of Legacy Challenge items into the 6 condensed groups above
+// for the mini-header layout on AccountLegacyPage - fixed order (see
+// LEGACY_CATEGORY_GROUP_ORDER), not alphabetical.
 export function groupByLegacyCategory(items: AchievementBoardItem[]): [string, AchievementBoardItem[]][] {
   const map = new Map<string, AchievementBoardItem[]>();
   for (const item of items) {
-    const category = item.legacyCategory ?? "Other";
-    const list = map.get(category) ?? [];
+    const group = legacyCategoryGroup(item.legacyCategory);
+    const list = map.get(group) ?? [];
     list.push(item);
-    map.set(category, list);
+    map.set(group, list);
   }
   return Array.from(map.entries()).sort(([a], [b]) => {
-    if (a === "Other") return 1;
-    if (b === "Other") return -1;
-    return a.localeCompare(b);
+    const ai = LEGACY_CATEGORY_GROUP_ORDER.indexOf(a);
+    const bi = LEGACY_CATEGORY_GROUP_ORDER.indexOf(b);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
   });
 }
