@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   ItemTooltipBox,
   KNOWN_BY_COLOR_CLASS,
@@ -714,7 +715,22 @@ function ItemInspector({
 }
 
 export default function ItemSearch() {
-  const [query, setQuery] = useState("");
+  // Seeded from ?q=... (2026-09-28) - the top nav's search box (SiteNav.tsx)
+  // navigates here with that param so a search typed up there actually
+  // lands in this page's own search box instead of doing nothing. The
+  // effect below also catches a SECOND top-bar search fired while already
+  // on this page - router.push changes the URL/searchParams without
+  // remounting this component, so the initial useState alone wouldn't see it.
+  const searchParams = useSearchParams();
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q && q !== query) setQuery(q);
+    // Only re-run when the URL param itself changes, not on every keystroke
+    // into the search box below (which would fight the user's own typing).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   const [quality, setQuality] = useState("");
   const [stat, setStat] = useState("");
   const [category, setCategory] = useState("");
