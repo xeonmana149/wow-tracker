@@ -56,15 +56,23 @@ export default function AchievementShowcase({
         {/* "hero-actions" is the same wrapper class the character page's
             header buttons (Talent planner, Edit Character, Delete
             Character) use - whatever global CSS gives those their
-            maroon/gold button look is keyed off this class, so reusing it
-            here (rather than guessing the colors in Tailwind) keeps these
-            two buttons visually identical to "the rest of the site"
-            without hardcoding a color that could drift out of sync. */}
-        <div className="hero-actions flex items-center gap-2 text-xs">
-          {isOwner && (
-            <Link href={`/character/${characterId}/achievements`}>Choose showcase →</Link>
-          )}
-          <Link href={`/character/${characterId}/achievements`}>View All →</Link>
+            maroon/gold button look is keyed off this class plus the
+            button's own className (the header's "Talent planner" Link is
+            styled bg-blue-600 in its own Tailwind classes but still renders
+            maroon/gold, so this matches that exact className rather than
+            guessing new colors), which keeps this button visually
+            identical to "the rest of the site" without hardcoding a color
+            that could drift out of sync. Dropped "Choose showcase" per
+            Jordan (2026-09-28) - one button into the same achievements
+            page is enough.
+        */}
+        <div className="hero-actions flex items-center gap-2">
+          <Link
+            href={`/character/${characterId}/achievements`}
+            className="rounded bg-blue-600 px-4 py-2 text-white"
+          >
+            View Achievements
+          </Link>
         </div>
       </div>
 
