@@ -434,6 +434,27 @@ function sortLegacyItems(items: AchievementBoardItem[]): AchievementBoardItem[] 
   });
 }
 
+// PvP ranks (2026-09-28, Jordan's request) - these are named "Rank 1",
+// "Rank 2", "Rank 3", ... and Jordan wants the HIGHEST rank shown first
+// (descending), the opposite direction from every other ladder above (which
+// goes lowest-first, Novice before Master). Pulled out as its own sort
+// rather than folded into sortLegacyItems so that one group can go against
+// the grain without flipping every other category's order.
+function sortPvpRankItems(items: AchievementBoardItem[]): AchievementBoardItem[] {
+  const numberOf = (name: string): number | null => {
+    const match = name.match(/(\d+)/);
+    return match ? parseInt(match[1], 10) : null;
+  };
+  return [...items].sort((a, b) => {
+    const numA = numberOf(a.name);
+    const numB = numberOf(b.name);
+    if (numA !== null && numB !== null && numA !== numB) return numB - numA;
+    if (numA !== null && numB === null) return -1;
+    if (numA === null && numB !== null) return 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 // Splits a set of Legacy Challenge items into the 6 condensed groups above
 // for the mini-header layout on AccountLegacyPage - fixed order (see
 // LEGACY_CATEGORY_GROUP_ORDER), not alphabetical. Items within each group
@@ -447,7 +468,10 @@ export function groupByLegacyCategory(items: AchievementBoardItem[]): [string, A
     map.set(group, list);
   }
   return Array.from(map.entries())
-    .map(([group, list]): [string, AchievementBoardItem[]] => [group, sortLegacyItems(list)])
+    .map(([group, list]): [string, AchievementBoardItem[]] => [
+      group,
+      group === "Player vs. Player" ? sortPvpRankItems(list) : sortLegacyItems(list),
+    ])
     .sort(([a], [b]) => {
       const ai = LEGACY_CATEGORY_GROUP_ORDER.indexOf(a);
       const bi = LEGACY_CATEGORY_GROUP_ORDER.indexOf(b);
