@@ -728,10 +728,16 @@ function StatisticsBoard({
             <h3 className="text-sm font-bold text-gray-200">
               {selectedStat.name} <span className="font-normal text-gray-500">({selectedStat.category})</span>
             </h3>
+            {/* Same className as the character page's "Talent planner"/
+                "View Achievements" buttons (2026-09-28, Jordan's request) -
+                whatever global CSS gives those their maroon/gold button
+                look is keyed off this exact className, not just being
+                inside a "hero-actions" wrapper, so this matches it plain
+                rather than guessing new colors. */}
             <button
               type="button"
               onClick={() => setSelectedStat(null)}
-              className="text-xs text-gray-500 hover:text-gray-300"
+              className="rounded bg-blue-600 px-4 py-2 text-white"
             >
               ← Choose a different stat
             </button>
