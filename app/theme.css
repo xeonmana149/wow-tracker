@@ -1040,6 +1040,19 @@ html {
   background: rgba(0, 0, 0, 0.55);
 }
 
+/* Belt-and-suspenders (2026-09-28) - the toggle/overlay also carry a
+   Tailwind `md:hidden` class in the JSX, but that wasn't actually hiding
+   them at desktop widths (the sidebar itself isn't off-canvas there, so the
+   button had nothing to toggle and just sat on top of the brand text doing
+   nothing). This plain media query hides them the same way regardless of
+   whether that Tailwind class generated correctly. */
+@media (min-width: 768px) {
+  .sidebar-toggle,
+  .sidebar-overlay {
+    display: none !important;
+  }
+}
+
 /* ---------- Top bar search (2026-09-28) ---------- */
 
 .nav-search {
