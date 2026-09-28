@@ -42,6 +42,9 @@ type CharacterRow = {
   class: string;
   character_type: string;
   user_id: string;
+  // "Addicted" reads from here, not character_statistics (see counterFor
+  // below) - same fix as the character achievements page (2026-09-27).
+  time_played_hours: number | null;
 };
 
 type AchievementRow = {
@@ -98,7 +101,7 @@ export default function LeaderboardsPage() {
         { data: statRows },
         { data: professionRows },
       ] = await Promise.all([
-        supabase.from("characters").select("id, name, level, class, character_type, user_id"),
+        supabase.from("characters").select("id, name, level, class, character_type, user_id, time_played_hours"),
         supabase.from("profiles").select("id, display_name"),
         supabase.from("achievements").select("character_id, kind, tier"),
         supabase.from("character_statistics").select("character_id, category, name, value"),
@@ -128,6 +131,16 @@ export default function LeaderboardsPage() {
     load();
   }, []);
 
+  // "Addicted" (total time played) isn't a character_statistics counter -
+  // same special case as CharacterAchievementsPage/achievementBoard.ts, see
+  // sql/items-migration-27.sql. Built here rather than inline in counterFor
+  // so it's computed once, not on every call.
+  const hoursPlayedByCharacter = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const c of characters) map.set(c.id, c.time_played_hours ?? 0);
+    return map;
+  }, [characters]);
+
   const statsByCharacter = useMemo(() => {
     const map = new Map<string, StatRow[]>();
     for (const s of stats) {
@@ -150,11 +163,15 @@ export default function LeaderboardsPage() {
 
   // Every tiered badge's current counter value for one character - recipes
   // comes from character_professions (fetched separately, see above),
-  // everything else from character_statistics via the same computeCounter
-  // helper importLogic.ts uses to actually award the badges, so this page
-  // can never disagree with what got awarded.
+  // "addicted" (total time played) comes from characters.time_played_hours
+  // (see hoursPlayedByCharacter above - it was stuck showing 0/nobody-has-
+  // a-value here until 2026-09-28, same root cause as the achievement
+  // card's progress bar), everything else from character_statistics via the
+  // same computeCounter helper importLogic.ts uses to actually award the
+  // badges, so this page can never disagree with what got awarded.
   function counterFor(characterId: string, kind: TieredAchievementKind): number {
     if (kind === "recipes") return totalRecipes[characterId] ?? 0;
+    if (kind === "addicted") return hoursPlayedByCharacter.get(characterId) ?? 0;
     return computeCounter(kind, statsByCharacter.get(characterId) ?? []);
   }
 
