@@ -34,6 +34,26 @@ export default function AccountLegacyPage() {
   // part of the game's own 65-point Legacy Points total), so this lets
   // Jordan isolate just the ones that actually count.
   const [pointFilter, setPointFilter] = useState<"all" | "earns" | "none">("all");
+  // Collapsible group sections (2026-09-28, Jordan's request) - the full
+  // list was one long page you had to scroll through to reach e.g. Raids at
+  // the bottom. Collapsed by default so switching "All categories" back on
+  // doesn't dump every achievement back onto the page at once; picking a
+  // single category pill auto-expands just that one group below (see the
+  // effect right after this), since there's nothing else to collapse it
+  // against at that point.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  function toggleGroup(cat: string) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) {
+        next.delete(cat);
+      } else {
+        next.add(cat);
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     async function load() {
@@ -90,6 +110,17 @@ export default function AccountLegacyPage() {
   }, [items, category, hideCompleted, pointFilter]);
 
   const grouped = useMemo(() => groupByLegacyCategory(filtered), [filtered]);
+
+  // Auto-expand a single picked category (nothing else to collapse against);
+  // switching back to "All categories" collapses everything again rather
+  // than leaving whatever was open still open and dumping the rest back in.
+  useEffect(() => {
+    if (category === "all") {
+      setExpandedGroups(new Set());
+    } else {
+      setExpandedGroups(new Set([category]));
+    }
+  }, [category]);
 
   if (loading) {
     return <main className="mx-auto max-w-6xl p-4 text-white md:p-6">Loading legacy challenges...</main>;
@@ -209,19 +240,59 @@ export default function AccountLegacyPage() {
           />
           Hide completed
         </label>
+
+        <span className="mx-1 h-5 w-px bg-neutral-700" />
+
+        <button
+          type="button"
+          onClick={() => setExpandedGroups(new Set(grouped.map(([cat]) => cat)))}
+          className="text-sm font-semibold text-gray-400 hover:text-gray-200"
+        >
+          Expand all
+        </button>
+        <button
+          type="button"
+          onClick={() => setExpandedGroups(new Set())}
+          className="text-sm font-semibold text-gray-400 hover:text-gray-200"
+        >
+          Collapse all
+        </button>
       </div>
 
-      <div className="mt-4 flex flex-col gap-4">
-        {grouped.map(([cat, catItems]) => (
-          <div key={cat}>
-            <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-amber-400/70">{cat}</h2>
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              {catItems.map((item) => (
-                <AchievementRow key={item.key} item={item} isOwner={false} pinned={false} onTogglePin={() => {}} />
-              ))}
+      <div className="mt-4 flex flex-col gap-2">
+        {grouped.map(([cat, catItems]) => {
+          const isOpen = expandedGroups.has(cat);
+          const doneInGroup = catItems.filter((i) => i.points > 0).length;
+          return (
+            <div key={cat} className="rounded border border-neutral-800 bg-neutral-900/40">
+              <button
+                type="button"
+                onClick={() => toggleGroup(cat)}
+                className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+              >
+                <span className="text-xs font-bold uppercase tracking-wide text-amber-400/70">
+                  {cat}{" "}
+                  <span className="ml-1.5 text-[11px] font-normal normal-case tracking-normal text-gray-500">
+                    ({doneInGroup}/{catItems.length} done)
+                  </span>
+                </span>
+                <span
+                  className={`text-gray-400 transition-transform duration-150 ${isOpen ? "rotate-180" : ""}`}
+                  aria-hidden="true"
+                >
+                  ▾
+                </span>
+              </button>
+              {isOpen && (
+                <div className="grid grid-cols-1 gap-3 border-t border-neutral-800 p-3 lg:grid-cols-2">
+                  {catItems.map((item) => (
+                    <AchievementRow key={item.key} item={item} isOwner={false} pinned={false} onTogglePin={() => {}} />
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </main>
   );
