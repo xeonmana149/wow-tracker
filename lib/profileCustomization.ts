@@ -1,12 +1,24 @@
 // Account profile customization (2026-09-29, Jordan's request: "an edit
 // profile section... change your account icon, your account page banner,
 // add like a motto"). There's no file-upload/storage system anywhere in
-// this project yet, so rather than build one just for this, both the icon
-// and the banner are curated picks - a real WoW icon name (resolved through
-// wowIconUrl(), same mechanism the account badges already use) for the
-// avatar, and a named CSS gradient preset (defined in theme.css) for the
-// banner. If Jordan wants actual image uploads later, that's a bigger
-// follow-up (needs Supabase Storage wired up), not something to fake here.
+// this project yet, so rather than build a Supabase Storage pipeline just
+// for this, custom art is supplied as an image URL (host it anywhere -
+// Imgur, Discord CDN, your own site - and paste the link in) instead of an
+// upload button. The curated WoW icon / gradient presets stay as the
+// no-effort default; a pasted URL simply takes priority when present. True
+// file uploads are still a bigger follow-up if wanted later.
+//
+// Recommended source-art sizes for a crisp, uncropped result:
+//  - Avatar icon: square, at least 256x256px. Displayed as an 88x88px
+//    circle (see .crest in theme.css), so keep the important part of the
+//    image centered - the corners get cropped off by the circle mask.
+//  - Banner: 1200x300px (4:1 landscape). Rendered with
+//    background-size: cover, so it always fills the header without
+//    stretching, but a taller/narrower image will get cropped top/bottom
+//    or left/right to fit that ratio.
+export const AVATAR_IMAGE_RECOMMENDED_SIZE_PX = 256;
+export const BANNER_IMAGE_RECOMMENDED_WIDTH_PX = 1200;
+export const BANNER_IMAGE_RECOMMENDED_HEIGHT_PX = 300;
 
 // A a small, thematically varied set of real WoW icons - general/class-
 // neutral rather than tied to one class or profession, since this is an

@@ -1127,6 +1127,46 @@ html {
   outline-color: var(--gold);
 }
 
+/* ---------- Custom profile banner art (2026-09-29) ----------
+   Used when a profile has a pasted banner_image_url instead of one of the
+   named gradient presets above. The image is set as an inline background
+   style (background-size: cover) from the component; this class just adds
+   the same card chrome (radius/outline/shadow) as the presets, plus a dark
+   gradient overlay so light-on-dark header text (name, motto, button) stays
+   readable over unpredictable custom art. The overlay is a positioned
+   ::before, so header content must be in a `position: relative` wrapper
+   with a higher z-index to paint above it - see .profile-banner-content. */
+.profile-banner-custom {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  color: #f0e6cf;
+  outline: 2px solid var(--gold-soft);
+  outline-offset: -2px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  background-size: cover;
+  background-position: center;
+  background-color: #05070f;
+}
+
+.profile-banner-custom::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(180deg, rgba(5, 7, 15, 0.45) 0%, rgba(5, 7, 15, 0.7) 100%);
+}
+
+.profile-banner-custom h1 {
+  color: var(--gold);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
+.profile-banner-content {
+  position: relative;
+  z-index: 1;
+}
+
 /* ---------- Top bar search (2026-09-28) ---------- */
 
 .nav-search {
