@@ -84,9 +84,14 @@ export const BANNER_STYLE_OPTIONS: BannerOption[] = [
   { key: "verdant", label: "Verdant" },
   { key: "royal", label: "Royal" },
   { key: "shadow", label: "Shadow" },
-  // First custom-art banner (2026-09-29) - art file goes at
-  // /public/profile-banners/silverpine-paladin.png.
+  // Custom-art banners (2026-09-29) - files go at
+  // /public/profile-banners/<slug>.png. The two Horde ones arrived at
+  // 1983x793 and 2172x724 (2.5:1 / 3:1) - neither matches the 5:1 box, so
+  // both got cropped+resized down to the recommended 1200x240 before being
+  // added here (kept each character's face and the horizon/sun in frame).
   { key: "silverpine-paladin", label: "Silverpine Paladin", localSlug: "silverpine-paladin" },
+  { key: "orgrimmar-warchief", label: "Orgrimmar Warchief", localSlug: "orgrimmar-warchief" },
+  { key: "durotar-shaman", label: "Durotar Shaman", localSlug: "durotar-shaman" },
 ];
 
 export function findBannerOption(key: string | null): BannerOption | undefined {
