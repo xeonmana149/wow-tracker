@@ -17,9 +17,10 @@ import { wowIconUrl } from "./icons";
 //   - Banner art -> save as /public/profile-banners/<slug>.png and add a
 //     BANNER_STYLE_OPTIONS entry with that slug as `localSlug`. Source art
 //     should be BANNER_IMAGE_SRC_WIDTH_PX x BANNER_IMAGE_SRC_HEIGHT_PX
-//     (1200x300px, 4:1 landscape) - it's rendered with
-//     background-size: cover, so it always fills the header but crops to
-//     that ratio if given a different shape.
+//     (2048x768px, 8:3 landscape). The header box itself is locked to this
+//     exact ratio (see .account-banner in theme.css), so art at this ratio
+//     shows in FULL with no cropping - a different shape will still get
+//     cropped to fit, so match it as closely as you can.
 //
 // `key` is what actually gets stored in profiles.avatar_icon /
 // profiles.banner_style, so never rename an existing option's `key` once
@@ -27,8 +28,8 @@ import { wowIconUrl } from "./icons";
 // back to the fallback. Add new options, don't rename old ones.
 
 export const AVATAR_ICON_SRC_SIZE_PX = 256;
-export const BANNER_IMAGE_SRC_WIDTH_PX = 1200;
-export const BANNER_IMAGE_SRC_HEIGHT_PX = 300;
+export const BANNER_IMAGE_SRC_WIDTH_PX = 2048;
+export const BANNER_IMAGE_SRC_HEIGHT_PX = 768;
 
 export type AvatarIconOption = {
   key: string;
@@ -85,7 +86,6 @@ export const BANNER_STYLE_OPTIONS: BannerOption[] = [
   // First custom-art banner (2026-09-29) - art file goes at
   // /public/profile-banners/silverpine-paladin.png.
   { key: "silverpine-paladin", label: "Silverpine Paladin", localSlug: "silverpine-paladin" },
-  { key: "barrens-orc", label: "Barrens Orc", localSlug: "barrens-orc" },
 ];
 
 export function findBannerOption(key: string | null): BannerOption | undefined {
