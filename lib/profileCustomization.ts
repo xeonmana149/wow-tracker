@@ -17,12 +17,11 @@ import { wowIconUrl } from "./icons";
 //   - Banner art -> save as /public/profile-banners/<slug>.png and add a
 //     BANNER_STYLE_OPTIONS entry with that slug as `localSlug`. Source art
 //     should be BANNER_IMAGE_SRC_WIDTH_PX x BANNER_IMAGE_SRC_HEIGHT_PX
-//     (1024x384px, 8:3 landscape - halved from the original 2048x768 spec
-//     on 2026-09-29 to keep file sizes down; same ratio, so nothing else
-//     needs to change). The header box itself is locked to this exact
-//     ratio (see .account-banner in theme.css), so art at this ratio shows
-//     in FULL with no cropping - a different shape will still get cropped
-//     to fit, so match it as closely as you can.
+//     (1200x240px, 5:1 landscape - a compact banner strip, not a full-height
+//     hero image; the header box is a fixed 220px tall - see .account-banner
+//     in theme.css - so keep the important part of the composition centered
+//     vertically, since some cropping on very narrow/wide screens is normal
+//     for a responsive banner).
 //
 // `key` is what actually gets stored in profiles.avatar_icon /
 // profiles.banner_style, so never rename an existing option's `key` once
@@ -30,8 +29,8 @@ import { wowIconUrl } from "./icons";
 // back to the fallback. Add new options, don't rename old ones.
 
 export const AVATAR_ICON_SRC_SIZE_PX = 256;
-export const BANNER_IMAGE_SRC_WIDTH_PX = 1024;
-export const BANNER_IMAGE_SRC_HEIGHT_PX = 384;
+export const BANNER_IMAGE_SRC_WIDTH_PX = 1200;
+export const BANNER_IMAGE_SRC_HEIGHT_PX = 240;
 
 export type AvatarIconOption = {
   key: string;

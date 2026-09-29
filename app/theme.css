@@ -1168,20 +1168,30 @@ html {
   height: 100%;
 }
 
-/* ---------- Account page banner sizing fix (2026-09-29) ----------
-   First attempt gave this box a fixed 300px height and asked for 1200x300
-   (4:1) art, cropped in - but Jordan wants the FULL image shown, not
-   cropped. Fix: instead of a fixed height, the box's height is now locked
-   to the same ratio as the recommended art itself (8:3 - originally spec'd
-   as 2048x768, halved same day to 1024x384 for smaller file sizes; the
-   RATIO is what matters here and didn't change), so at any width the box
-   is exactly the right shape to show the whole image with no cropping
-   (background-size: cover only crops when the box and image ratios differ -
-   matching them makes cover behave like a perfect fit). max-height keeps
-   it from becoming enormous on very wide screens. */
+/* ---------- Account page banner sizing (2026-09-29, revised) ----------
+   Went through a couple of wrong turns before landing here:
+     1. Fixed 300px height + 1200x300 (4:1) art -> art got cropped hard,
+        because the box was actually only ~140px tall (content-driven), not
+        300px like the art assumed.
+     2. Matched the box's ratio to the full art (8:3) so nothing would
+        crop -> technically correct, but at page width that's ~430px tall,
+        which reads as way too large for a page header (Jordan's "still too
+        large" report).
+   Landed on: a real, fixed, MODEST height (this is the actual answer to
+   "what size should I make the art" - a compact banner strip, not a giant
+   hero image), with recommended art at a matching ~5:1 ratio. Some
+   horizontal cropping on very narrow/wide screens is normal for a
+   responsive banner (same as a Twitter/Facebook cover photo) - the goal
+   here is just "not surprisingly cropped", not "literally zero cropping
+   ever". */
 .account-banner {
-  aspect-ratio: 8 / 3;
-  max-height: 460px;
+  height: 220px;
+}
+
+@media (max-width: 640px) {
+  .account-banner {
+    height: 160px;
+  }
 }
 
 /* ---------- Top bar search (2026-09-28) ---------- */
