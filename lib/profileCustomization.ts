@@ -85,6 +85,7 @@ export const BANNER_STYLE_OPTIONS: BannerOption[] = [
   // First custom-art banner (2026-09-29) - art file goes at
   // /public/profile-banners/silverpine-paladin.png.
   { key: "silverpine-paladin", label: "Silverpine Paladin", localSlug: "silverpine-paladin" },
+  { key: "barrens-orc", label: "Barrens Orc", localSlug: "barrens-orc" },
 ];
 
 export function findBannerOption(key: string | null): BannerOption | undefined {

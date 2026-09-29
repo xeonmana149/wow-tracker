@@ -378,14 +378,19 @@ export default function AccountOverviewPage() {
           lettered .crest-fallback when none is picked), and a banner that's
           either a custom-art option (rendered via .profile-banner-custom
           with a readability overlay) or one of the named gradient presets -
-          see lib/profileCustomization.ts for how options resolve to art. */}
+          see lib/profileCustomization.ts for how options resolve to art.
+          `.account-banner` gives this a real, fixed height (300px desktop /
+          180px mobile, see theme.css) - previously this box was only ever
+          as tall as the crest+padding (~140px), so any banner art sized to
+          the recommended 1200x300 ratio was getting cropped far more than
+          intended. */}
       {(() => {
         const avatarOption = findAvatarIconOption(avatarIcon);
         const bannerOption = findBannerOption(bannerStyle);
         const bannerImgSrc = bannerImageSrc(bannerOption);
         return (
           <div
-            className={bannerClassName(bannerStyle)}
+            className={`account-banner ${bannerClassName(bannerStyle)}`}
             style={bannerImgSrc ? { backgroundImage: `url(${bannerImgSrc})` } : undefined}
           >
             <div className="profile-banner-content flex items-center gap-4 p-4 md:p-6">

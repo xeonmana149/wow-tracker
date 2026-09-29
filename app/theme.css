@@ -1165,6 +1165,26 @@ html {
 .profile-banner-content {
   position: relative;
   z-index: 1;
+  height: 100%;
+}
+
+/* ---------- Account page banner sizing fix (2026-09-29) ----------
+   Bug: the account header's height was never actually fixed - it was just
+   whatever the crest + padding needed (~140px), NOT the ~300px the custom-
+   art dimensions Jordan was given assumed. Any banner image (4:1-ish,
+   1200x300) dropped into an effectively ~8:1 box got its top and bottom
+   cropped off almost entirely (that's why Jordan's Silverpine Paladin art
+   "didn't fit" - the box it was cropped into was never the size it was
+   designed for). This class gives the header a real, guaranteed height so
+   custom banner art crops predictably from here on. */
+.account-banner {
+  min-height: 300px;
+}
+
+@media (max-width: 640px) {
+  .account-banner {
+    min-height: 180px;
+  }
 }
 
 /* ---------- Top bar search (2026-09-28) ---------- */
