@@ -20,9 +20,12 @@ import { wowIconUrl } from "../../lib/icons";
 import {
   AVATAR_ICON_OPTIONS,
   BANNER_STYLE_OPTIONS,
+  avatarIconSrc,
+  bannerImageSrc,
+  findAvatarIconOption,
+  findBannerOption,
   bannerClassName,
   MOTTO_MAX_LENGTH,
-  type BannerStyle,
 } from "../../lib/profileCustomization";
 
 // Account Overview (2026-09-28 layout rework, Stage 3) - the account-wide
@@ -129,15 +132,19 @@ export default function AccountOverviewPage() {
   const [bannerStyle, setBannerStyle] = useState<string | null>(null);
   const [motto, setMotto] = useState<string | null>(null);
 
-  // Edit Profile panel (2026-09-29, Jordan's request) - draft values are
-  // separate from the saved ones above so Cancel can discard changes without
-  // a refetch, and so the header updates immediately on Save without waiting
-  // on a round trip.
+  // Edit Profile panel (2026-09-29, Jordan's request; extended same day to
+  // add display-name editing, then switched same day from pasted image URLs
+  // to a fixed picker - "like with achievements im gonna make custom art for
+  // those things that website users can choose between", see
+  // lib/profileCustomization.ts) - draft values are separate from the saved
+  // ones above so Cancel can discard changes without a refetch, and so the
+  // header updates immediately on Save without waiting on a round trip.
   const [editingProfile, setEditingProfile] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
+  const [draftDisplayName, setDraftDisplayName] = useState("");
   const [draftAvatarIcon, setDraftAvatarIcon] = useState<string | null>(null);
-  const [draftBannerStyle, setDraftBannerStyle] = useState<BannerStyle>("parchment");
+  const [draftBannerStyle, setDraftBannerStyle] = useState<string | null>("parchment");
   const [draftMotto, setDraftMotto] = useState("");
   const [characters, setCharacters] = useState<CharacterRow[]>([]);
   const [mergedItems, setMergedItems] = useState<AchievementBoardItem[]>([]);
@@ -175,12 +182,14 @@ export default function AccountOverviewPage() {
           supabase.from("account_legacy_achievements").select("completed, ui_points").eq("user_id", userId),
         ]);
 
-      setDisplayName(profileRow?.display_name ?? "Adventurer");
+      const resolvedName = profileRow?.display_name ?? "Adventurer";
+      setDisplayName(resolvedName);
       setAvatarIcon(profileRow?.avatar_icon ?? null);
       setBannerStyle(profileRow?.banner_style ?? null);
       setMotto(profileRow?.motto ?? null);
+      setDraftDisplayName(resolvedName);
       setDraftAvatarIcon(profileRow?.avatar_icon ?? null);
-      setDraftBannerStyle((profileRow?.banner_style as BannerStyle) ?? "parchment");
+      setDraftBannerStyle(profileRow?.banner_style ?? "parchment");
       setDraftMotto(profileRow?.motto ?? "");
       setAccountBadges(((accountAchievementRows ?? []) as { kind: AccountAchievementKind }[]).map((r) => r.kind));
 
@@ -264,8 +273,9 @@ export default function AccountOverviewPage() {
   }, []);
 
   function openEditProfile() {
+    setDraftDisplayName(displayName);
     setDraftAvatarIcon(avatarIcon);
-    setDraftBannerStyle((bannerStyle as BannerStyle) ?? "parchment");
+    setDraftBannerStyle(bannerStyle ?? "parchment");
     setDraftMotto(motto ?? "");
     setProfileSaveError(null);
     setEditingProfile(true);
@@ -273,12 +283,18 @@ export default function AccountOverviewPage() {
 
   async function saveProfile() {
     if (!userId) return;
+    const trimmedName = draftDisplayName.trim();
+    if (trimmedName.length === 0) {
+      setProfileSaveError("Display name can't be empty.");
+      return;
+    }
     setSavingProfile(true);
     setProfileSaveError(null);
     const trimmedMotto = draftMotto.trim().slice(0, MOTTO_MAX_LENGTH);
     const { error } = await supabase
       .from("profiles")
       .update({
+        display_name: trimmedName,
         avatar_icon: draftAvatarIcon,
         banner_style: draftBannerStyle,
         motto: trimmedMotto.length > 0 ? trimmedMotto : null,
@@ -289,6 +305,7 @@ export default function AccountOverviewPage() {
       setProfileSaveError(error.message);
       return;
     }
+    setDisplayName(trimmedName);
     setAvatarIcon(draftAvatarIcon);
     setBannerStyle(draftBannerStyle);
     setMotto(trimmedMotto.length > 0 ? trimmedMotto : null);
@@ -356,36 +373,48 @@ export default function AccountOverviewPage() {
   return (
     <main className="mx-auto max-w-6xl p-4 text-white md:p-6">
       {/* Profile header - a real "member since" from the auth account's own
-          created_at (always present, unlike anything on `profiles`), plus a
-          crest that shows the chosen avatar icon (falling back to the
-          lettered .crest-fallback when unset), and a banner style picked
-          from BANNER_STYLE_OPTIONS instead of always being plain parchment.
-          No file-upload system exists here, so both are curated picks - see
-          lib/profileCustomization.ts. */}
-      <div className={`${bannerClassName(bannerStyle)} flex items-center gap-4 p-4 md:p-6`}>
-        <div className="crest">
-          {avatarIcon ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={wowIconUrl(avatarIcon)} alt="" />
-          ) : (
-            <span className="crest-fallback">{displayName.charAt(0).toUpperCase()}</span>
-          )}
-        </div>
-        <div className="flex-1">
-          <h1>{displayName}</h1>
-          {memberSince && <p className="text-sm text-gray-600">Member since {formatDate(memberSince)}</p>}
-          {motto && <p className="mt-1 text-sm italic opacity-90">&ldquo;{motto}&rdquo;</p>}
-        </div>
-        <div className="hero-actions">
-          <button
-            type="button"
-            onClick={openEditProfile}
-            className="rounded bg-blue-600 px-3 py-1.5 text-sm font-semibold"
+          created_at (always present, unlike anything on `profiles`), a
+          crest showing the chosen avatar option's art (falling back to the
+          lettered .crest-fallback when none is picked), and a banner that's
+          either a custom-art option (rendered via .profile-banner-custom
+          with a readability overlay) or one of the named gradient presets -
+          see lib/profileCustomization.ts for how options resolve to art. */}
+      {(() => {
+        const avatarOption = findAvatarIconOption(avatarIcon);
+        const bannerOption = findBannerOption(bannerStyle);
+        const bannerImgSrc = bannerImageSrc(bannerOption);
+        return (
+          <div
+            className={bannerClassName(bannerStyle)}
+            style={bannerImgSrc ? { backgroundImage: `url(${bannerImgSrc})` } : undefined}
           >
-            Edit Profile
-          </button>
-        </div>
-      </div>
+            <div className="profile-banner-content flex items-center gap-4 p-4 md:p-6">
+              <div className="crest">
+                {avatarOption ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatarIconSrc(avatarOption)} alt="" />
+                ) : (
+                  <span className="crest-fallback">{displayName.charAt(0).toUpperCase()}</span>
+                )}
+              </div>
+              <div className="flex-1">
+                <h1>{displayName}</h1>
+                {memberSince && <p className="text-sm text-gray-600">Member since {formatDate(memberSince)}</p>}
+                {motto && <p className="mt-1 text-sm italic opacity-90">&ldquo;{motto}&rdquo;</p>}
+              </div>
+              <div className="hero-actions">
+                <button
+                  type="button"
+                  onClick={openEditProfile}
+                  className="rounded bg-blue-600 px-3 py-1.5 text-sm font-semibold"
+                >
+                  Edit Profile
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Edit Profile panel - opens inline right under the header rather than
           a modal, so it reads as part of the same page. */}
@@ -394,6 +423,20 @@ export default function AccountOverviewPage() {
           <h2 className="text-lg">Edit Profile</h2>
 
           <div className="mt-3">
+            <label className="text-sm text-gray-300" htmlFor="display-name-input">
+              Display name
+            </label>
+            <input
+              id="display-name-input"
+              type="text"
+              value={draftDisplayName}
+              onChange={(e) => setDraftDisplayName(e.target.value)}
+              maxLength={40}
+              className="mt-1 w-full max-w-sm rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
+            />
+          </div>
+
+          <div className="mt-4">
             <p className="text-sm text-gray-300">Account icon</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <button
@@ -408,16 +451,16 @@ export default function AccountOverviewPage() {
               </button>
               {AVATAR_ICON_OPTIONS.map((icon) => (
                 <button
-                  key={icon}
+                  key={icon.key}
                   type="button"
-                  onClick={() => setDraftAvatarIcon(icon)}
+                  onClick={() => setDraftAvatarIcon(icon.key)}
                   className={`h-12 w-12 overflow-hidden rounded border ${
-                    draftAvatarIcon === icon ? "border-amber-400" : "border-neutral-700"
+                    draftAvatarIcon === icon.key ? "border-amber-400" : "border-neutral-700"
                   }`}
-                  title={icon}
+                  title={icon.label}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={wowIconUrl(icon)} alt="" className="h-full w-full" />
+                  <img src={avatarIconSrc(icon)} alt="" className="h-full w-full" />
                 </button>
               ))}
             </div>
@@ -426,18 +469,26 @@ export default function AccountOverviewPage() {
           <div className="mt-4">
             <p className="text-sm text-gray-300">Banner</p>
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {BANNER_STYLE_OPTIONS.map((opt) => (
-                <button
-                  key={opt.key}
-                  type="button"
-                  onClick={() => setDraftBannerStyle(opt.key)}
-                  className={`banner-swatch ${bannerClassName(opt.key)} ${
-                    draftBannerStyle === opt.key ? "banner-swatch-active" : ""
-                  }`}
-                >
-                  <span className="text-xs">{opt.label}</span>
-                </button>
-              ))}
+              {BANNER_STYLE_OPTIONS.map((opt) => {
+                const swatchImgSrc = bannerImageSrc(opt);
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => setDraftBannerStyle(opt.key)}
+                    className={`banner-swatch ${bannerClassName(opt.key)} ${
+                      draftBannerStyle === opt.key ? "banner-swatch-active" : ""
+                    }`}
+                    style={
+                      swatchImgSrc
+                        ? { backgroundImage: `url(${swatchImgSrc})`, backgroundSize: "cover", backgroundPosition: "center" }
+                        : undefined
+                    }
+                  >
+                    <span className="text-xs">{opt.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
