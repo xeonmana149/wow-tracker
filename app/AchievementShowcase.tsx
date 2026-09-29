@@ -91,7 +91,25 @@ export default function AchievementShowcase({
   );
 }
 
-function ShowcaseBadge({ characterId, item }: { characterId: string; item: AchievementBoardItem }) {
+// Exported (2026-09-28) so the new Account Overview page's "Featured
+// Achievements" gallery can reuse this exact tile - icon/frame/placeholder
+// rendering, hover preview, everything - instead of a second hand-copied
+// version that could drift out of sync with this one. Every existing caller
+// here on the character page only ever passes earned items, so the new
+// `dimmed` prop below defaults to false and changes nothing for them.
+export function ShowcaseBadge({
+  characterId,
+  item,
+  dimmed = false,
+}: {
+  characterId: string;
+  item: AchievementBoardItem;
+  // True for an unearned item shown anyway (e.g. "closest to completion" on
+  // the Account page) - desaturates the art and swaps the tier line for a
+  // live progress fraction instead, per Jordan's "unearned should look
+  // visually distinct, earned/unearned" request on the layout rework.
+  dimmed?: boolean;
+}) {
   const [hover, setHover] = useState(false);
   // Bumped again (2026-09-25) - 40px -> 56px -> 72px, now that the badges
   // have proper hand-picked art instead of generic WoW CDN icons. Worth the
@@ -113,7 +131,10 @@ function ShowcaseBadge({ characterId, item }: { characterId: string; item: Achie
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <span className="relative inline-block shrink-0" style={{ width: size, height: size }}>
+      <span
+        className={`relative inline-block shrink-0 ${dimmed ? "opacity-50 grayscale" : ""}`}
+        style={{ width: size, height: size }}
+      >
         {item.localIcon ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -146,8 +167,15 @@ function ShowcaseBadge({ characterId, item }: { characterId: string; item: Achie
       <span className="line-clamp-1 rounded bg-neutral-950/70 px-1.5 py-0.5 text-[11px] font-semibold text-white">
         {item.name}
       </span>
-      {item.tier && (
-        <span className="rounded bg-neutral-950/70 px-1.5 py-0.5 text-[10px] text-gray-300">{item.tier}</span>
+      {dimmed && item.tiered && item.value !== null ? (
+        <span className="rounded bg-neutral-950/70 px-1.5 py-0.5 text-[10px] text-gray-400">
+          {item.value.toLocaleString()}
+          {item.nextThreshold !== null && ` / ${item.nextThreshold.toLocaleString()}`}
+        </span>
+      ) : (
+        item.tier && (
+          <span className="rounded bg-neutral-950/70 px-1.5 py-0.5 text-[10px] text-gray-300">{item.tier}</span>
+        )
       )}
 
       {hover && (

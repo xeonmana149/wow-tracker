@@ -74,13 +74,25 @@ const medal = (
   </Icon>
 );
 
+// A little house/banner for the new Account page (2026-09-28) - distinct
+// from the shield (Dashboard) and medal (Legacy Challenges) so all three
+// read as different destinations at a glance.
+const account = (
+  <Icon>
+    <path d="M4 10.5L12 4l8 6.5" />
+    <path d="M5.5 9.5V20h13V9.5" />
+    <path d="M9.5 20v-6h5v6" />
+  </Icon>
+);
+
 // Real routes only (per Jordan's "don't invent functionality" rule on the
-// layout rework) - this is the same 6 destinations the old horizontal
-// SiteNav had, just now the sidebar's primary list instead of a top-bar
-// row. Add to this one array and both the sidebar and (if it's ever needed
-// again) the top bar pick it up.
+// layout rework) - Account is the new page from Stage 3; the rest are the
+// same destinations the old horizontal SiteNav had, just now the sidebar's
+// primary list instead of a top-bar row. Add to this one array and both the
+// sidebar and (if it's ever needed again) the top bar pick it up.
 export const NAV_LINKS = [
   { href: "/", label: "Dashboard", icon: shield },
+  { href: "/account", label: "Account", icon: account },
   { href: "/items", label: "Items", icon: items },
   { href: "/friends", label: "Friends", icon: people },
   { href: "/leaderboards", label: "Leaderboards", icon: trophy },
