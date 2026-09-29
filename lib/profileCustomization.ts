@@ -90,7 +90,7 @@ export const BANNER_STYLE_OPTIONS: BannerOption[] = [
   // both got cropped+resized down to the recommended 1200x240 before being
   // added here (kept each character's face and the horizon/sun in frame).
   { key: "silverpine-paladin", label: "Silverpine Paladin", localSlug: "silverpine-paladin" },
-  { key: "orgrimmar-warchief", label: "Orgrimmar Warchief", localSlug: "orgrimmar-warchief" },
+  { key: "orgrimmar-warrior", label: "Orgrimmar Warrior", localSlug: "orgrimmar-warrior" },
   { key: "durotar-shaman", label: "Durotar Shaman", localSlug: "durotar-shaman" },
 ];
 

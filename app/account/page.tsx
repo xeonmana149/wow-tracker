@@ -146,6 +146,12 @@ export default function AccountOverviewPage() {
   const [draftAvatarIcon, setDraftAvatarIcon] = useState<string | null>(null);
   const [draftBannerStyle, setDraftBannerStyle] = useState<string | null>("parchment");
   const [draftMotto, setDraftMotto] = useState("");
+  // Hovered banner option, for the enlarged preview above the swatch grid
+  // (2026-09-29: "add a image enlarge when you hover so user can see the
+  // banner properly before deciding"). null means nothing's hovered right
+  // now, in which case the preview falls back to showing whatever's
+  // currently selected, so something useful is always visible there.
+  const [previewBannerKey, setPreviewBannerKey] = useState<string | null>(null);
   const [characters, setCharacters] = useState<CharacterRow[]>([]);
   const [mergedItems, setMergedItems] = useState<AchievementBoardItem[]>([]);
   const [itemOwner, setItemOwner] = useState<Map<string, string>>(new Map());
@@ -473,6 +479,24 @@ export default function AccountOverviewPage() {
 
           <div className="mt-4">
             <p className="text-sm text-gray-300">Banner</p>
+            {(() => {
+              // Falls back to the current selection so the preview box never
+              // sits empty - hovering a different swatch just swaps it.
+              const shownOption =
+                BANNER_STYLE_OPTIONS.find((o) => o.key === (previewBannerKey ?? draftBannerStyle)) ??
+                BANNER_STYLE_OPTIONS[0];
+              const shownImgSrc = bannerImageSrc(shownOption);
+              return (
+                <div
+                  className={`banner-preview mt-2 ${bannerClassName(shownOption.key)}`}
+                  style={shownImgSrc ? { backgroundImage: `url(${shownImgSrc})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
+                >
+                  <span className="absolute bottom-1 right-2 text-xs font-semibold" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}>
+                    {shownOption.label}
+                  </span>
+                </div>
+              );
+            })()}
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
               {BANNER_STYLE_OPTIONS.map((opt) => {
                 const swatchImgSrc = bannerImageSrc(opt);
@@ -481,6 +505,10 @@ export default function AccountOverviewPage() {
                     key={opt.key}
                     type="button"
                     onClick={() => setDraftBannerStyle(opt.key)}
+                    onMouseEnter={() => setPreviewBannerKey(opt.key)}
+                    onMouseLeave={() => setPreviewBannerKey(null)}
+                    onFocus={() => setPreviewBannerKey(opt.key)}
+                    onBlur={() => setPreviewBannerKey(null)}
                     className={`banner-swatch ${bannerClassName(opt.key)} ${
                       draftBannerStyle === opt.key ? "banner-swatch-active" : ""
                     }`}
