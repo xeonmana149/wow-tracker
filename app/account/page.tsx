@@ -17,6 +17,13 @@ import { FLAT_ACHIEVEMENT_NAME } from "../../lib/achievementCategories";
 import { RACE_FACTION } from "../../lib/options";
 import { ACCOUNT_ACHIEVEMENT_BADGES, type AccountAchievementKind } from "../../lib/accountAchievements";
 import { wowIconUrl } from "../../lib/icons";
+import {
+  AVATAR_ICON_OPTIONS,
+  BANNER_STYLE_OPTIONS,
+  bannerClassName,
+  MOTTO_MAX_LENGTH,
+  type BannerStyle,
+} from "../../lib/profileCustomization";
 
 // Account Overview (2026-09-28 layout rework, Stage 3) - the account-wide
 // page the reference screenshot called for. Deliberately reuses real
@@ -115,8 +122,23 @@ function formatDate(iso: string): string {
 export default function AccountOverviewPage() {
   const [loading, setLoading] = useState(true);
   const [signedIn, setSignedIn] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string>("");
   const [memberSince, setMemberSince] = useState<string | null>(null);
+  const [avatarIcon, setAvatarIcon] = useState<string | null>(null);
+  const [bannerStyle, setBannerStyle] = useState<string | null>(null);
+  const [motto, setMotto] = useState<string | null>(null);
+
+  // Edit Profile panel (2026-09-29, Jordan's request) - draft values are
+  // separate from the saved ones above so Cancel can discard changes without
+  // a refetch, and so the header updates immediately on Save without waiting
+  // on a round trip.
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
+  const [draftAvatarIcon, setDraftAvatarIcon] = useState<string | null>(null);
+  const [draftBannerStyle, setDraftBannerStyle] = useState<BannerStyle>("parchment");
+  const [draftMotto, setDraftMotto] = useState("");
   const [characters, setCharacters] = useState<CharacterRow[]>([]);
   const [mergedItems, setMergedItems] = useState<AchievementBoardItem[]>([]);
   const [itemOwner, setItemOwner] = useState<Map<string, string>>(new Map());
@@ -135,11 +157,16 @@ export default function AccountOverviewPage() {
       }
       setSignedIn(true);
       const userId = userData.user.id;
+      setUserId(userId);
       setMemberSince(userData.user.created_at ?? null);
 
       const [{ data: profileRow }, { data: characterRows }, { data: accountAchievementRows }, { data: legacyRows }] =
         await Promise.all([
-          supabase.from("profiles").select("display_name").eq("id", userId).maybeSingle(),
+          supabase
+            .from("profiles")
+            .select("display_name, avatar_icon, banner_style, motto")
+            .eq("id", userId)
+            .maybeSingle(),
           supabase
             .from("characters")
             .select("id, name, level, class, race, character_type, time_played_hours, money_copper")
@@ -149,6 +176,12 @@ export default function AccountOverviewPage() {
         ]);
 
       setDisplayName(profileRow?.display_name ?? "Adventurer");
+      setAvatarIcon(profileRow?.avatar_icon ?? null);
+      setBannerStyle(profileRow?.banner_style ?? null);
+      setMotto(profileRow?.motto ?? null);
+      setDraftAvatarIcon(profileRow?.avatar_icon ?? null);
+      setDraftBannerStyle((profileRow?.banner_style as BannerStyle) ?? "parchment");
+      setDraftMotto(profileRow?.motto ?? "");
       setAccountBadges(((accountAchievementRows ?? []) as { kind: AccountAchievementKind }[]).map((r) => r.kind));
 
       const legacy = (legacyRows ?? []) as LegacyRow[];
@@ -230,6 +263,38 @@ export default function AccountOverviewPage() {
     load();
   }, []);
 
+  function openEditProfile() {
+    setDraftAvatarIcon(avatarIcon);
+    setDraftBannerStyle((bannerStyle as BannerStyle) ?? "parchment");
+    setDraftMotto(motto ?? "");
+    setProfileSaveError(null);
+    setEditingProfile(true);
+  }
+
+  async function saveProfile() {
+    if (!userId) return;
+    setSavingProfile(true);
+    setProfileSaveError(null);
+    const trimmedMotto = draftMotto.trim().slice(0, MOTTO_MAX_LENGTH);
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        avatar_icon: draftAvatarIcon,
+        banner_style: draftBannerStyle,
+        motto: trimmedMotto.length > 0 ? trimmedMotto : null,
+      })
+      .eq("id", userId);
+    setSavingProfile(false);
+    if (error) {
+      setProfileSaveError(error.message);
+      return;
+    }
+    setAvatarIcon(draftAvatarIcon);
+    setBannerStyle(draftBannerStyle);
+    setMotto(trimmedMotto.length > 0 ? trimmedMotto : null);
+    setEditingProfile(false);
+  }
+
   const earnedCount = mergedItems.filter((i) => i.earned).length;
   const totalCount = mergedItems.length;
   const progressPct = totalCount > 0 ? Math.round((earnedCount / totalCount) * 100) : 0;
@@ -292,17 +357,129 @@ export default function AccountOverviewPage() {
     <main className="mx-auto max-w-6xl p-4 text-white md:p-6">
       {/* Profile header - a real "member since" from the auth account's own
           created_at (always present, unlike anything on `profiles`), plus a
-          lettered crest matching the same .crest/.crest-fallback pattern
-          the character page uses, since there's no avatar-upload system. */}
-      <div className="parchment flex items-center gap-4 p-4 md:p-6">
+          crest that shows the chosen avatar icon (falling back to the
+          lettered .crest-fallback when unset), and a banner style picked
+          from BANNER_STYLE_OPTIONS instead of always being plain parchment.
+          No file-upload system exists here, so both are curated picks - see
+          lib/profileCustomization.ts. */}
+      <div className={`${bannerClassName(bannerStyle)} flex items-center gap-4 p-4 md:p-6`}>
         <div className="crest">
-          <span className="crest-fallback">{displayName.charAt(0).toUpperCase()}</span>
+          {avatarIcon ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={wowIconUrl(avatarIcon)} alt="" />
+          ) : (
+            <span className="crest-fallback">{displayName.charAt(0).toUpperCase()}</span>
+          )}
         </div>
-        <div>
+        <div className="flex-1">
           <h1>{displayName}</h1>
           {memberSince && <p className="text-sm text-gray-600">Member since {formatDate(memberSince)}</p>}
+          {motto && <p className="mt-1 text-sm italic opacity-90">&ldquo;{motto}&rdquo;</p>}
+        </div>
+        <div className="hero-actions">
+          <button
+            type="button"
+            onClick={openEditProfile}
+            className="rounded bg-blue-600 px-3 py-1.5 text-sm font-semibold"
+          >
+            Edit Profile
+          </button>
         </div>
       </div>
+
+      {/* Edit Profile panel - opens inline right under the header rather than
+          a modal, so it reads as part of the same page. */}
+      {editingProfile && (
+        <div className="mt-4 rounded-md border border-neutral-700 bg-neutral-800 p-4">
+          <h2 className="text-lg">Edit Profile</h2>
+
+          <div className="mt-3">
+            <p className="text-sm text-gray-300">Account icon</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setDraftAvatarIcon(null)}
+                className={`flex h-12 w-12 items-center justify-center rounded border text-[10px] text-gray-400 ${
+                  draftAvatarIcon === null ? "border-amber-400" : "border-neutral-700"
+                }`}
+                title="No icon (use initial)"
+              >
+                {displayName.charAt(0).toUpperCase()}
+              </button>
+              {AVATAR_ICON_OPTIONS.map((icon) => (
+                <button
+                  key={icon}
+                  type="button"
+                  onClick={() => setDraftAvatarIcon(icon)}
+                  className={`h-12 w-12 overflow-hidden rounded border ${
+                    draftAvatarIcon === icon ? "border-amber-400" : "border-neutral-700"
+                  }`}
+                  title={icon}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={wowIconUrl(icon)} alt="" className="h-full w-full" />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <p className="text-sm text-gray-300">Banner</p>
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {BANNER_STYLE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setDraftBannerStyle(opt.key)}
+                  className={`banner-swatch ${bannerClassName(opt.key)} ${
+                    draftBannerStyle === opt.key ? "banner-swatch-active" : ""
+                  }`}
+                >
+                  <span className="text-xs">{opt.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <label className="text-sm text-gray-300" htmlFor="motto-input">
+              Motto
+            </label>
+            <textarea
+              id="motto-input"
+              value={draftMotto}
+              onChange={(e) => setDraftMotto(e.target.value.slice(0, MOTTO_MAX_LENGTH))}
+              rows={2}
+              placeholder="Say something about yourself..."
+              className="mt-1 w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
+            />
+            <p className="mt-1 text-right text-xs text-gray-500">
+              {draftMotto.length} / {MOTTO_MAX_LENGTH}
+            </p>
+          </div>
+
+          {profileSaveError && <p className="mt-2 text-sm text-red-400">{profileSaveError}</p>}
+
+          <div className="hero-actions mt-4 flex gap-2">
+            <button
+              type="button"
+              onClick={saveProfile}
+              disabled={savingProfile}
+              className="rounded bg-blue-600 px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
+            >
+              {savingProfile ? "Saving..." : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditingProfile(false)}
+              disabled={savingProfile}
+              className="rounded bg-red-700 px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Only Overview is built - the rest are staged follow-ups rather than
           dead links or empty promises. */}

@@ -1053,6 +1053,80 @@ html {
   }
 }
 
+/* ---------- Account profile banners (2026-09-29) ---------- */
+/* Named presets for the Account page header - an alternative to the default
+   .parchment scroll look, picked from Edit Profile. No uploaded image
+   behind any of these (see lib/profileCustomization.ts for why) - just a
+   dark atmospheric gradient in a different hue each, gold-framed to match
+   the rest of the site, with light text since these are all dark
+   (.parchment uses dark ink text on a light scroll, the opposite). */
+
+.profile-banner-midnight,
+.profile-banner-ember,
+.profile-banner-verdant,
+.profile-banner-royal,
+.profile-banner-shadow {
+  position: relative;
+  border-radius: 8px;
+  color: #f0e6cf;
+  outline: 2px solid var(--gold-soft);
+  outline-offset: -2px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+.profile-banner-midnight h1,
+.profile-banner-ember h1,
+.profile-banner-verdant h1,
+.profile-banner-royal h1,
+.profile-banner-shadow h1 {
+  color: var(--gold);
+}
+
+.profile-banner-midnight {
+  background: radial-gradient(ellipse at 15% 0%, rgba(120, 160, 255, 0.18), transparent 60%),
+    linear-gradient(160deg, #101c3d 0%, #16244a 45%, #05070f 100%);
+  box-shadow: inset 0 0 60px rgba(60, 90, 200, 0.25), 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+.profile-banner-ember {
+  background: radial-gradient(ellipse at 15% 0%, rgba(255, 150, 80, 0.18), transparent 60%),
+    linear-gradient(160deg, #3a0d0d 0%, #6b2119 45%, #1a0505 100%);
+  box-shadow: inset 0 0 60px rgba(200, 90, 30, 0.28), 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+.profile-banner-verdant {
+  background: radial-gradient(ellipse at 15% 0%, rgba(110, 220, 150, 0.16), transparent 60%),
+    linear-gradient(160deg, #0d2a1a 0%, #1c4a32 45%, #04120a 100%);
+  box-shadow: inset 0 0 60px rgba(50, 150, 90, 0.25), 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+.profile-banner-royal {
+  background: radial-gradient(ellipse at 15% 0%, rgba(190, 140, 255, 0.16), transparent 60%),
+    linear-gradient(160deg, #2a123d 0%, #45206b 45%, #10051a 100%);
+  box-shadow: inset 0 0 60px rgba(140, 70, 200, 0.25), 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+.profile-banner-shadow {
+  background: radial-gradient(ellipse at 15% 0%, rgba(180, 180, 200, 0.12), transparent 60%),
+    linear-gradient(160deg, #1a1a1c 0%, #2a2a2e 45%, #060607 100%);
+  box-shadow: inset 0 0 60px rgba(90, 90, 100, 0.2), 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+/* Small square preview swatches in the Edit Profile picker - same gradients
+   at a fixed tile size, no text/box-shadow needed there. */
+.banner-swatch {
+  display: block;
+  width: 100%;
+  height: 2.5rem;
+  border-radius: 6px;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+}
+
+.banner-swatch-active {
+  outline-color: var(--gold);
+}
+
 /* ---------- Top bar search (2026-09-28) ---------- */
 
 .nav-search {
