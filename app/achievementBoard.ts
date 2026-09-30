@@ -339,8 +339,15 @@ export function pickShowcaseItems(
 // Anything not explicitly mapped falls back to "Adventure" rather than an
 // awkward extra "Other" bucket - every raw category seen so far that isn't a
 // class, a profession, a PvP rank, Dungeons or Raids (Adventure, Explorer,
-// Eastern Kingdoms, Kalimdor, Reputations, Season Journey) is
-// exploration/world content anyway, so that's the natural catch-all.
+// Eastern Kingdoms, Kalimdor, Reputations) is exploration/world content
+// anyway, so that's the natural catch-all.
+//
+// "Season Journey" (2026-09-30, Jordan's request: "field of honor legacy
+// challenges should be moved to the pvp category") - every achievement seen
+// under this raw category so far is a "Field of Honor: Week N" PvP season
+// achievement (confirmed via /wft achievementsprobe), so it's grouped with
+// "Ranks" under Player vs. Player rather than falling into the Adventure
+// catch-all.
 const LEGACY_CATEGORY_GROUPS: Record<string, string> = {
   Druid: "Classes",
   Hunter: "Classes",
@@ -358,6 +365,7 @@ const LEGACY_CATEGORY_GROUPS: Record<string, string> = {
   Leatherworking: "Tradeskills",
   Tailoring: "Tradeskills",
   Ranks: "Player vs. Player",
+  "Season Journey": "Player vs. Player",
   Dungeons: "Dungeons",
   Raids: "Raids",
 };
