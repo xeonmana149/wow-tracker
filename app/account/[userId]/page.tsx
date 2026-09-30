@@ -22,8 +22,14 @@ import { AccountView } from "../../AccountView";
 // Leaderboards, and search results are the natural places) - that's the
 // next step once this page itself is confirmed working.
 
-export default async function PublicAccountPage({ params }: { params: { userId: string } }) {
-  const { userId } = params;
+export default async function PublicAccountPage({ params }: { params: Promise<{ userId: string }> }) {
+  // Next.js 15+ made dynamic route `params` a Promise (previously a plain
+  // object) - awaiting it here works either way, since awaiting a value
+  // that's already a plain object just resolves to that object unchanged.
+  // (2026-09-30: without this, `userId` was the unresolved Promise itself,
+  // not the actual id string, which is why supabase-js's admin API
+  // rejected it with "Expected parameter to be UUID but is not".)
+  const { userId } = await params;
 
   const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
   const data = await loadAccountViewData(supabaseAdmin, userId, authUser?.user?.created_at ?? null);
