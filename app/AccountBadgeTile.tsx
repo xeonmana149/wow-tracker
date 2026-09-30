@@ -15,26 +15,24 @@ import { ACCOUNT_BADGE_FRAME_SRC, ACCOUNT_BADGE_FRAME_HOLE_RATIO } from "../lib/
 // server component page - see its own header comment), and hover needs
 // local state somewhere. No Link wrapper since there's nowhere for one of
 // these to link to yet.
+//
+// The ornate frame is ALWAYS shown, local custom art included - Jordan's
+// call (2026-09-30, "no I want the ornate frame ... just scaled properly")
+// after an in-between version that skipped the frame for local-art badges
+// looked wrong instead. Sizing the icon "properly" is handled entirely by
+// ACCOUNT_BADGE_FRAME_HOLE_RATIO in lib/badgeFrames.ts (deliberately wider
+// than the frame's literal opening so the icon fills almost the whole
+// tile) - there's no more unframed rendering path to branch on.
 export default function AccountBadgeTile({
   icon,
   name,
   description,
   earned,
-  // False for a badge with its own local custom art (see
-  // ACCOUNT_ACHIEVEMENT_LOCAL_ICONS in lib/accountAchievements.ts) - that
-  // art already has its own painted frame/border baked in, so it renders
-  // full-size with nothing layered on top. True (the default) keeps the
-  // plain CDN-icon badges dressed up with the shared ornate frame until
-  // they get real art too - same "local art replaces the generic
-  // treatment entirely, doesn't stack with it" rule the character
-  // achievement badges already follow.
-  framed = true,
 }: {
   icon: string; // resolved image URL (e.g. from wowIconUrl() or a local /account-badge-icons/ path)
   name: string;
   description: string;
   earned: boolean;
-  framed?: boolean;
 }) {
   const [hover, setHover] = useState(false);
   const size = 56; // matches the h-14 w-14 tile AccountView used before this
@@ -61,22 +59,16 @@ export default function AccountBadgeTile({
           alt=""
           draggable={false}
           className="absolute rounded-sm object-cover"
-          style={
-            framed
-              ? { width: innerSize, height: innerSize, top: inset, left: inset }
-              : { width: size, height: size, top: 0, left: 0 }
-          }
+          style={{ width: innerSize, height: innerSize, top: inset, left: inset }}
         />
-        {framed && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={ACCOUNT_BADGE_FRAME_SRC}
-            alt=""
-            aria-hidden="true"
-            draggable={false}
-            className="pointer-events-none absolute inset-0 h-full w-full"
-          />
-        )}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={ACCOUNT_BADGE_FRAME_SRC}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          className="pointer-events-none absolute inset-0 h-full w-full"
+        />
       </span>
       <span className="line-clamp-2 rounded bg-neutral-950/70 px-1 py-0.5 text-[10px] font-semibold leading-tight text-white">
         {name}
@@ -91,22 +83,16 @@ export default function AccountBadgeTile({
               alt=""
               draggable={false}
               className={`absolute rounded object-cover ${earned ? "" : "opacity-40 grayscale"}`}
-              style={
-                framed
-                  ? { width: previewInner, height: previewInner, top: previewInset, left: previewInset }
-                  : { width: previewSize, height: previewSize, top: 0, left: 0 }
-              }
+              style={{ width: previewInner, height: previewInner, top: previewInset, left: previewInset }}
             />
-            {framed && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={ACCOUNT_BADGE_FRAME_SRC}
-                alt=""
-                aria-hidden="true"
-                draggable={false}
-                className="pointer-events-none absolute inset-0 h-full w-full"
-              />
-            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={ACCOUNT_BADGE_FRAME_SRC}
+              alt=""
+              aria-hidden="true"
+              draggable={false}
+              className="pointer-events-none absolute inset-0 h-full w-full"
+            />
           </span>
           <div className="text-sm font-bold text-amber-100">{name}</div>
           <div className="mt-1 text-xs leading-snug text-gray-300">{description}</div>

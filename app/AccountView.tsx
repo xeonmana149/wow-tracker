@@ -6,7 +6,6 @@ import { FAMILY_META, type AchievementFamily } from "../lib/achievements";
 import { RACE_FACTION } from "../lib/options";
 import {
   ACCOUNT_ACHIEVEMENT_BADGES,
-  ACCOUNT_ACHIEVEMENT_LOCAL_ICONS,
   accountBadgeIconSrc,
   type AccountAchievementKind,
 } from "../lib/accountAchievements";
@@ -287,7 +286,10 @@ export function AccountView({
               since this component has no hooks/state on purpose), giving
               the same hover-to-enlarge card ShowcaseBadge uses for
               character achievements. badge.label is "Name - description",
-              same split already used elsewhere in this file. */}
+              same split already used elsewhere in this file. Every badge
+              (local custom art included) gets the shared ornate frame -
+              Jordan's call, "no I want the ornate frame ... just scaled
+              properly" (see lib/badgeFrames.ts's ACCOUNT_BADGE_FRAME_*). */}
           <div className="mt-2 flex flex-wrap gap-3">
             {(Object.keys(ACCOUNT_ACHIEVEMENT_BADGES) as AccountAchievementKind[]).map((kind) => {
               const earned = accountBadges.includes(kind);
@@ -300,10 +302,6 @@ export function AccountView({
                   name={name}
                   description={rest.join(" - ")}
                   earned={earned}
-                  // Local custom art already has its own baked-in frame -
-                  // only dress up the plain CDN-icon badges with the
-                  // shared ornate overlay.
-                  framed={!ACCOUNT_ACHIEVEMENT_LOCAL_ICONS[kind]}
                 />
               );
             })}
