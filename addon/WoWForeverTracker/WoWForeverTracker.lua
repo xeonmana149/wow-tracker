@@ -91,6 +91,65 @@ local function regionTexts(frame, budget)
     return texts
 end
 
+-- Same idea as regionTexts, but for Texture regions instead of FontStrings -
+-- added 2026-09-30 to hunt for a Legacy Challenge achievement's real icon
+-- after GetAchievementInfo's icon return value was confirmed (via
+-- /wft achievementsprobe) to come back nil for every one of the 111 Legacy
+-- Challenge achievements on this server, even though the icon clearly does
+-- render in the real in-game panel. That means the icon exists somewhere
+-- Blizzard's own UI can read it - almost certainly a Texture region sitting
+-- right on the achievement's row Button, the same row scanLegacyPointsFromUI
+-- already walks to steal the point value off of. GetTexture() on that region
+-- returns either a numeric fileID or an "Interface\\..." asset path string,
+-- either of which is worth capturing and sending back for a look.
+-- 2026-09-30: now also returns each Texture region's own name and size, not
+-- just its texture value - confirmed via /wft iconprobe (comparing "Explore
+-- Azeroth"/"Explore Eastern Kingdoms"/"Explore Kalimdor", three achievements
+-- with visibly different icons) that exactly ONE texture value out of ~16
+-- per row actually changes between achievements (237388 / 236759 / 236807) -
+-- everything else is shared row decoration (background, border, checkmark,
+-- glow) that's IDENTICAL across every achievement row. Name/size is what
+-- will let a real collector single that one texture out automatically
+-- instead of a human eyeballing a diff every time.
+local function regionTextures(frame, budget)
+    local textures = {}
+    local ok, regions = pcall(function()
+        return { frame:GetRegions() }
+    end)
+    if not ok or not regions then
+        return textures
+    end
+    for _, r in ipairs(regions) do
+        budget.count = budget.count + 1
+        if budget.count > 1500 then
+            break
+        end
+        local okType, rt = pcall(function()
+            return r.GetObjectType and r:GetObjectType()
+        end)
+        if okType and rt == "Texture" then
+            local okTex, tex = pcall(function()
+                return r.GetTexture and r:GetTexture()
+            end)
+            if okTex and tex then
+                local okName, name = pcall(function()
+                    return r.GetName and r:GetName()
+                end)
+                local okSize, w, h = pcall(function()
+                    return r.GetSize and r:GetSize()
+                end)
+                table.insert(textures, {
+                    texture = tex,
+                    name = (okName and name) or nil,
+                    width = okSize and w or nil,
+                    height = okSize and h or nil,
+                })
+            end
+        end
+    end
+    return textures
+end
+
 -- Same idea but for a function value you already have in hand (e.g. one
 -- pulled out of a C_* table), rather than a global name. Every existing
 -- caller of this only ever needed a single return value, so this only ever
@@ -1166,7 +1225,19 @@ local function collectLegacyAchievements()
                         name = name,
                         completed = completed and true or false,
                         description = description,
-                        icon = icon,
+                        -- icon is nil from GetAchievementInfo on every Legacy
+                        -- Challenge achievement on this server (confirmed
+                        -- 2026-09-30 via /wft achievementsprobe's icon check
+                        -- - 0/111 came back with a value), even though the
+                        -- icon does render in the real in-game panel. So this
+                        -- falls back to WFTSyncDB.legacyIconValues, filled in
+                        -- by scanLegacyIconsFromUI (see above) reading the
+                        -- icon straight off the rendered UI - same
+                        -- "builds up as you browse" pattern as uiPoints
+                        -- below. The API value is still preferred when
+                        -- present, in case a future server patch fixes it.
+                        icon = icon or (type(WFTSyncDB) == "table" and type(WFTSyncDB.legacyIconValues) == "table"
+                            and name and WFTSyncDB.legacyIconValues[name]) or nil,
                         -- Blizzard's own achievement point value from
                         -- GetAchievementInfo - kept for reference only.
                         -- CONFIRMED WRONG/UNRELATED as of 2026-09-27 (comes
@@ -1304,12 +1375,139 @@ legacyPointsScanFrame:SetScript("OnUpdate", function(_, elapsed)
     pcall(scanLegacyPointsFromUI)
 end)
 
+-- Legacy Challenge icons, straight off the rendered UI (2026-09-30) - same
+-- workaround as scanLegacyPointsFromUI above, needed for the same reason:
+-- GetAchievementInfo's icon return value is confirmed nil for every one of
+-- the 111 Legacy Challenge achievements on this server (/wft
+-- achievementsprobe's icon check - 0 with an icon value, 111 without), even
+-- though the icon clearly renders fine in the real in-game panel. /wft
+-- iconprobe was used to find it: each achievement row Button has ~14-16
+-- Texture regions, and comparing rows with visibly different icons (Explore
+-- Azeroth/Eastern Kingdoms/Kalimdor, and separately the Journeyman/Expert/
+-- Artisan Alchemist tiers) showed the exact same set of "decoration" texture
+-- IDs on every row (background, border, checkmark, glow, etc.) with EXACTLY
+-- ONE value that actually changed between different achievements - that's
+-- the real per-achievement icon. This set was confirmed identical across two
+-- unrelated categories, so it's hardcoded as an exclude list below: whatever
+-- texture ID survives after removing every known-shared one is the icon.
+-- Same "opportunistic capture, builds up as you browse" pattern as the point
+-- values - only whichever rows are actually on screen get scanned, so this
+-- fills in the more of the 111 you've looked at, not necessarily all of them
+-- on the first pass.
+local LEGACY_ROW_SHARED_TEXTURES = {
+    [8419586] = true,
+    [8285993] = true,
+    [8285995] = true, -- appears multiple times per row, at a few different sizes - still always shared decoration, never the icon
+    [8063723] = true,
+    [8281590] = true, -- appears twice per row
+    [1339312] = true,
+    [130750] = true,
+    [130751] = true,
+    [130752] = true,
+    [130753] = true,
+    [130755] = true,
+}
+
+local function scanLegacyIconsFromUI()
+    local frame = _G.LegacySystemFrame
+    if not frame or not frame.IsShown or not frame:IsShown() then
+        return 0
+    end
+
+    local found = 0
+    local budget = { count = 0 }
+
+    local function candidateIconFrom(textures)
+        -- Collects every texture VALUE on this row that isn't in the known
+        -- shared-decoration set, de-duped (the same icon texture can appear
+        -- more than once on a row, e.g. a plain copy plus a desaturated
+        -- "locked" version). Only commits to a result when exactly one
+        -- distinct candidate survives - if zero or several remain, this row
+        -- doesn't match the pattern confirmed via /wft iconprobe closely
+        -- enough to trust, so it's skipped rather than risking a wrong icon
+        -- (a still-missing icon is a much smaller problem than a WRONG one).
+        local seen = {}
+        local candidates = {}
+        for _, t in ipairs(textures) do
+            local tex = t.texture
+            if type(tex) == "number" and not LEGACY_ROW_SHARED_TEXTURES[tex] and not seen[tex] then
+                seen[tex] = true
+                table.insert(candidates, tex)
+            end
+        end
+        if #candidates == 1 then
+            return candidates[1]
+        end
+        return nil
+    end
+
+    local function walk(f, depth)
+        if not f or depth > 8 or budget.count > 3000 then
+            return
+        end
+        local ok, children = pcall(function()
+            return { f:GetChildren() }
+        end)
+        if not ok or not children then
+            return
+        end
+        for _, child in ipairs(children) do
+            budget.count = budget.count + 1
+            if budget.count > 3000 then
+                return
+            end
+            local okType, objType = pcall(function()
+                return child.GetObjectType and child:GetObjectType()
+            end)
+            if okType and objType == "Button" then
+                local texts = regionTexts(child, budget)
+                if #texts >= 3 and texts[2] == texts[3] then
+                    local name = texts[1]
+                    local textures = regionTextures(child, budget)
+                    local okKids, kids = pcall(function()
+                        return { child:GetChildren() }
+                    end)
+                    if okKids and kids then
+                        for _, kid in ipairs(kids) do
+                            for _, t in ipairs(regionTextures(kid, budget)) do
+                                table.insert(textures, t)
+                            end
+                        end
+                    end
+                    local icon = candidateIconFrom(textures)
+                    if icon and name then
+                        WFTSyncDB = WFTSyncDB or {}
+                        WFTSyncDB.legacyIconValues = WFTSyncDB.legacyIconValues or {}
+                        WFTSyncDB.legacyIconValues[name] = icon
+                        found = found + 1
+                    end
+                end
+            end
+            walk(child, depth + 1)
+        end
+    end
+
+    walk(frame, 0)
+    return found
+end
+
+local legacyIconsScanFrame = CreateFrame("Frame")
+local legacyIconsScanElapsed = 0
+legacyIconsScanFrame:SetScript("OnUpdate", function(_, elapsed)
+    legacyIconsScanElapsed = legacyIconsScanElapsed + elapsed
+    if legacyIconsScanElapsed < 1 then
+        return
+    end
+    legacyIconsScanElapsed = 0
+    pcall(scanLegacyIconsFromUI)
+end)
+
 local function buildExport()
     local out = {}
     local tocversion = select(4, safeGet("GetBuildInfo"))
     local okDate, timestamp = safeCall(_G.date, "%Y-%m-%d %H:%M:%S")
     out.meta = {
-        addonVersion = "1.8.8",
+        addonVersion = "1.8.9",
         tocversion = tocversion,
         exportedAt = okDate and timestamp or nil,
     }
@@ -2684,7 +2882,13 @@ local function collectAchievementsProbe()
                     out.truncated = true
                     break
                 end
-                local okA, id, name, points, completed, _month, _day, _year, description =
+                -- 2026-09-30: added `icon` (10th return value) so this probe
+                -- can actually show whether GetAchievementInfo is returning a
+                -- usable icon fileID on this client - this diagnostic never
+                -- captured it before, which is why an earlier probe dump
+                -- looked like icons were missing when that was really just
+                -- this command not asking for them.
+                local okA, id, name, points, completed, _month, _day, _year, description, _flags, icon =
                     safeCall(getAchievementInfo, catID, i)
                 if okA and id then
                     local row = {
@@ -2693,6 +2897,8 @@ local function collectAchievementsProbe()
                         name = name,
                         completed = completed and true or false,
                         description = description,
+                        icon = icon,
+                        iconType = type(icon),
                     }
                     if type(getNumCriteria) == "function" then
                         local okC, numCriteria = safeCall(getNumCriteria, id)
@@ -2734,6 +2940,33 @@ local function cmdAchievementsProbe()
             print(("    %s (id %s): %d"):format(cat.name, tostring(cat.id), cat.numEntries))
         end
     end
+
+    -- 2026-09-30: quick icon summary printed directly to chat, so this can
+    -- be checked without having to read the full JSON dump - counts how
+    -- many of the achievements actually captured in this probe got a
+    -- non-nil icon value back from GetAchievementInfo, and prints the
+    -- first few icon values seen (whatever type they came back as) so it's
+    -- obvious whether this client is returning real fileIDs, some other
+    -- shape (e.g. a texture path string), or nothing at all.
+    do
+        local withIcon, withoutIcon = 0, 0
+        local samples = {}
+        for _, a in ipairs(data.achievements) do
+            if a.icon ~= nil and a.icon ~= false then
+                withIcon = withIcon + 1
+                if #samples < 5 then
+                    table.insert(samples, ("%s (id %s): %s = %s"):format(a.name, tostring(a.id), a.iconType, tostring(a.icon)))
+                end
+            else
+                withoutIcon = withoutIcon + 1
+            end
+        end
+        print(("  Icon check: %d with an icon value, %d without (of %d sampled)."):format(withIcon, withoutIcon, #data.achievements))
+        for _, s in ipairs(samples) do
+            print("    " .. s)
+        end
+    end
+
     if data.truncated then
         print(("  Full detail capped at %d achievements (there are more) - category counts above are still complete though."):format(ACHIEVEMENTS_PROBE_MAX))
     end
@@ -2745,6 +2978,112 @@ local function cmdAchievementsProbe()
         return
     end
     showExportWindow(json)
+end
+
+----------------------------------------------------------------------
+-- /wft iconprobe (2026-09-30) - GetAchievementInfo's icon return value is
+-- confirmed nil for every one of the 111 Legacy Challenge achievements on
+-- this server (achievementsprobe's icon check above, run for real - 0 with
+-- an icon value, 111 without). But the icon clearly DOES render in the real
+-- in-game Legacy Challenges panel, so it must be readable some other way -
+-- this hunts for it the same way scanLegacyPointsFromUI hunts for the real
+-- Legacy Point value Blizzard also doesn't expose through the achievement
+-- API: by walking the actual rendered UI. Run this with the Legacy
+-- Challenges panel OPEN (any category tab, doesn't matter which) - it finds
+-- each achievement row the same way scanLegacyPointsFromUI does (a Button
+-- whose regionTexts are [name, description, description]) and this time
+-- also grabs any Texture-region values sitting on that same row via
+-- regionTextures, which is where the icon almost certainly lives even
+-- though GetAchievementInfo won't hand it over. Purely diagnostic - never
+-- touches buildExport() or WFTSyncDB.
+local function collectIconProbe()
+    local frame = _G.LegacySystemFrame
+    if not frame or not frame.IsShown or not frame:IsShown() then
+        return { error = "LegacySystemFrame isn't open - open the Legacy Challenges panel to any category tab first, then run this again." }
+    end
+
+    local rows = {}
+    local budget = { count = 0 }
+
+    local function walk(f, depth)
+        if not f or depth > 8 or budget.count > 3000 or #rows >= 20 then
+            return
+        end
+        local ok, children = pcall(function()
+            return { f:GetChildren() }
+        end)
+        if not ok or not children then
+            return
+        end
+        for _, child in ipairs(children) do
+            if #rows >= 20 then return end
+            budget.count = budget.count + 1
+            if budget.count > 3000 then
+                return
+            end
+            local okType, objType = pcall(function()
+                return child.GetObjectType and child:GetObjectType()
+            end)
+            if okType and objType == "Button" then
+                local texts = regionTexts(child, budget)
+                if #texts >= 3 and texts[2] == texts[3] then
+                    local textures = regionTextures(child, budget)
+                    -- Also check the row's immediate child widgets (icons are
+                    -- sometimes their own child Frame/Button with the actual
+                    -- Texture region one level down, same as the point-value
+                    -- button scanLegacyPointsFromUI finds under each row).
+                    local okKids, kids = pcall(function()
+                        return { child:GetChildren() }
+                    end)
+                    if okKids and kids then
+                        for _, kid in ipairs(kids) do
+                            for _, t in ipairs(regionTextures(kid, budget)) do
+                                table.insert(textures, t)
+                            end
+                        end
+                    end
+                    table.insert(rows, { name = texts[1], textures = textures })
+                end
+            end
+            walk(child, depth + 1)
+        end
+    end
+
+    walk(frame, 0)
+    return { rows = rows }
+end
+
+local function cmdIconProbe()
+    print("|cffffcc00WFT iconprobe - hunting for the real Legacy Challenge icon in the rendered UI:|r")
+    local ok, data = pcall(collectIconProbe)
+    if not ok then
+        print("|cffff0000WFT iconprobe error:|r " .. tostring(data))
+        return
+    end
+    if data.error then
+        print("  " .. data.error)
+        return
+    end
+    if #data.rows == 0 then
+        print("  No achievement rows found on screen right now - make sure a category with achievements is actually showing, then try again.")
+        return
+    end
+    for _, row in ipairs(data.rows) do
+        if #row.textures == 0 then
+            print(("  %s: no Texture regions found."):format(row.name))
+        else
+            for _, t in ipairs(row.textures) do
+                print(("  %s: texture=%s name=%s size=%s x %s"):format(
+                    row.name,
+                    tostring(t.texture),
+                    tostring(t.name),
+                    tostring(t.width),
+                    tostring(t.height)
+                ))
+            end
+        end
+    end
+    print("  Copy/paste all of the above lines back.")
 end
 
 ----------------------------------------------------------------------
@@ -3098,6 +3437,8 @@ SlashCmdList["WFT"] = function(rawMsg)
         cmdStatsProbe()
     elseif msg == "achievementsprobe" then
         cmdAchievementsProbe()
+    elseif msg == "iconprobe" then
+        cmdIconProbe()
     elseif msg == "legacypointsprobe" then
         cmdLegacyPointsProbe()
     elseif msg == "legacysystemprobe" then
@@ -3139,6 +3480,7 @@ SlashCmdList["WFT"] = function(rawMsg)
         print("  /wft counters - show your current death count (PvP kill tracking is paused)")
         print("  /wft statsprobe - check for a Statistics-pane API on this client (diagnostic, for me to look at)")
         print("  /wft achievementsprobe - dump the real Achievements/Legacy Challenges tree with completion state and checklists (diagnostic, for me to look at)")
+        print("  /wft iconprobe - hunt for a Legacy Challenge achievement's real icon straight off the rendered UI (diagnostic, for me to look at - OPEN the Legacy Challenges panel to a category with achievements first, then run this)")
         print("  /wft legacypointsprobe - hunt for where the in-game 'Legacy Points' number actually comes from (diagnostic, for me to look at)")
         print("  /wft legacysystemprobe - force-load Blizzard's Legacy System UI module and check what API appears (diagnostic, for me to look at - run this with the Legacy Challenges panel closed first)")
         print("  /wft legacytreedatadump - dump LegacyTreeData, found via legacysystemprobe (diagnostic, for me to look at - run legacysystemprobe first this session)")
