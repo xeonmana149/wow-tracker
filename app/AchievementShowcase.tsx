@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
 import { localBadgeIconSrc } from "../lib/badgeFrames";
-import { TIER_FRAME_SRC, FRAME_HOLE_RATIO } from "../lib/badgeFrames";
+import { TIER_FRAME_SRC, FRAME_HOLE_RATIO, LOCKED_FRAME_SRC, LOCKED_FRAME_HOLE_RATIO } from "../lib/badgeFrames";
 import BadgePlaceholder from "./BadgePlaceholder";
 import type { AchievementBoardItem } from "./achievementBoard";
 
@@ -117,12 +117,16 @@ export function ShowcaseBadge({
   const size = 72;
   const innerSize = Math.round(size * FRAME_HOLE_RATIO);
   const inset = Math.round((size - innerSize) / 2);
+  const lockedInnerSize = Math.round(size * LOCKED_FRAME_HOLE_RATIO);
+  const lockedInset = Math.round((size - lockedInnerSize) / 2);
 
   // Hover preview - blows the same art up big enough to actually see the
   // detail in it, since even at 72px a hand-painted badge icon is small.
   const previewSize = 180;
   const previewInner = Math.round(previewSize * FRAME_HOLE_RATIO);
   const previewInset = Math.round((previewSize - previewInner) / 2);
+  const previewLockedInner = Math.round(previewSize * LOCKED_FRAME_HOLE_RATIO);
+  const previewLockedInset = Math.round((previewSize - previewLockedInner) / 2);
 
   return (
     <Link
@@ -146,31 +150,17 @@ export function ShowcaseBadge({
               style={
                 item.tier
                   ? { width: innerSize, height: innerSize, top: inset, left: inset }
-                  : { width: size, height: size, top: 0, left: 0 }
+                  : { width: lockedInnerSize, height: lockedInnerSize, top: lockedInset, left: lockedInset }
               }
             />
-            {item.tier ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={TIER_FRAME_SRC[item.tier]}
-                alt=""
-                aria-hidden="true"
-                draggable={false}
-                className="pointer-events-none absolute inset-0 h-full w-full"
-              />
-            ) : (
-              // No tier reached yet - a plain grey border instead of no
-              // frame at all, so a locked badge still reads as "a badge",
-              // not a bare icon with nothing around it (2026-09-30, Jordan:
-              // "these should have a grey border for the locked ones too").
-              // Lighter grey than you'd normally reach for - this sits
-              // inside the same span that gets opacity-50'd whenever the
-              // badge is dimmed (unearned), so a "normal" grey border ends
-              // up looking basically invisible on the dark card background
-              // once that opacity is applied on top of it (2026-09-30,
-              // "didnt work" after a first, too-subtle attempt at this).
-              <span className="pointer-events-none absolute inset-0 rounded-sm border-2 border-neutral-300" />
-            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={item.tier ? TIER_FRAME_SRC[item.tier] : LOCKED_FRAME_SRC}
+              alt=""
+              aria-hidden="true"
+              draggable={false}
+              className="pointer-events-none absolute inset-0 h-full w-full"
+            />
           </>
         ) : (
           <BadgePlaceholder tier={item.tier} label={item.name} size={size} />
@@ -204,21 +194,22 @@ export function ShowcaseBadge({
                   style={
                     item.tier
                       ? { width: previewInner, height: previewInner, top: previewInset, left: previewInset }
-                      : { width: previewSize, height: previewSize, top: 0, left: 0 }
+                      : {
+                          width: previewLockedInner,
+                          height: previewLockedInner,
+                          top: previewLockedInset,
+                          left: previewLockedInset,
+                        }
                   }
                 />
-                {item.tier ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={TIER_FRAME_SRC[item.tier]}
-                    alt=""
-                    aria-hidden="true"
-                    draggable={false}
-                    className="pointer-events-none absolute inset-0 h-full w-full"
-                  />
-                ) : (
-                  <span className="pointer-events-none absolute inset-0 rounded border-2 border-neutral-300" />
-                )}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={item.tier ? TIER_FRAME_SRC[item.tier] : LOCKED_FRAME_SRC}
+                  alt=""
+                  aria-hidden="true"
+                  draggable={false}
+                  className="pointer-events-none absolute inset-0 h-full w-full"
+                />
               </>
             ) : (
               <BadgePlaceholder tier={item.tier} label={item.name} size={previewSize} />
