@@ -163,7 +163,13 @@ export function ShowcaseBadge({
               // frame at all, so a locked badge still reads as "a badge",
               // not a bare icon with nothing around it (2026-09-30, Jordan:
               // "these should have a grey border for the locked ones too").
-              <span className="pointer-events-none absolute inset-0 rounded-sm border-2 border-neutral-600" />
+              // Lighter grey than you'd normally reach for - this sits
+              // inside the same span that gets opacity-50'd whenever the
+              // badge is dimmed (unearned), so a "normal" grey border ends
+              // up looking basically invisible on the dark card background
+              // once that opacity is applied on top of it (2026-09-30,
+              // "didnt work" after a first, too-subtle attempt at this).
+              <span className="pointer-events-none absolute inset-0 rounded-sm border-2 border-neutral-300" />
             )}
           </>
         ) : (
@@ -211,7 +217,7 @@ export function ShowcaseBadge({
                     className="pointer-events-none absolute inset-0 h-full w-full"
                   />
                 ) : (
-                  <span className="pointer-events-none absolute inset-0 rounded border-2 border-neutral-600" />
+                  <span className="pointer-events-none absolute inset-0 rounded border-2 border-neutral-300" />
                 )}
               </>
             ) : (
