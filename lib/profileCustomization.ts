@@ -48,11 +48,17 @@ export type AvatarIconOption = {
   localSlug?: string; // custom art at /public/profile-icons/<slug>.png - wins over wowIcon if both are set
 };
 
-// Custom-art account icons. First one up: Jordan's own "Undead Paladin"
-// portrait, testing the pipeline before more get made. Add more the same
-// way - drop the PNG in /public/profile-icons/ and add a line here.
+// Custom-art account icons. Add more the same way - drop the PNG in
+// /public/profile-icons/ and add a line here.
 export const AVATAR_ICON_OPTIONS: AvatarIconOption[] = [
-  { key: "undead-paladin-male", label: "Undead Paladin", localSlug: "undead-paladin-male" },
+  { key: "orc-shaman-female", label: "Orc Shaman (Female)", localSlug: "orc-shaman-female" },
+  { key: "orc-shaman-male", label: "Orc Shaman (Male)", localSlug: "orc-shaman-male" },
+  { key: "orc-warrior-female", label: "Orc Warrior (Female)", localSlug: "orc-warrior-female" },
+  { key: "orc-warrior-male", label: "Orc Warrior (Male)", localSlug: "orc-warrior-male" },
+  { key: "troll-shaman-male", label: "Troll Shaman (Male)", localSlug: "troll-shaman-male" },
+  { key: "undead-paladin-female", label: "Undead Paladin (Female)", localSlug: "undead-paladin-female" },
+  { key: "undead-paladin-male", label: "Undead Paladin (Male)", localSlug: "undead-paladin-male" },
+  { key: "male-skyborne-hunter", label: "Skyborne Hunter (Male)", localSlug: "male-skyborne-hunter" },
 ];
 
 export function avatarIconSrc(option: AvatarIconOption): string {
