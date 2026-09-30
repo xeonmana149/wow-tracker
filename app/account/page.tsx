@@ -9,6 +9,7 @@ import {
   AVATAR_ICON_OPTIONS,
   BANNER_STYLE_OPTIONS,
   avatarIconSrc,
+  findAvatarIconOption,
   bannerImageSrc,
   bannerClassName,
   MOTTO_MAX_LENGTH,
@@ -48,6 +49,12 @@ export default function AccountOverviewPage() {
   // now, in which case the preview falls back to showing whatever's
   // currently selected, so something useful is always visible there.
   const [previewBannerKey, setPreviewBannerKey] = useState<string | null>(null);
+  // Same idea, for the account icon grid (2026-09-30, "The profile icons
+  // need a hover too to see a closeup like banner and also maybe a name so
+  // you can see what they are like Orc Shaman Female for example"). Only
+  // ever set to a real AVATAR_ICON_OPTIONS key - the "no icon" swatch
+  // doesn't have art worth zooming in on, so it doesn't touch this.
+  const [previewAvatarKey, setPreviewAvatarKey] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -161,6 +168,28 @@ export default function AccountOverviewPage() {
 
             <div className="mt-4">
               <p className="text-sm text-gray-300">Account icon</p>
+              {(() => {
+                // Same pattern as the banner preview below: whatever's
+                // hovered wins, falling back to whatever's actually
+                // selected so the box never sits empty.
+                const shownKey = previewAvatarKey ?? draftAvatarIcon;
+                const shownOption = shownKey ? findAvatarIconOption(shownKey) : undefined;
+                return (
+                  <div className="mt-2 flex items-center gap-3 rounded border border-neutral-700 bg-neutral-900 p-3">
+                    <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-700 bg-neutral-800">
+                      {shownOption ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={avatarIconSrc(shownOption)} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="text-2xl text-gray-400">{data.displayName.charAt(0).toUpperCase()}</span>
+                      )}
+                    </div>
+                    <span className="text-sm font-semibold">
+                      {shownOption ? shownOption.label : "No icon (use initial)"}
+                    </span>
+                  </div>
+                );
+              })()}
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -177,6 +206,10 @@ export default function AccountOverviewPage() {
                     key={icon.key}
                     type="button"
                     onClick={() => setDraftAvatarIcon(icon.key)}
+                    onMouseEnter={() => setPreviewAvatarKey(icon.key)}
+                    onMouseLeave={() => setPreviewAvatarKey(null)}
+                    onFocus={() => setPreviewAvatarKey(icon.key)}
+                    onBlur={() => setPreviewAvatarKey(null)}
                     className={`h-12 w-12 overflow-hidden rounded border ${
                       draftAvatarIcon === icon.key ? "border-amber-400" : "border-neutral-700"
                     }`}
