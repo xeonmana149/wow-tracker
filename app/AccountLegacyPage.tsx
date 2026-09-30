@@ -77,17 +77,25 @@ export default function AccountLegacyPage() {
   }, []);
 
   const totalPoints = useMemo(() => items.reduce((sum, i) => sum + i.points, 0), [items]);
-  // "Completed" means fully done (points > 0), not just showing some tier
-  // progress - item.earned goes true the moment a multi-criteria challenge
-  // reaches its first tier (e.g. Copper), which isn't the same as actually
-  // finishing it. Points only pay out at full completion (see
-  // achievementBoard.ts), so they're the right signal for "done" here too.
-  const completedCount = items.filter((i) => i.points > 0).length;
 
   // How many of the 111 actually count toward the game's 65-point total,
   // vs. how many are just regular achievements sharing this panel.
   const earnsPointsCount = items.filter((i) => (i.legacyPointValue ?? 0) > 0).length;
   const noPointsCount = items.length - earnsPointsCount;
+
+  // "Completed" means fully done (points > 0), not just showing some tier
+  // progress - item.earned goes true the moment a multi-criteria challenge
+  // reaches its first tier (e.g. Copper), which isn't the same as actually
+  // finishing it. Points only pay out at full completion (see
+  // achievementBoard.ts), so they're the right signal for "done" here too.
+  //
+  // 2026-09-30, Jordan: "can we not include any that don't give legacy
+  // points" - the top "X / Y completed" summary used to count all 111
+  // (including the ones worth 0 Legacy Points), which made "completed"
+  // look like it meant something it didn't. Both sides of the fraction now
+  // only look at achievements that actually earn points, so it lines up
+  // with the "earn Legacy Points" count right next to it.
+  const completedCount = items.filter((i) => (i.legacyPointValue ?? 0) > 0 && i.points > 0).length;
 
   // Condensed groups (2026-09-28) instead of Blizzard's ~24 raw category
   // names - only shows groups that actually have at least one item, in the
@@ -167,7 +175,7 @@ export default function AccountLegacyPage() {
 
       <div className="mt-4 rounded-lg border border-neutral-700 bg-neutral-900/40 p-4">
         <span className="text-sm text-gray-400">
-          {completedCount} / {items.length} completed
+          {completedCount} / {earnsPointsCount} completed
         </span>
         <span className="mx-2 text-neutral-700">·</span>
         <span className="text-sm text-gray-400">
