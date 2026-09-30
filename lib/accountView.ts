@@ -228,7 +228,12 @@ export async function loadAccountViewData(
     itemOwner,
     recent,
     accountBadges: ((accountAchievementRows ?? []) as { kind: AccountAchievementKind }[]).map((r) => r.kind),
-    legacyEarned: legacy.filter((r) => r.completed).length,
+    // Only count achievements that actually earn Legacy Points - matching
+    // the same "don't include any that don't give legacy points" fix made
+    // to AccountLegacyPage.tsx's own completed count (2026-09-30). Without
+    // this, a completed class/profession achievement worth 0 points bumped
+    // "completed" to 1 while points stayed at 0, which read as a bug.
+    legacyEarned: legacy.filter((r) => r.completed && (r.ui_points ?? 0) > 0).length,
     legacyPoints: legacy.filter((r) => r.completed).reduce((sum, r) => sum + (r.ui_points ?? 0), 0),
   };
 }
