@@ -23,6 +23,24 @@ export function localBadgeIconSrc(slug: string) {
   return `/badge-icons/${slug}.png`;
 }
 
+// The account-wide badges (see lib/accountAchievements.ts) get their own
+// distinct frame (2026-09-30, "They deserve a unique special frame for
+// account badges") - an ornate gold/blue medallion border, separate from
+// the plain Copper/Silver/Gold/Platinum tier frames above since account
+// badges are one-off, not tiered. Source art arrived on a solid black
+// background rather than real transparency, so the black was chroma-keyed
+// out (both the outer background AND the inner opening go transparent,
+// which is exactly what's wanted - it leaves just the ornate border,
+// composited the same way as TIER_FRAME_SRC below). The opening isn't a
+// clean rectangle - a decorative star medallion pokes into the top and
+// bottom center - so ACCOUNT_BADGE_FRAME_HOLE_RATIO uses the WIDEST clear
+// span (measured off the source art) rather than the full height; the icon
+// underneath ends up slightly overlapped by those top/bottom decorations,
+// which is the intended look for this style of frame (same idea as a game
+// ranked-border overlay sitting on top of a full portrait).
+export const ACCOUNT_BADGE_FRAME_SRC = "/badge-frames/account.png";
+export const ACCOUNT_BADGE_FRAME_HOLE_RATIO = 914 / 1254;
+
 // Full stand-alone medallion art (2026-09-25) - a complete laurel-and-gem
 // medal per tier, from /public/tier-medals/. Distinct from TIER_FRAME_SRC
 // above (a thin border that wraps a badge's own icon): these replace the

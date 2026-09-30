@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ShowcaseBadge } from "./AchievementShowcase";
+import AccountBadgeTile from "./AccountBadgeTile";
 import { FAMILY_META, type AchievementFamily } from "../lib/achievements";
 import { RACE_FACTION } from "../lib/options";
 import { ACCOUNT_ACHIEVEMENT_BADGES, type AccountAchievementKind } from "../lib/accountAchievements";
@@ -276,29 +277,26 @@ export function AccountView({
           </p>
           {/* 2026-09-30, Jordan: "the account badges system needs to the
               icon styles to look like character achievements just maybe
-              without the border" - matches ShowcaseBadge's tile shape
-              (icon + name pill underneath) instead of the old small
-              bordered-box-with-inline-label row. No tier frame here (unlike
-              ShowcaseBadge) since account badges are one-off, not tiered -
-              and no wrapping border box either, exactly as asked. */}
+              without the border", then "now I want the hover system that
+              achievements get ... implement for account badges" - each
+              tile is AccountBadgeTile (its own "use client" component,
+              since this component has no hooks/state on purpose), giving
+              the same hover-to-enlarge card ShowcaseBadge uses for
+              character achievements. badge.label is "Name - description",
+              same split already used elsewhere in this file. */}
           <div className="mt-2 flex flex-wrap gap-3">
             {(Object.keys(ACCOUNT_ACHIEVEMENT_BADGES) as AccountAchievementKind[]).map((kind) => {
               const earned = accountBadges.includes(kind);
               const badge = ACCOUNT_ACHIEVEMENT_BADGES[kind];
+              const [name, ...rest] = badge.label.split(" - ");
               return (
-                <span
+                <AccountBadgeTile
                   key={kind}
-                  title={badge.label}
-                  className={`flex w-16 flex-col items-center gap-1 text-center ${
-                    earned ? "" : "opacity-40 grayscale"
-                  }`}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={wowIconUrl(badge.icon)} alt="" className="h-14 w-14 rounded-md object-cover" />
-                  <span className="line-clamp-2 rounded bg-neutral-950/70 px-1 py-0.5 text-[10px] font-semibold leading-tight text-white">
-                    {badge.label.split(" - ")[0]}
-                  </span>
-                </span>
+                  icon={wowIconUrl(badge.icon)}
+                  name={name}
+                  description={rest.join(" - ")}
+                  earned={earned}
+                />
               );
             })}
           </div>
