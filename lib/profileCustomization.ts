@@ -75,23 +75,22 @@ export type BannerOption = {
   localSlug?: string; // custom art at /public/profile-banners/<slug>.png - wins over the CSS gradient preset below if set
 };
 
-// The 5 CSS-gradient presets from theme.css, plus the default. Swap any of
-// these to custom art by giving it a `localSlug`, or add new entries.
+// 2026-09-30 - swapped out the character-portrait banners and the 5 flat
+// CSS-gradient color presets ("the boring colour ones") for a set of
+// WoW zone/scenery landscape banners instead. "parchment" stays as the one
+// non-custom-art option - it's the same neutral default background used
+// everywhere else on the site (character pages, etc.), not a color theme,
+// so it's kept as the fallback for anyone who hasn't picked art.
 export const BANNER_STYLE_OPTIONS: BannerOption[] = [
   { key: "parchment", label: "Parchment (default)" },
-  { key: "midnight", label: "Midnight" },
-  { key: "ember", label: "Ember" },
-  { key: "verdant", label: "Verdant" },
-  { key: "royal", label: "Royal" },
-  { key: "shadow", label: "Shadow" },
-  // Custom-art banners (2026-09-29) - files go at
-  // /public/profile-banners/<slug>.png. The two Horde ones arrived at
-  // 1983x793 and 2172x724 (2.5:1 / 3:1) - neither matches the 5:1 box, so
-  // both got cropped+resized down to the recommended 1200x240 before being
-  // added here (kept each character's face and the horizon/sun in frame).
-  { key: "silverpine-paladin", label: "Silverpine Paladin", localSlug: "silverpine-paladin" },
-  { key: "orgrimmar-warrior", label: "Orgrimmar Warrior", localSlug: "orgrimmar-warrior" },
-  { key: "durotar-shaman", label: "Durotar Shaman", localSlug: "durotar-shaman" },
+  // Zone banners - files go at /public/profile-banners/<slug>.png, cropped
+  // to the recommended 1200x240 (5:1).
+  { key: "barrens", label: "The Barrens", localSlug: "barrens" },
+  { key: "elwynn-forest", label: "Elwynn Forest", localSlug: "elwynn-forest" },
+  { key: "night-elf-grove", label: "Night Elf Grove", localSlug: "night-elf-grove" },
+  { key: "river-watermill", label: "River Watermill", localSlug: "river-watermill" },
+  { key: "shipwreck-coast", label: "Shipwreck Coast", localSlug: "shipwreck-coast" },
+  { key: "westfall", label: "Westfall", localSlug: "westfall" },
 ];
 
 export function findBannerOption(key: string | null): BannerOption | undefined {
