@@ -339,8 +339,8 @@ export function pickShowcaseItems(
 // Anything not explicitly mapped falls back to "Adventure" rather than an
 // awkward extra "Other" bucket - every raw category seen so far that isn't a
 // class, a profession, a PvP rank, Dungeons or Raids (Adventure, Explorer,
-// Eastern Kingdoms, Kalimdor, Reputations) is exploration/world content
-// anyway, so that's the natural catch-all.
+// Eastern Kingdoms, Kalimdor) is exploration/world content anyway, so that's
+// the natural catch-all.
 //
 // "Season Journey" (2026-09-30, Jordan's request: "field of honor legacy
 // challenges should be moved to the pvp category") - every achievement seen
@@ -348,6 +348,15 @@ export function pickShowcaseItems(
 // achievement (confirmed via /wft achievementsprobe), so it's grouped with
 // "Ranks" under Player vs. Player rather than falling into the Adventure
 // catch-all.
+//
+// "Reputations" (2026-09-30, same request extended: "master of alterac
+// valley, master of araathi basin, master of warsong and master of
+// darkspear islands should also be moved to pvp") - all 4 achievements
+// Blizzard files under this raw category are the battleground-faction
+// reputation ones (Master of Alterac Valley/Arathi Basin/Warsong Gulch/
+// Darkspear Islands - confirmed via achievementsprobe, "Reputations" has
+// exactly 4 entries and they're all these), so this whole category moves to
+// Player vs. Player too rather than the Adventure catch-all.
 const LEGACY_CATEGORY_GROUPS: Record<string, string> = {
   Druid: "Classes",
   Hunter: "Classes",
@@ -366,6 +375,7 @@ const LEGACY_CATEGORY_GROUPS: Record<string, string> = {
   Tailoring: "Tradeskills",
   Ranks: "Player vs. Player",
   "Season Journey": "Player vs. Player",
+  Reputations: "Player vs. Player",
   Dungeons: "Dungeons",
   Raids: "Raids",
 };
@@ -446,12 +456,23 @@ function sortLegacyItems(items: AchievementBoardItem[]): AchievementBoardItem[] 
 // "Rank 3", ... shown lowest-first, "Rank 3" at the top going down - same
 // direction as every other ladder (Novice before Master), just called out
 // as its own function since the previous attempt (descending) was wrong.
+// 2026-09-30, Jordan's request: after "Season Journey" (Field of Honor) got
+// moved into this same Player vs. Player group, sorting everything purely by
+// the number in its name interleaved "Rank 7" right next to "Field of Honor:
+// Week 7" - two unrelated ladders that happen to share a number. Ranks are
+// now always listed first (lowest to highest, unchanged), with every Field
+// of Honor week clustered together afterward, also lowest to highest -
+// "reorganise and put the field of honor challenges on the bottom in order".
 function sortPvpRankItems(items: AchievementBoardItem[]): AchievementBoardItem[] {
   const numberOf = (name: string): number | null => {
     const match = name.match(/(\d+)/);
     return match ? parseInt(match[1], 10) : null;
   };
+  const bucketOf = (name: string): number => (name.startsWith("Field of Honor") ? 1 : 0);
   return [...items].sort((a, b) => {
+    const bucketA = bucketOf(a.name);
+    const bucketB = bucketOf(b.name);
+    if (bucketA !== bucketB) return bucketA - bucketB;
     const numA = numberOf(a.name);
     const numB = numberOf(b.name);
     if (numA !== null && numB !== null && numA !== numB) return numA - numB;
