@@ -91,6 +91,9 @@ export const BANNER_STYLE_OPTIONS: BannerOption[] = [
   { key: "river-watermill", label: "River Watermill", localSlug: "river-watermill" },
   { key: "shipwreck-coast", label: "Shipwreck Coast", localSlug: "shipwreck-coast" },
   { key: "westfall", label: "Westfall", localSlug: "westfall" },
+  { key: "hyjal-roots", label: "Hyjal Roots", localSlug: "hyjal-roots" },
+  { key: "distant-hyjal", label: "Distant Hyjal", localSlug: "distant-hyjal" },
+  { key: "dun-morogh", label: "Dun Morogh", localSlug: "dun-morogh" },
 ];
 
 export function findBannerOption(key: string | null): BannerOption | undefined {
