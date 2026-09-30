@@ -274,7 +274,14 @@ export function AccountView({
             Earned by looking across the whole roster at once (e.g. one of every class at max level) - distinct from
             the per-character achievements above.
           </p>
-          <div className="mt-2 flex flex-wrap gap-2">
+          {/* 2026-09-30, Jordan: "the account badges system needs to the
+              icon styles to look like character achievements just maybe
+              without the border" - matches ShowcaseBadge's tile shape
+              (icon + name pill underneath) instead of the old small
+              bordered-box-with-inline-label row. No tier frame here (unlike
+              ShowcaseBadge) since account badges are one-off, not tiered -
+              and no wrapping border box either, exactly as asked. */}
+          <div className="mt-2 flex flex-wrap gap-3">
             {(Object.keys(ACCOUNT_ACHIEVEMENT_BADGES) as AccountAchievementKind[]).map((kind) => {
               const earned = accountBadges.includes(kind);
               const badge = ACCOUNT_ACHIEVEMENT_BADGES[kind];
@@ -282,13 +289,15 @@ export function AccountView({
                 <span
                   key={kind}
                   title={badge.label}
-                  className={`flex items-center gap-1.5 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs ${
+                  className={`flex w-16 flex-col items-center gap-1 text-center ${
                     earned ? "" : "opacity-40 grayscale"
                   }`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={wowIconUrl(badge.icon)} alt="" className="h-5 w-5 rounded" />
-                  {badge.label.split(" - ")[0]}
+                  <img src={wowIconUrl(badge.icon)} alt="" className="h-14 w-14 rounded-md object-cover" />
+                  <span className="line-clamp-2 rounded bg-neutral-950/70 px-1 py-0.5 text-[10px] font-semibold leading-tight text-white">
+                    {badge.label.split(" - ")[0]}
+                  </span>
                 </span>
               );
             })}
