@@ -1,5 +1,21 @@
 import iconNames from "./data/icon-names.json";
 
+// A handful of icon file IDs that are real Blizzard assets but aren't
+// hosted on wow.zamimg.com's icon CDN at all (it appears to mirror an
+// older/classic-era icon set, so some newer or WoW-Forever-specific file
+// IDs are simply missing there no matter what name we look up). For these,
+// we bypass icon-names.json + zamimg entirely and point straight at a CDN
+// that does have the image.
+//
+// 409547 = "Explore Mount Hyjal" Legacy Challenge achievement icon
+// (interface/icons/achievement_zone_mount hyjal.blp). Confirmed 2026-09-30
+// that wow.zamimg.com/.../achievement_zone_mounthyjal.jpg,
+// achievement_zone_hyjal.jpg, and achievement_zone_mount_hyjal.jpg all
+// 404 - the icon just isn't there - but WoWDB's own CDN has it.
+const ICON_URL_OVERRIDES: Record<string, string> = {
+  "409547": "https://icons.wowdb.com/retail/large/achievement_zone_mount_hyjal.jpg",
+};
+
 // Turns a raw Blizzard icon file ID (from GetInventoryItemTexture in the
 // addon) into a real image URL, using a bundled fileID -> icon name lookup
 // (the same kind of data community WoW tools use). Returns null if the ID
@@ -7,7 +23,9 @@ import iconNames from "./data/icon-names.json";
 // never breaks.
 export function iconUrlForFileId(fileId: number | string | null | undefined): string | null {
   if (fileId === null || fileId === undefined) return null;
-  const name = (iconNames as Record<string, string>)[String(fileId)];
+  const key = String(fileId);
+  if (ICON_URL_OVERRIDES[key]) return ICON_URL_OVERRIDES[key];
+  const name = (iconNames as Record<string, string>)[key];
   if (!name) return null;
   return `https://wow.zamimg.com/images/wow/icons/large/${name}.jpg`;
 }
