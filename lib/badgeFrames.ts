@@ -27,19 +27,22 @@ export function localBadgeIconSrc(slug: string) {
 // distinct frame (2026-09-30, "They deserve a unique special frame for
 // account badges") - an ornate gold/blue medallion border, separate from
 // the plain Copper/Silver/Gold/Platinum tier frames above since account
-// badges are one-off, not tiered. Source art arrived on a solid black
-// background rather than real transparency, so the black was chroma-keyed
-// out (both the outer background AND the inner opening go transparent,
-// which is exactly what's wanted - it leaves just the ornate border,
-// composited the same way as TIER_FRAME_SRC below). The opening isn't a
-// clean rectangle - a decorative star medallion pokes into the top and
-// bottom center - so ACCOUNT_BADGE_FRAME_HOLE_RATIO uses the WIDEST clear
-// span (measured off the source art) rather than the full height; the icon
+// badges are one-off, not tiered. Re-supplied 2026-09-30 with real alpha
+// transparency already baked in (an earlier version had to be chroma-keyed
+// off a solid black background instead). The opening isn't a clean
+// rectangle - a decorative star medallion pokes into the top and bottom
+// center - so ACCOUNT_BADGE_FRAME_HOLE_RATIO uses the WIDEST clear span
+// (measured off the source art) rather than the full height; the icon
 // underneath ends up slightly overlapped by those top/bottom decorations,
 // which is the intended look for this style of frame (same idea as a game
-// ranked-border overlay sitting on top of a full portrait).
+// ranked-border overlay sitting on top of a full portrait). This frame is
+// only used for badges still on a plain CDN icon (see AccountBadgeTile's
+// `framed` prop) - a badge with its own local custom art (see
+// ACCOUNT_ACHIEVEMENT_LOCAL_ICONS) already has its own baked-in border and
+// renders full-size with no frame layered on top, same rule the character
+// achievement badges already follow.
 export const ACCOUNT_BADGE_FRAME_SRC = "/badge-frames/account.png";
-export const ACCOUNT_BADGE_FRAME_HOLE_RATIO = 914 / 1254;
+export const ACCOUNT_BADGE_FRAME_HOLE_RATIO = 900 / 1254;
 
 // Full stand-alone medallion art (2026-09-25) - a complete laurel-and-gem
 // medal per tier, from /public/tier-medals/. Distinct from TIER_FRAME_SRC

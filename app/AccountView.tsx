@@ -4,7 +4,12 @@ import { ShowcaseBadge } from "./AchievementShowcase";
 import AccountBadgeTile from "./AccountBadgeTile";
 import { FAMILY_META, type AchievementFamily } from "../lib/achievements";
 import { RACE_FACTION } from "../lib/options";
-import { ACCOUNT_ACHIEVEMENT_BADGES, accountBadgeIconSrc, type AccountAchievementKind } from "../lib/accountAchievements";
+import {
+  ACCOUNT_ACHIEVEMENT_BADGES,
+  ACCOUNT_ACHIEVEMENT_LOCAL_ICONS,
+  accountBadgeIconSrc,
+  type AccountAchievementKind,
+} from "../lib/accountAchievements";
 import { avatarIconSrc, bannerImageSrc, findAvatarIconOption, findBannerOption, bannerClassName } from "../lib/profileCustomization";
 import { formatDate, type AccountViewData } from "../lib/accountView";
 
@@ -295,6 +300,10 @@ export function AccountView({
                   name={name}
                   description={rest.join(" - ")}
                   earned={earned}
+                  // Local custom art already has its own baked-in frame -
+                  // only dress up the plain CDN-icon badges with the
+                  // shared ornate overlay.
+                  framed={!ACCOUNT_ACHIEVEMENT_LOCAL_ICONS[kind]}
                 />
               );
             })}
