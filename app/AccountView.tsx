@@ -4,8 +4,7 @@ import { ShowcaseBadge } from "./AchievementShowcase";
 import AccountBadgeTile from "./AccountBadgeTile";
 import { FAMILY_META, type AchievementFamily } from "../lib/achievements";
 import { RACE_FACTION } from "../lib/options";
-import { ACCOUNT_ACHIEVEMENT_BADGES, type AccountAchievementKind } from "../lib/accountAchievements";
-import { wowIconUrl } from "../lib/icons";
+import { ACCOUNT_ACHIEVEMENT_BADGES, accountBadgeIconSrc, type AccountAchievementKind } from "../lib/accountAchievements";
 import { avatarIconSrc, bannerImageSrc, findAvatarIconOption, findBannerOption, bannerClassName } from "../lib/profileCustomization";
 import { formatDate, type AccountViewData } from "../lib/accountView";
 
@@ -292,7 +291,7 @@ export function AccountView({
               return (
                 <AccountBadgeTile
                   key={kind}
-                  icon={wowIconUrl(badge.icon)}
+                  icon={accountBadgeIconSrc(kind)}
                   name={name}
                   description={rest.join(" - ")}
                   earned={earned}

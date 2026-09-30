@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CLASSES, RACE_FACTION } from "./options";
-import { PRIMARY_PROFESSIONS } from "./icons";
+import { PRIMARY_PROFESSIONS, wowIconUrl } from "./icons";
 import { buildAchievementItems } from "../app/achievementBoard";
 import type { AchievementTier } from "./achievements";
 
@@ -89,6 +89,32 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
     label: "The Marathon - 1,000+ hours played, combined across all characters",
   },
 };
+
+// Local custom art for account badges (2026-09-30) - same idea as
+// FLAT_LOCAL_ICONS/TIERED_LOCAL_ICONS in lib/achievementBadges.ts: a badge
+// with an entry here shows Jordan's own art from /public/account-badge-
+// icons/<slug>.png instead of its ACCOUNT_ACHIEVEMENT_BADGES.icon CDN
+// fallback. Only badges with actual art get listed here; everything else
+// keeps using its CDN icon until art exists for it too - adding one is
+// just: drop the file, add one line below.
+export const ACCOUNT_ACHIEVEMENT_LOCAL_ICONS: Partial<Record<AccountAchievementKind, string>> = {
+  class_collector: "class-collector",
+};
+
+export function localAccountBadgeIconSrc(slug: string) {
+  return `/account-badge-icons/${slug}.png`;
+}
+
+// Resolves a badge's actual icon URL - local art if it has any, otherwise
+// falls back to the CDN icon in ACCOUNT_ACHIEVEMENT_BADGES. Callers (e.g.
+// AccountView.tsx) should use this instead of reaching into
+// ACCOUNT_ACHIEVEMENT_BADGES[kind].icon + wowIconUrl() directly, so a badge
+// getting local art later doesn't need a second place updated.
+export function accountBadgeIconSrc(kind: AccountAchievementKind): string {
+  const slug = ACCOUNT_ACHIEVEMENT_LOCAL_ICONS[kind];
+  if (slug) return localAccountBadgeIconSrc(slug);
+  return wowIconUrl(ACCOUNT_ACHIEVEMENT_BADGES[kind].icon);
+}
 
 const ACCOUNT_ACHIEVEMENT_MESSAGE: Record<AccountAchievementKind, (name: string) => string> = {
   class_collector: (name) => `${name} has a level-60 character of every class!`,
