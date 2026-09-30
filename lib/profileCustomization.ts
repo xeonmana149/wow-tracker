@@ -27,7 +27,16 @@ import { wowIconUrl } from "./icons";
 // profiles.banner_style, so never rename an existing option's `key` once
 // it's shipped - that would silently reset anyone who already picked it
 // back to the fallback. Add new options, don't rename old ones.
-
+//
+// 2026-09-30 - Jordan's decided against using real WoW icons for account
+// icons at all ("If I can avoid using wow icons I would prefer that") -
+// these are meant to become another achievement-unlock collection down the
+// line (see the "unlocking icons from achievements" conversation), fully
+// custom art throughout rather than a mix. The starter wowIcon-based set is
+// removed; AVATAR_ICON_OPTIONS now only ever holds localSlug (custom art)
+// entries, added one at a time as art gets made. avatarIconSrc()/wowIcon
+// stay supported on the type for now in case a placeholder is ever wanted
+// again, but nothing currently uses that path.
 export const AVATAR_ICON_SRC_SIZE_PX = 256;
 export const BANNER_IMAGE_SRC_WIDTH_PX = 1200;
 export const BANNER_IMAGE_SRC_HEIGHT_PX = 240;
@@ -35,29 +44,15 @@ export const BANNER_IMAGE_SRC_HEIGHT_PX = 240;
 export type AvatarIconOption = {
   key: string;
   label: string;
-  wowIcon?: string; // real WoW icon name, resolved via wowIconUrl()
+  wowIcon?: string; // real WoW icon name, resolved via wowIconUrl() - legacy fallback, not used by any current option
   localSlug?: string; // custom art at /public/profile-icons/<slug>.png - wins over wowIcon if both are set
 };
 
-// A small, thematically varied starter set of real WoW icons - general/
-// class-neutral rather than tied to one class or profession, since this is
-// an ACCOUNT icon, not a character one. Swap any of these to custom art by
-// giving it a `localSlug`, or just add new entries alongside them.
+// Custom-art account icons. First one up: Jordan's own "Undead Paladin"
+// portrait, testing the pipeline before more get made. Add more the same
+// way - drop the PNG in /public/profile-icons/ and add a line here.
 export const AVATAR_ICON_OPTIONS: AvatarIconOption[] = [
-  { key: "achievement_general", label: "General", wowIcon: "achievement_general" },
-  { key: "achievement_reputation_01", label: "Reputation", wowIcon: "achievement_reputation_01" },
-  { key: "inv_misc_coin_06", label: "Coin", wowIcon: "inv_misc_coin_06" },
-  { key: "achievement_boss_illidan", label: "Illidan", wowIcon: "achievement_boss_illidan" },
-  { key: "spell_holy_holybolt", label: "Holy Bolt", wowIcon: "spell_holy_holybolt" },
-  { key: "spell_nature_lightning", label: "Lightning", wowIcon: "spell_nature_lightning" },
-  { key: "ability_rogue_shadowstep", label: "Shadowstep", wowIcon: "ability_rogue_shadowstep" },
-  { key: "achievement_pvp_a_a", label: "PvP", wowIcon: "achievement_pvp_a_a" },
-  { key: "inv_sword_04", label: "Sword", wowIcon: "inv_sword_04" },
-  { key: "inv_staff_13", label: "Staff", wowIcon: "inv_staff_13" },
-  { key: "achievement_dungeon_bossmaster", label: "Boss Master", wowIcon: "achievement_dungeon_bossmaster" },
-  { key: "inv_misc_head_dragon_01", label: "Dragon", wowIcon: "inv_misc_head_dragon_01" },
-  // Custom-art icons go here once they exist, e.g.:
-  // { key: "phoenix", label: "Phoenix", localSlug: "phoenix" },
+  { key: "undead-paladin-male", label: "Undead Paladin", localSlug: "undead-paladin-male" },
 ];
 
 export function avatarIconSrc(option: AvatarIconOption): string {
