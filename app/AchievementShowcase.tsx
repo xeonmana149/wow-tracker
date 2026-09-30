@@ -149,7 +149,7 @@ export function ShowcaseBadge({
                   : { width: size, height: size, top: 0, left: 0 }
               }
             />
-            {item.tier && (
+            {item.tier ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={TIER_FRAME_SRC[item.tier]}
@@ -158,6 +158,12 @@ export function ShowcaseBadge({
                 draggable={false}
                 className="pointer-events-none absolute inset-0 h-full w-full"
               />
+            ) : (
+              // No tier reached yet - a plain grey border instead of no
+              // frame at all, so a locked badge still reads as "a badge",
+              // not a bare icon with nothing around it (2026-09-30, Jordan:
+              // "these should have a grey border for the locked ones too").
+              <span className="pointer-events-none absolute inset-0 rounded-sm border-2 border-neutral-600" />
             )}
           </>
         ) : (
@@ -195,7 +201,7 @@ export function ShowcaseBadge({
                       : { width: previewSize, height: previewSize, top: 0, left: 0 }
                   }
                 />
-                {item.tier && (
+                {item.tier ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={TIER_FRAME_SRC[item.tier]}
@@ -204,6 +210,8 @@ export function ShowcaseBadge({
                     draggable={false}
                     className="pointer-events-none absolute inset-0 h-full w-full"
                   />
+                ) : (
+                  <span className="pointer-events-none absolute inset-0 rounded border-2 border-neutral-600" />
                 )}
               </>
             ) : (
