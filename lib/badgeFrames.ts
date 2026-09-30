@@ -23,20 +23,6 @@ export function localBadgeIconSrc(slug: string) {
   return `/badge-icons/${slug}.png`;
 }
 
-// "Locked" frame for a badge that hasn't reached its first tier yet
-// (2026-09-30, Jordan: "these should have a grey border for the locked
-// ones too" - a plain CSS border looked too faint once dimmed, then
-// "no use this ... but make it grey", supplying the same ornate frame
-// style as the tier frames above, desaturated to steel grey) - shown
-// instead of a Copper/Silver/Gold/Platinum frame for a tiered badge with
-// no tier reached, so a locked slot still reads as "a badge" rather than
-// a bare, frameless icon. Its hole isn't quite square (the corner
-// ornaments sit slightly differently than the tier frames'), so this uses
-// its own measured ratio rather than FRAME_HOLE_RATIO - the smaller of the
-// horizontal/vertical clear spans, so the icon never runs under a corner.
-export const LOCKED_FRAME_SRC = "/badge-frames/locked.png";
-export const LOCKED_FRAME_HOLE_RATIO = 0.74;
-
 // The account-wide badges (see lib/accountAchievements.ts) get their own
 // distinct frame (2026-09-30, "They deserve a unique special frame for
 // account badges") - an ornate gold/blue medallion border, separate from
@@ -59,6 +45,16 @@ export const LOCKED_FRAME_HOLE_RATIO = 0.74;
 // icon-fits-inside-the-hole fit like the thin per-tier frames above.
 export const ACCOUNT_BADGE_FRAME_SRC = "/badge-frames/account.png";
 export const ACCOUNT_BADGE_FRAME_HOLE_RATIO = 0.94;
+
+// "Locked" frame for a character-achievement badge that hasn't reached its
+// first tier yet (2026-09-30, Jordan: "these should have a grey border for
+// the locked ones too") - no separate asset for this at all: it's just
+// copper.png (same real frame every Copper-tier badge already uses),
+// rendered with a CSS grayscale filter instead of a baked desaturated PNG
+// (2026-09-30, "i dont want a locked.png", then "just use copper.png and
+// you make it grey on the website"). Since it's literally the same file,
+// it reuses FRAME_HOLE_RATIO too - no separate sizing needed.
+export const LOCKED_FRAME_SRC = TIER_FRAME_SRC.Copper;
 
 // Full stand-alone medallion art (2026-09-25) - a complete laurel-and-gem
 // medal per tier, from /public/tier-medals/. Distinct from TIER_FRAME_SRC

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
 import { localBadgeIconSrc } from "../lib/badgeFrames";
-import { TIER_FRAME_SRC, FRAME_HOLE_RATIO, LOCKED_FRAME_SRC, LOCKED_FRAME_HOLE_RATIO } from "../lib/badgeFrames";
+import { TIER_FRAME_SRC, FRAME_HOLE_RATIO, LOCKED_FRAME_SRC } from "../lib/badgeFrames";
 import BadgePlaceholder from "./BadgePlaceholder";
 import type { AchievementBoardItem } from "./achievementBoard";
 
@@ -115,18 +115,16 @@ export function ShowcaseBadge({
   // have proper hand-picked art instead of generic WoW CDN icons. Worth the
   // extra room to actually read the artwork at a glance.
   const size = 72;
+  // LOCKED_FRAME_SRC is copper.png too (just greyed via CSS below), so the
+  // locked state reuses this exact sizing - no separate ratio needed.
   const innerSize = Math.round(size * FRAME_HOLE_RATIO);
   const inset = Math.round((size - innerSize) / 2);
-  const lockedInnerSize = Math.round(size * LOCKED_FRAME_HOLE_RATIO);
-  const lockedInset = Math.round((size - lockedInnerSize) / 2);
 
   // Hover preview - blows the same art up big enough to actually see the
   // detail in it, since even at 72px a hand-painted badge icon is small.
   const previewSize = 180;
   const previewInner = Math.round(previewSize * FRAME_HOLE_RATIO);
   const previewInset = Math.round((previewSize - previewInner) / 2);
-  const previewLockedInner = Math.round(previewSize * LOCKED_FRAME_HOLE_RATIO);
-  const previewLockedInset = Math.round((previewSize - previewLockedInner) / 2);
 
   return (
     <Link
@@ -147,11 +145,7 @@ export function ShowcaseBadge({
               alt=""
               draggable={false}
               className="absolute rounded-sm object-cover"
-              style={
-                item.tier
-                  ? { width: innerSize, height: innerSize, top: inset, left: inset }
-                  : { width: lockedInnerSize, height: lockedInnerSize, top: lockedInset, left: lockedInset }
-              }
+              style={{ width: innerSize, height: innerSize, top: inset, left: inset }}
             />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -159,7 +153,7 @@ export function ShowcaseBadge({
               alt=""
               aria-hidden="true"
               draggable={false}
-              className="pointer-events-none absolute inset-0 h-full w-full"
+              className={`pointer-events-none absolute inset-0 h-full w-full ${item.tier ? "" : "grayscale"}`}
             />
           </>
         ) : (
@@ -191,16 +185,7 @@ export function ShowcaseBadge({
                   alt=""
                   draggable={false}
                   className="absolute rounded object-cover"
-                  style={
-                    item.tier
-                      ? { width: previewInner, height: previewInner, top: previewInset, left: previewInset }
-                      : {
-                          width: previewLockedInner,
-                          height: previewLockedInner,
-                          top: previewLockedInset,
-                          left: previewLockedInset,
-                        }
-                  }
+                  style={{ width: previewInner, height: previewInner, top: previewInset, left: previewInset }}
                 />
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -208,7 +193,7 @@ export function ShowcaseBadge({
                   alt=""
                   aria-hidden="true"
                   draggable={false}
-                  className="pointer-events-none absolute inset-0 h-full w-full"
+                  className={`pointer-events-none absolute inset-0 h-full w-full ${item.tier ? "" : "grayscale"}`}
                 />
               </>
             ) : (
