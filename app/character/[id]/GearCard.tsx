@@ -336,22 +336,28 @@ function Tile({
       {flagged && (
         // Replaces the old plain red ring + "!" badge (2026-10-02, Jordan
         // supplied this ornate "Recommended Upgrade" frame art to use
-        // instead). First attempt sized this to line up the art's own
-        // transparent window with the slot, letting the border/banner/
-        // arrow-badge spill outside the slot's box - looked fine in
-        // isolation but in this tightly-packed vertical gear list the
-        // banner spilled straight onto the slot below it ("that does not
-        // look right"). Simplified to match every other frame overlay in
-        // the app instead: sized to the slot exactly (inset-0), nothing
-        // spilling outside it, even though that means the banner text
-        // renders quite small at 64-80px.
+        // instead). Sized so the art's own transparent window (measured off
+        // the source: x 150-1103, y 165-912 of a 1254x1254 canvas) lines up
+        // with the slot, letting the border/banner/arrow-badge spill
+        // outside the slot's own box so the icon inside still reads at a
+        // normal size - a first, inset-0 attempt kept the icon's own frame
+        // small enough to fit the slot but made the banner text illegible.
+        // Jordan's call: some overlap onto the slot below is fine (the
+        // column gap was widened alongside this - see LEFT/RIGHT below -
+        // to leave the banner more room before it reaches the next icon).
         <img
           src="/gear-icons/recommended-upgrade.png"
           alt=""
           aria-label={`${slot} is well behind your level - recommended to upgrade`}
           title="Recommended to upgrade"
           draggable={false}
-          className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+          className="pointer-events-none absolute z-10"
+          style={{
+            width: "131.5%",
+            height: "167.6%",
+            left: "-15.7%",
+            top: "-22.1%",
+          }}
         />
       )}
 
@@ -422,7 +428,12 @@ export default function GearCard({
       <h2 className="font-bold">Equipped Gear</h2>
 
       <div className="mt-4 flex items-stretch justify-center gap-2 sm:gap-3">
-        <div className="flex flex-col gap-2">{LEFT.map(renderTile)}</div>
+        {/* gap-4 (not the gap-2 every other slot row still uses) - gives the
+            Recommended Upgrade frame's banner room to spill below a flagged
+            slot without immediately running into the next one (2026-10-02,
+            "spread the item slots just a little bit more so the overlay has
+            room to fit"). */}
+        <div className="flex flex-col gap-4">{LEFT.map(renderTile)}</div>
 
         <div className="relative flex min-w-0 max-w-xs flex-1 flex-col items-center justify-center overflow-hidden rounded bg-neutral-900 p-3 text-center">
           {/* Large faded class emblem standing in for a character model -
@@ -459,7 +470,7 @@ export default function GearCard({
           <div className="relative text-xs text-gray-400">slots equipped</div>
         </div>
 
-        <div className="flex flex-col gap-2">{RIGHT.map(renderTile)}</div>
+        <div className="flex flex-col gap-4">{RIGHT.map(renderTile)}</div>
       </div>
 
       <div className="mt-3 flex justify-center gap-2 sm:gap-3">{BOTTOM.map(renderTile)}</div>
