@@ -99,6 +99,15 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
 // just: drop the file, add one line below.
 export const ACCOUNT_ACHIEVEMENT_LOCAL_ICONS: Partial<Record<AccountAchievementKind, string>> = {
   class_collector: "class-collector",
+  alliance_completionist: "alliance-completionist",
+  horde_completionist: "horde-completionist",
+  diplomat: "diplomat",
+  master_of_all_trades: "master-of-all-trades",
+  // File on disk is "Tycoon.png" (capitalized) - rename it to lowercase
+  // "tycoon.png" in public/account-badge-icons/ to match this slug. Linux/
+  // Vercel's filesystem is case-sensitive, so a mismatch here 404s instead
+  // of silently falling back to the CDN icon.
+  tycoon: "tycoon",
 };
 
 export function localAccountBadgeIconSrc(slug: string) {
