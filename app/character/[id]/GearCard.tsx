@@ -305,22 +305,22 @@ function Tile({
   // overlaid on the normal-sized one (2026-10-02 - overlaying a stretched
   // frame on the regular 64/80px box either covered the slot below it or,
   // shrunk to fit, made the banner illegible; Jordan's reference image
-  // showed the icon, frame and banner all at one consistent size with
-  // nothing cropped or spilling, i.e. the whole card is just bigger).
-  // Sized so the icon still reads at the same size as a normal slot's: the
-  // art's own transparent window is only part of its 1254x1254 canvas
-  // (measured off the source: x 150-1103, y 165-912), so the box is scaled
-  // up by the inverse of that window's width/height fraction (1254/954 and
-  // 1254/748) from the normal slot size - the window then lands back at
-  // exactly the normal icon size, with the frame's own border/banner/badge
-  // filling out the rest of the now-bigger box instead of hanging outside
-  // it. The column gap was widened too (gap-4, was gap-2 - see LEFT/RIGHT
+  // showed the icon, frame and banner all fitting cleanly together).
+  // The box is SQUARE (not derived by scaling width/height separately to
+  // keep the icon at the normal slot's apparent size - that gave a
+  // taller-than-wide box that didn't match the reference at all, since the
+  // frame's own source art is a square 1254x1254 canvas with the window
+  // sitting off-center inside it, not a square window in a non-square
+  // canvas). The icon's own position below (12%/13.2%/76.1%/59.6%) is that
+  // window's measured fraction of the square canvas, so a non-square icon
+  // crop naturally falls out of a square box here, same as the reference.
+  // The column gap was widened too (gap-4, was gap-2 - see LEFT/RIGHT
   // below) so this bigger box doesn't crowd its neighbors.
   if (flagged) {
     return (
       <div className="group relative">
         <div
-          className="gear-slot relative h-[107px] w-[84px] sm:h-[134px] sm:w-[105px]"
+          className="gear-slot relative h-[112px] w-[112px] sm:h-[140px] sm:w-[140px]"
           style={{ "--slot-quality": color ?? "#9d9d9d" } as CSSProperties}
           data-filled
         >
