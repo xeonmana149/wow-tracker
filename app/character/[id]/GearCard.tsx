@@ -304,9 +304,7 @@ function Tile({
   return (
     <div className="group relative">
       <div
-        className={`gear-slot flex h-16 w-16 items-center justify-center overflow-hidden sm:h-20 sm:w-20 ${
-          flagged ? "ring-2 ring-red-500 ring-offset-1 ring-offset-neutral-900" : ""
-        }`}
+        className="gear-slot flex h-16 w-16 items-center justify-center overflow-hidden sm:h-20 sm:w-20"
         style={hasItem ? ({ "--slot-quality": color ?? "#9d9d9d" } as CSSProperties) : undefined}
         data-filled={hasItem || undefined}
       >
@@ -336,13 +334,31 @@ function Tile({
       </div>
 
       {flagged && (
-        <span
-          className="pointer-events-none absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-red-600 text-[11px] font-bold leading-none text-white shadow"
+        // Replaces the old plain red ring + "!" badge (2026-10-02, Jordan
+        // supplied this ornate "Recommended Upgrade" frame art to use
+        // instead). The frame's own art has a transparent window plus a
+        // border/banner/arrow-badge that spill outside that window on every
+        // edge - positioned here so the window lines up with the slot
+        // itself (measured off the source art: window at x 150-1103,
+        // y 165-912 of a 1254x1254 canvas) and the border/banner/badge
+        // overflow outside the slot's own box, same idea as the ornate
+        // account-badge frame elsewhere in the app. Percentages (not fixed
+        // pixels) so this scales correctly between the 64px and 80px (sm+)
+        // slot sizes without separate math for each.
+        <img
+          src="/gear-icons/recommended-upgrade.png"
+          alt=""
           aria-label={`${slot} is well behind your level - recommended to upgrade`}
           title="Recommended to upgrade"
-        >
-          !
-        </span>
+          draggable={false}
+          className="pointer-events-none absolute z-10"
+          style={{
+            width: "131.5%",
+            height: "167.6%",
+            left: "-15.7%",
+            top: "-22.1%",
+          }}
+        />
       )}
 
       <div
