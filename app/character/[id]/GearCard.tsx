@@ -301,6 +301,75 @@ function Tile({
   const color = entry?.item_quality ? `#${entry.item_quality}` : null;
   const flagged = hasItem && !!weak;
 
+  // A flagged slot gets a genuinely BIGGER box, not just a bigger image
+  // overlaid on the normal-sized one (2026-10-02 - overlaying a stretched
+  // frame on the regular 64/80px box either covered the slot below it or,
+  // shrunk to fit, made the banner illegible; Jordan's reference image
+  // showed the icon, frame and banner all at one consistent size with
+  // nothing cropped or spilling, i.e. the whole card is just bigger).
+  // Sized so the icon still reads at the same size as a normal slot's: the
+  // art's own transparent window is only part of its 1254x1254 canvas
+  // (measured off the source: x 150-1103, y 165-912), so the box is scaled
+  // up by the inverse of that window's width/height fraction (1254/954 and
+  // 1254/748) from the normal slot size - the window then lands back at
+  // exactly the normal icon size, with the frame's own border/banner/badge
+  // filling out the rest of the now-bigger box instead of hanging outside
+  // it. The column gap was widened too (gap-4, was gap-2 - see LEFT/RIGHT
+  // below) so this bigger box doesn't crowd its neighbors.
+  if (flagged) {
+    return (
+      <div className="group relative">
+        <div
+          className="gear-slot relative h-[107px] w-[84px] sm:h-[134px] sm:w-[105px]"
+          style={{ "--slot-quality": color ?? "#9d9d9d" } as CSSProperties}
+          data-filled
+        >
+          {entry?.item_icon ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={entry.item_icon}
+              alt={entry.item_name ?? ""}
+              draggable={false}
+              className="absolute rounded-sm object-cover"
+              style={{ left: "12%", top: "13.2%", width: "76.1%", height: "59.6%" }}
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+              }}
+            />
+          ) : (
+            <span
+              className="absolute line-clamp-3 px-1 text-center text-[9px] font-semibold leading-tight"
+              style={{ left: "12%", top: "13.2%", width: "76.1%", height: "59.6%", color: color ?? "white" }}
+            >
+              {entry!.item_name}
+            </span>
+          )}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/gear-icons/recommended-upgrade.png"
+            alt=""
+            aria-label={`${slot} is well behind your level - recommended to upgrade`}
+            title="Recommended to upgrade"
+            draggable={false}
+            className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+          />
+        </div>
+
+        <div
+          className={`invisible opacity-0 group-hover:visible group-hover:opacity-100 ${
+            hasItem ? "" : "pointer-events-none"
+          }`}
+        >
+          {hasItem ? (
+            <ItemTooltip entry={entry as Item} isOwner={isOwner} characterId={characterId} weak={weak} />
+          ) : (
+            <EmptySlotTooltip slot={slot} />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="group relative">
       <div
@@ -332,34 +401,6 @@ function Tile({
           SLOT_ICONS[slot] ?? <span className="text-[10px] text-gray-500">{slot}</span>
         )}
       </div>
-
-      {flagged && (
-        // Replaces the old plain red ring + "!" badge (2026-10-02, Jordan
-        // supplied this ornate "Recommended Upgrade" frame art to use
-        // instead). Sized so the art's own transparent window (measured off
-        // the source: x 150-1103, y 165-912 of a 1254x1254 canvas) lines up
-        // with the slot, letting the border/banner/arrow-badge spill
-        // outside the slot's own box so the icon inside still reads at a
-        // normal size - a first, inset-0 attempt kept the icon's own frame
-        // small enough to fit the slot but made the banner text illegible.
-        // Jordan's call: some overlap onto the slot below is fine (the
-        // column gap was widened alongside this - see LEFT/RIGHT below -
-        // to leave the banner more room before it reaches the next icon).
-        <img
-          src="/gear-icons/recommended-upgrade.png"
-          alt=""
-          aria-label={`${slot} is well behind your level - recommended to upgrade`}
-          title="Recommended to upgrade"
-          draggable={false}
-          className="pointer-events-none absolute z-10"
-          style={{
-            width: "131.5%",
-            height: "167.6%",
-            left: "-15.7%",
-            top: "-22.1%",
-          }}
-        />
-      )}
 
       <div
         className={`invisible opacity-0 group-hover:visible group-hover:opacity-100 ${
