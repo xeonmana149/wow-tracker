@@ -336,28 +336,22 @@ function Tile({
       {flagged && (
         // Replaces the old plain red ring + "!" badge (2026-10-02, Jordan
         // supplied this ornate "Recommended Upgrade" frame art to use
-        // instead). The frame's own art has a transparent window plus a
-        // border/banner/arrow-badge that spill outside that window on every
-        // edge - positioned here so the window lines up with the slot
-        // itself (measured off the source art: window at x 150-1103,
-        // y 165-912 of a 1254x1254 canvas) and the border/banner/badge
-        // overflow outside the slot's own box, same idea as the ornate
-        // account-badge frame elsewhere in the app. Percentages (not fixed
-        // pixels) so this scales correctly between the 64px and 80px (sm+)
-        // slot sizes without separate math for each.
+        // instead). First attempt sized this to line up the art's own
+        // transparent window with the slot, letting the border/banner/
+        // arrow-badge spill outside the slot's box - looked fine in
+        // isolation but in this tightly-packed vertical gear list the
+        // banner spilled straight onto the slot below it ("that does not
+        // look right"). Simplified to match every other frame overlay in
+        // the app instead: sized to the slot exactly (inset-0), nothing
+        // spilling outside it, even though that means the banner text
+        // renders quite small at 64-80px.
         <img
           src="/gear-icons/recommended-upgrade.png"
           alt=""
           aria-label={`${slot} is well behind your level - recommended to upgrade`}
           title="Recommended to upgrade"
           draggable={false}
-          className="pointer-events-none absolute z-10"
-          style={{
-            width: "131.5%",
-            height: "167.6%",
-            left: "-15.7%",
-            top: "-22.1%",
-          }}
+          className="pointer-events-none absolute inset-0 z-10 h-full w-full"
         />
       )}
 
