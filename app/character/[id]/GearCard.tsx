@@ -301,75 +301,6 @@ function Tile({
   const color = entry?.item_quality ? `#${entry.item_quality}` : null;
   const flagged = hasItem && !!weak;
 
-  // A flagged slot gets a genuinely BIGGER box, not just a bigger image
-  // overlaid on the normal-sized one (2026-10-02 - overlaying a stretched
-  // frame on the regular 64/80px box either covered the slot below it or,
-  // shrunk to fit, made the banner illegible; Jordan's reference image
-  // showed the icon, frame and banner all fitting cleanly together).
-  // The box is SQUARE (not derived by scaling width/height separately to
-  // keep the icon at the normal slot's apparent size - that gave a
-  // taller-than-wide box that didn't match the reference at all, since the
-  // frame's own source art is a square 1254x1254 canvas with the window
-  // sitting off-center inside it, not a square window in a non-square
-  // canvas). The icon's own position below (12%/13.2%/76.1%/59.6%) is that
-  // window's measured fraction of the square canvas, so a non-square icon
-  // crop naturally falls out of a square box here, same as the reference.
-  // The column gap was widened too (gap-4, was gap-2 - see LEFT/RIGHT
-  // below) so this bigger box doesn't crowd its neighbors.
-  if (flagged) {
-    return (
-      <div className="group relative">
-        <div
-          className="gear-slot relative h-[112px] w-[112px] sm:h-[140px] sm:w-[140px]"
-          style={{ "--slot-quality": color ?? "#9d9d9d" } as CSSProperties}
-          data-filled
-        >
-          {entry?.item_icon ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={entry.item_icon}
-              alt={entry.item_name ?? ""}
-              draggable={false}
-              className="absolute rounded-sm object-cover"
-              style={{ left: "12%", top: "13.2%", width: "76.1%", height: "59.6%" }}
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = "none";
-              }}
-            />
-          ) : (
-            <span
-              className="absolute line-clamp-3 px-1 text-center text-[9px] font-semibold leading-tight"
-              style={{ left: "12%", top: "13.2%", width: "76.1%", height: "59.6%", color: color ?? "white" }}
-            >
-              {entry!.item_name}
-            </span>
-          )}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/gear-icons/recommended-upgrade.png"
-            alt=""
-            aria-label={`${slot} is well behind your level - recommended to upgrade`}
-            title="Recommended to upgrade"
-            draggable={false}
-            className="pointer-events-none absolute inset-0 z-10 h-full w-full"
-          />
-        </div>
-
-        <div
-          className={`invisible opacity-0 group-hover:visible group-hover:opacity-100 ${
-            hasItem ? "" : "pointer-events-none"
-          }`}
-        >
-          {hasItem ? (
-            <ItemTooltip entry={entry as Item} isOwner={isOwner} characterId={characterId} weak={weak} />
-          ) : (
-            <EmptySlotTooltip slot={slot} />
-          )}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="group relative">
       <div
@@ -401,6 +332,22 @@ function Tile({
           SLOT_ICONS[slot] ?? <span className="text-[10px] text-gray-500">{slot}</span>
         )}
       </div>
+
+      {flagged && (
+        // Replaces the old red ring + "!" badge (2026-10-02). Plain overlay
+        // centered on the slot, a bit bigger than it so the border/banner/
+        // arrow read clearly without resizing the slot or icon themselves -
+        // after a couple of overcomplicated attempts at aligning the art's
+        // own window to the slot, Jordan's actual ask was just this.
+        <img
+          src="/gear-icons/recommended-upgrade.png"
+          alt=""
+          aria-label={`${slot} is well behind your level - recommended to upgrade`}
+          title="Recommended to upgrade"
+          draggable={false}
+          className="pointer-events-none absolute -inset-[18%] z-10"
+        />
+      )}
 
       <div
         className={`invisible opacity-0 group-hover:visible group-hover:opacity-100 ${
