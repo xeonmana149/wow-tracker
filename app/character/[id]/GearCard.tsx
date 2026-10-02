@@ -352,7 +352,7 @@ function Tile({
           aria-label={`${slot} is well behind your level - recommended to upgrade`}
           title="Recommended to upgrade"
           draggable={false}
-          className="pointer-events-none absolute z-10 max-w-none"
+          className="upgrade-overlay pointer-events-none absolute z-10 max-w-none"
           style={{
             // max-w-none above (and maxWidth here, belt-and-suspenders)
             // override Tailwind Preflight's global `img { max-width: 100% }`
@@ -367,7 +367,11 @@ function Tile({
             height: "auto",
             left: "50%",
             top: "50%",
-            transform: "translate(-50%, -43%)",
+            // The resting transform (translate + scale) lives in theme.css's
+            // .upgrade-overlay rule, not here, specifically so the hover
+            // state in theme.css CAN override it - an inline `transform`
+            // here would always beat any stylesheet rule, hover included,
+            // no matter how specific (2026-10-02, glow + lift on hover).
           }}
         />
       )}
@@ -439,12 +443,11 @@ export default function GearCard({
       <h2 className="font-bold">Equipped Gear</h2>
 
       <div className="mt-4 flex items-stretch justify-center gap-2 sm:gap-3">
-        {/* gap-4 (not the gap-2 every other slot row still uses) - gives the
-            Recommended Upgrade frame's banner room to spill below a flagged
-            slot without immediately running into the next one (2026-10-02,
-            "spread the item slots just a little bit more so the overlay has
-            room to fit"). */}
-        <div className="flex flex-col gap-4">{LEFT.map(renderTile)}</div>
+        {/* gap-6, up from gap-4 (2026-10-02, "slots are still very tightly
+            packed vertically... makes the special frame feel cramped") -
+            gives the Recommended Upgrade banner real breathing room below a
+            flagged slot instead of almost touching the one beneath it. */}
+        <div className="flex flex-col gap-6">{LEFT.map(renderTile)}</div>
 
         <div className="relative flex min-w-0 max-w-xs flex-1 flex-col items-center justify-center overflow-hidden rounded bg-neutral-900 p-3 text-center">
           {/* Large faded class emblem standing in for a character model -
@@ -481,14 +484,13 @@ export default function GearCard({
           <div className="relative text-xs text-gray-400">slots equipped</div>
         </div>
 
-        <div className="flex flex-col gap-4">{RIGHT.map(renderTile)}</div>
+        <div className="flex flex-col gap-6">{RIGHT.map(renderTile)}</div>
       </div>
 
-      {/* gap-4 here too, matching the left/right columns above - a flagged
-          slot in this row (rings/trinkets) needs the same room for the
-          Recommended Upgrade banner to spill into without crowding its
-          neighbor (2026-10-02). */}
-      <div className="mt-3 flex justify-center gap-4">{BOTTOM.map(renderTile)}</div>
+      {/* gap-6, matching the left/right columns above - a flagged slot in
+          this row (rings/trinkets) needs the same breathing room for the
+          Recommended Upgrade banner (2026-10-02). */}
+      <div className="mt-3 flex justify-center gap-6">{BOTTOM.map(renderTile)}</div>
 
       <p className="mt-4 text-center text-xs text-gray-500">
         Filled in by importing your addon export. Hover a slot to see the item.

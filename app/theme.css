@@ -268,6 +268,25 @@ button.bg-red-800:disabled {
   right: -3px;
 }
 
+/* The oversized "Recommended Upgrade" frame overlay drawn on top of a
+   flagged gear slot (GearCard.tsx's Tile component). Its resting transform
+   lives here rather than as an inline style on the <img>, specifically so
+   this hover rule can override it - an inline `transform` attribute always
+   wins over a stylesheet rule, hover included, no matter how specific.
+   On hover the frame glows and lifts slightly, so the "this needs an
+   upgrade" callout feels a bit more alive without changing its size or
+   position at rest (2026-10-02). */
+.upgrade-overlay {
+  transform: translate(-50%, -43%);
+  transition: filter 150ms ease, transform 150ms ease;
+}
+
+.group:hover .upgrade-overlay {
+  transform: translate(-50%, -47%);
+  filter: drop-shadow(0 0 3px rgba(255, 190, 40, 0.8))
+    drop-shadow(0 0 8px rgba(255, 130, 20, 0.35));
+}
+
 /* In-game stat-panel section header ("General", "Defense", etc) - a full
    pill rather than a rounded rectangle, with a bronze bevel and a gold
    frame, matching the game's own character-panel headers. */
