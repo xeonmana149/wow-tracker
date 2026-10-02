@@ -334,17 +334,18 @@ function Tile({
       </div>
 
       {flagged && (
-        // Replaces the old red ring + "!" badge (2026-10-02). Slot and icon
-        // stay normal size; this overlay sits on top, a bit bigger so the
-        // border/banner/arrow read clearly. NOT a plain centered overlay -
-        // the frame's own transparent window isn't centered in its 1254x1254
-        // canvas (there's extra room below it for the banner), so an evenly-
-        // centered overlay puts the border right across the icon instead of
-        // around it. These numbers instead line the window up with the slot
-        // (window measured at x 150-1103, y 165-912), so the border/corners
-        // sit right at the slot's edges and the banner/arrow spill outside
-        // it cleanly - some overlap onto the slot below is expected and
-        // fine (gap-4 below gives it room).
+        // Replaces the old red ring + "!" badge (2026-10-02). Slot, icon
+        // and its quality-colored border all stay completely normal - this
+        // is purely a decorative overlay drawn on top, intentionally much
+        // bigger than the slot, NOT sized to make its own transparent
+        // window line up with the slot's edges. That pixel-matching
+        // approach (several rounds of it) kept shrinking the apparent
+        // artwork down to the slot's own tiny size and fighting the slot's
+        // quality outline - wrong model entirely. This just centers the
+        // whole asset over the slot at a fixed oversized scale: the gold
+        // frame reads as surrounding the icon, the arrow badge pokes out
+        // above/right, and the banner hangs below into the gap before the
+        // next slot (gap-4 below gives it room - some overlap is fine).
         <img
           src="/gear-icons/recommended-upgrade.png"
           alt=""
@@ -352,7 +353,13 @@ function Tile({
           title="Recommended to upgrade"
           draggable={false}
           className="pointer-events-none absolute z-10"
-          style={{ width: "131.5%", height: "167.6%", left: "-15.7%", top: "-22.1%" }}
+          style={{
+            width: "165%",
+            height: "auto",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -43%)",
+          }}
         />
       )}
 
