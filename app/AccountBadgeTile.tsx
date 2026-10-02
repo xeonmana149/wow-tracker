@@ -39,7 +39,11 @@ export default function AccountBadgeTile({
   const innerSize = Math.round(size * ACCOUNT_BADGE_FRAME_HOLE_RATIO);
   const inset = Math.round((size - innerSize) / 2);
 
-  const previewSize = 140;
+  // 190, up from 140 (2026-10-02, "make the icon hover size for account
+  // badges a little bigger to better see the artwork") - w-64 below was
+  // bumped to match so the frame still has its p-2.5 padding on both sides
+  // instead of crowding/overflowing the tooltip box.
+  const previewSize = 190;
   const previewInner = Math.round(previewSize * ACCOUNT_BADGE_FRAME_HOLE_RATIO);
   const previewInset = Math.round((previewSize - previewInner) / 2);
 
@@ -75,7 +79,7 @@ export default function AccountBadgeTile({
       </span>
 
       {hover && (
-        <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-52 -translate-x-1/2 rounded-lg border border-amber-700/70 bg-neutral-950 p-2.5 text-left shadow-lg shadow-black/60">
+        <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-64 -translate-x-1/2 rounded-lg border border-amber-700/70 bg-neutral-950 p-2.5 text-left shadow-lg shadow-black/60">
           <span
             className={`relative mx-auto mb-2 block ${earned ? "" : "opacity-40 grayscale"}`}
             style={{ width: previewSize, height: previewSize }}
