@@ -352,9 +352,18 @@ function Tile({
           aria-label={`${slot} is well behind your level - recommended to upgrade`}
           title="Recommended to upgrade"
           draggable={false}
-          className="pointer-events-none absolute z-10"
+          className="pointer-events-none absolute z-10 max-w-none"
           style={{
+            // max-w-none above (and maxWidth here, belt-and-suspenders)
+            // override Tailwind Preflight's global `img { max-width: 100% }`
+            // reset, which was silently capping this at the tile's own
+            // width no matter what we set `width` to - that's what made
+            // the banner look like it was pasted onto the icon instead of
+            // hanging below it: the whole asset was being squashed back
+            // down to tile size (2026-10-02, "the overlay is sitting in
+            // the middle of the item icon").
             width: "165%",
+            maxWidth: "165%",
             height: "auto",
             left: "50%",
             top: "50%",
@@ -475,7 +484,11 @@ export default function GearCard({
         <div className="flex flex-col gap-4">{RIGHT.map(renderTile)}</div>
       </div>
 
-      <div className="mt-3 flex justify-center gap-2 sm:gap-3">{BOTTOM.map(renderTile)}</div>
+      {/* gap-4 here too, matching the left/right columns above - a flagged
+          slot in this row (rings/trinkets) needs the same room for the
+          Recommended Upgrade banner to spill into without crowding its
+          neighbor (2026-10-02). */}
+      <div className="mt-3 flex justify-center gap-4">{BOTTOM.map(renderTile)}</div>
 
       <p className="mt-4 text-center text-xs text-gray-500">
         Filled in by importing your addon export. Hover a slot to see the item.
