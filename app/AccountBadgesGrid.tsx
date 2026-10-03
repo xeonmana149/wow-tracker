@@ -3,6 +3,7 @@
 import { useState } from "react";
 import AccountBadgeTile from "./AccountBadgeTile";
 import { ACCOUNT_ACHIEVEMENT_BADGES, accountBadgeIconSrc, type AccountAchievementKind } from "../lib/accountAchievements";
+import type { BadgeIconOverrides } from "../lib/badgeIconOverrides";
 
 // Pulled out of AccountView.tsx (2026-10-03, "shouldn't be able to open
 // multiple breakdowns like this, it should close the other") so there's a
@@ -19,10 +20,16 @@ export default function AccountBadgesGrid({
   accountBadges,
   accountBadgeProgress,
   accountBadgeBreakdown,
+  iconOverrides = {},
 }: {
   accountBadges: AccountAchievementKind[];
   accountBadgeProgress: Partial<Record<AccountAchievementKind, { value: number; target: number }>>;
   accountBadgeBreakdown: Partial<Record<AccountAchievementKind, { label: string; value: string }[]>>;
+  // Admin-set icon overrides (/dev/badges) - 2026-10-03, see
+  // accountBadgeIconSrc in lib/accountAchievements.ts for the fallback
+  // chain. Defaults to {} so a caller with nothing loaded yet just gets
+  // every badge's normal (local art or CDN) icon.
+  iconOverrides?: BadgeIconOverrides;
 }) {
   const [openKind, setOpenKind] = useState<AccountAchievementKind | null>(null);
 
@@ -35,7 +42,7 @@ export default function AccountBadgesGrid({
         return (
           <AccountBadgeTile
             key={kind}
-            icon={accountBadgeIconSrc(kind)}
+            icon={accountBadgeIconSrc(kind, iconOverrides)}
             name={name}
             description={rest.join(" - ")}
             earned={earned}

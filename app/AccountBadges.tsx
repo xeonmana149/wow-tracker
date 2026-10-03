@@ -4,11 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ACCOUNT_ACHIEVEMENT_BADGES,
-  ACCOUNT_ACHIEVEMENT_LOCAL_ICONS,
-  localAccountBadgeIconSrc,
+  accountBadgeIconSrc,
   type AccountAchievementKind,
 } from "../lib/accountAchievements";
-import { wowIconUrl } from "../lib/icons";
 import { ACCOUNT_BADGE_FRAME_SRC, ACCOUNT_BADGE_FRAME_HOLE_RATIO } from "../lib/badgeFrames";
 import type { BadgeIconOverrides } from "../lib/badgeIconOverrides";
 
@@ -51,22 +49,11 @@ function AccountBadgeIcon({
   const [pos, setPos] = useState<TooltipPos | null>(null);
   const [failed, setFailed] = useState(false);
 
-  // An admin-set override (the badge_icons table, edited from the
-  // /dev/badges tester - see lib/badgeIconOverrides.ts) always wins and is
-  // rendered as a plain CDN icon, same as before this redesign - it's a
-  // one-off swap-in, not local art. Otherwise this badge's own local art
-  // (if any) is used; a badge with neither falls back to its coded-in CDN
-  // icon, same fallback chain accountBadgeIconSrc() uses on the Account
-  // Overview page.
-  const overrideIcon = badge ? iconOverrides[kind] : undefined;
-  const localSlug = ACCOUNT_ACHIEVEMENT_LOCAL_ICONS[kind];
-  const iconSrc = overrideIcon
-    ? wowIconUrl(overrideIcon)
-    : localSlug
-      ? localAccountBadgeIconSrc(localSlug)
-      : badge
-        ? wowIconUrl(badge.icon)
-        : null;
+  // Shared resolution chain (admin override > local art > coded-in CDN
+  // icon) - lives in lib/accountAchievements.ts so this panel and the
+  // Account Overview page's AccountBadgesGrid can never drift apart again
+  // (2026-10-03: they briefly did - see accountBadgeIconSrc's own comment).
+  const iconSrc = badge ? accountBadgeIconSrc(kind, iconOverrides) : null;
 
   useEffect(() => {
     setFailed(false);

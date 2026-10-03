@@ -43,6 +43,7 @@ export function AccountView({
     accountBadgeBreakdown,
     legacyEarned,
     legacyPoints,
+    iconOverrides,
   } = data;
 
   const earnedCount = mergedItems.filter((i) => i.earned).length;
@@ -295,6 +296,7 @@ export function AccountView({
             accountBadges={accountBadges}
             accountBadgeProgress={accountBadgeProgress}
             accountBadgeBreakdown={accountBadgeBreakdown}
+            iconOverrides={iconOverrides}
           />
         </div>
       </div>

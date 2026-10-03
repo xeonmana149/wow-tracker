@@ -3,6 +3,7 @@ import { CLASSES, RACE_FACTION } from "./options";
 import { PRIMARY_PROFESSIONS, wowIconUrl } from "./icons";
 import { buildAchievementItems } from "../app/achievementBoard";
 import { MAX_CHARACTER_LEVEL, MAX_PROFESSION_SKILL, type AchievementTier } from "./achievements";
+import type { BadgeIconOverrides } from "./badgeIconOverrides";
 
 type AchievementRowDB = { character_id: string; kind: string; tier: AchievementTier | null; earned_at: string | null };
 
@@ -110,8 +111,18 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
     icon: "inv_misc_head_dragon_01",
     label: "Apex Predator - 1,000 or more combined boss kills across your characters.",
   },
+  // Icon changed 2026-10-03 ("why are these also showing wow icons and not
+  // the correct square icon") - "achievement_dungeon_outland_dungeonmaster"
+  // was a Mists of Pandaria-era addition, and this app's icon CDN
+  // (wow.zamimg.com, see the ICON_URL_OVERRIDES comment at the top of
+  // lib/icons.ts) only reliably mirrors classic/TBC-era art - that icon
+  // name resolved to a broken/placeholder image instead of the real trophy
+  // art. Swapped for a plain trophy icon that's been in the game (and on
+  // that CDN) since vanilla. If this still doesn't look right, it can be
+  // fine-tuned per-badge from the /dev/badges icon override tool without
+  // another code change.
   legacy_master: {
-    icon: "achievement_dungeon_outland_dungeonmaster",
+    icon: "inv_misc_trophy_02",
     label: "Legacy Complete - Every Legacy Challenge completed.",
   },
   completionist: {
@@ -167,12 +178,31 @@ export function localAccountBadgeIconSrc(slug: string) {
   return `/account-badge-icons/${slug}.png`;
 }
 
-// Resolves a badge's actual icon URL - local art if it has any, otherwise
-// falls back to the CDN icon in ACCOUNT_ACHIEVEMENT_BADGES. Callers (e.g.
-// AccountView.tsx) should use this instead of reaching into
+// Resolves a badge's actual icon URL. Priority: an admin-set override (the
+// badge_icons table, edited from the /dev/badges tester - see
+// lib/badgeIconOverrides.ts) always wins since it's an explicit one-off
+// swap-in; otherwise this badge's own local art if it has any; otherwise its
+// coded-in CDN icon from ACCOUNT_ACHIEVEMENT_BADGES.
+//
+// `overrides` defaults to {} so every existing call site (none of which used
+// to pass overrides at all) keeps working unchanged.
+//
+// 2026-10-03 fix ("master merchant icon wrong in dashboard but right in
+// account page") - AccountBadges.tsx (the Dashboard panel) had its own
+// copy of this exact priority chain and WAS checking overrides; this
+// function (used by AccountBadgesGrid.tsx on the Account Overview page)
+// never took overrides at all, so a dev-set override only ever showed up on
+// the Dashboard. Both now go through this one function so they can't drift
+// apart again. Callers should use this instead of reaching into
 // ACCOUNT_ACHIEVEMENT_BADGES[kind].icon + wowIconUrl() directly, so a badge
-// getting local art later doesn't need a second place updated.
-export function accountBadgeIconSrc(kind: AccountAchievementKind): string {
+// getting local art (or an override) later doesn't need a second place
+// updated.
+export function accountBadgeIconSrc(
+  kind: AccountAchievementKind,
+  overrides: BadgeIconOverrides = {}
+): string {
+  const overrideIcon = overrides[kind];
+  if (overrideIcon) return wowIconUrl(overrideIcon);
   const slug = ACCOUNT_ACHIEVEMENT_LOCAL_ICONS[kind];
   if (slug) return localAccountBadgeIconSrc(slug);
   return wowIconUrl(ACCOUNT_ACHIEVEMENT_BADGES[kind].icon);

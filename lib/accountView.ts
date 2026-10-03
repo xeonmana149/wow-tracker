@@ -13,6 +13,7 @@ import {
   type AccountAchievementKind,
   type AccountBadgeBreakdownLine,
 } from "./accountAchievements";
+import { loadBadgeIconOverrides, type BadgeIconOverrides } from "./badgeIconOverrides";
 
 // Shared account-overview data loading (2026-09-30, split out of
 // app/account/page.tsx when "how do we see other players account pages?"
@@ -150,6 +151,11 @@ export type AccountViewData = {
   accountBadgeBreakdown: Partial<Record<AccountAchievementKind, AccountBadgeBreakdownLine[]>>;
   legacyEarned: number;
   legacyPoints: number;
+  // Admin-set per-badge icon overrides (the badge_icons table, edited from
+  // /dev/badges) - 2026-10-03, so the Account Overview page's badges honor
+  // the same overrides the Dashboard's AccountBadges panel already did (see
+  // accountBadgeIconSrc in lib/accountAchievements.ts).
+  iconOverrides: BadgeIconOverrides;
 };
 
 // `client` is either the browser's RLS-scoped supabase client (viewing your
@@ -165,20 +171,28 @@ export async function loadAccountViewData(
   userId: string,
   authCreatedAt: string | null
 ): Promise<AccountViewData> {
-  const [{ data: profileRow }, { data: characterRows }, { data: accountAchievementRows }, { data: legacyRows }] =
-    await Promise.all([
-      client
-        .from("profiles")
-        .select("display_name, avatar_icon, banner_style, motto")
-        .eq("id", userId)
-        .maybeSingle(),
-      client
-        .from("characters")
-        .select("id, name, level, class, race, character_type, time_played_hours, money_copper, top_pvp_rank")
-        .eq("user_id", userId),
-      client.from("account_achievements").select("kind").eq("user_id", userId),
-      client.from("account_legacy_achievements").select("completed, ui_points").eq("user_id", userId),
-    ]);
+  const [
+    { data: profileRow },
+    { data: characterRows },
+    { data: accountAchievementRows },
+    { data: legacyRows },
+    iconOverrides,
+  ] = await Promise.all([
+    client
+      .from("profiles")
+      .select("display_name, avatar_icon, banner_style, motto")
+      .eq("id", userId)
+      .maybeSingle(),
+    client
+      .from("characters")
+      .select("id, name, level, class, race, character_type, time_played_hours, money_copper, top_pvp_rank")
+      .eq("user_id", userId),
+    client.from("account_achievements").select("kind").eq("user_id", userId),
+    client.from("account_legacy_achievements").select("completed, ui_points").eq("user_id", userId),
+    // Not user-scoped - badge_icons is one global table of admin-set icon
+    // swaps, the same overrides regardless of whose account page this is.
+    loadBadgeIconOverrides(client),
+  ]);
 
   const chars = (characterRows ?? []) as CharacterRow[];
   const characterIds = chars.map((c) => c.id);
@@ -319,5 +333,6 @@ export async function loadAccountViewData(
     // "completed" to 1 while points stayed at 0, which read as a bug.
     legacyEarned: legacy.filter((r) => r.completed && (r.ui_points ?? 0) > 0).length,
     legacyPoints: legacy.filter((r) => r.completed).reduce((sum, r) => sum + (r.ui_points ?? 0), 0),
+    iconOverrides,
   };
 }
