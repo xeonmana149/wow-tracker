@@ -1,9 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
+import {
+  exportAccountData,
+  restoreFromExport,
+  resetProfileCustomization,
+  deleteAccountData,
+} from "../../../../lib/accountExport";
 
 // Account Settings (2026-10-03, "what should this do" -> scoped down from a
 // much bigger wishlist to: Profile (default character), Privacy
@@ -35,6 +41,7 @@ type ProfileSettings = {
 export default function AccountSettingsPage() {
   const params = useParams<{ userId: string }>();
   const userId = params.userId;
+  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [isOwner, setIsOwner] = useState(false);
@@ -42,6 +49,18 @@ export default function AccountSettingsPage() {
   const [settings, setSettings] = useState<ProfileSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+
+  // Account Management (2026-10-03) - a separate message/busy state from the
+  // Save Changes button above, since these actions (export/import/reset/
+  // delete) aren't part of that form and can run independently of it.
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [manageMessage, setManageMessage] = useState("");
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -118,6 +137,84 @@ export default function AccountSettingsPage() {
     } else {
       setMessage("Saved");
       setTimeout(() => setMessage(""), 1500);
+    }
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    setManageMessage("");
+    try {
+      const data = await exportAccountData(supabase, userId);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const datePart = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `wow-forever-export-${datePart}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setManageMessage("Downloaded.");
+    } catch (err) {
+      setManageMessage(err instanceof Error ? err.message : "Export failed.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function handleImportClick() {
+    importInputRef.current?.click();
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file next time
+    if (!file) return;
+    setImporting(true);
+    setManageMessage("");
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const result = await restoreFromExport(supabase, userId, parsed);
+      setManageMessage(result.message);
+      if (result.ok) {
+        // Settings/characters state on screen may now be stale (restored
+        // values came from the file, not from re-fetching) - reload so what's
+        // shown matches what's actually saved.
+        router.refresh();
+        window.location.reload();
+      }
+    } catch {
+      setManageMessage("Couldn't read that file - make sure it's a WoW Forever Tracker export (.json).");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function handleResetCustomization() {
+    if (!window.confirm("Reset your display name, avatar, banner, motto and Showcase picks back to default?")) return;
+    setResetting(true);
+    setManageMessage("");
+    const result = await resetProfileCustomization(supabase, userId);
+    setManageMessage(result.message);
+    setResetting(false);
+    if (result.ok) window.location.reload();
+  }
+
+  async function handleDeleteAccount() {
+    if (deleteConfirmText !== "DELETE") return;
+    setDeleting(true);
+    setManageMessage("");
+    const result = await deleteAccountData(supabase, userId);
+    setDeleting(false);
+    if (result.ok) {
+      setShowDeleteConfirm(false);
+      setDeleteConfirmText("");
+      router.push(`/account/${userId}`);
+      window.location.reload();
+    } else {
+      setManageMessage(result.message);
     }
   }
 
@@ -310,6 +407,123 @@ export default function AccountSettingsPage() {
         </button>
         {message && <span className="text-sm text-gray-400">{message}</span>}
       </div>
+
+      {/* ACCOUNT MANAGEMENT (2026-10-03) */}
+      <section className="mt-4 rounded-md border border-neutral-700 bg-neutral-800 p-4">
+        <h2 className="text-lg">Account Management</h2>
+
+        <div className="mt-3 flex flex-col gap-4 text-sm">
+          <div>
+            <p className="font-semibold text-gray-200">Export tracker data</p>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Downloads a JSON file with everything on your account - profile, characters, gear, stats,
+              achievements and Legacy Challenge progress.
+            </p>
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={exporting}
+              className="mt-2 rounded border border-neutral-600 px-3 py-1.5 text-sm hover:bg-neutral-700 disabled:opacity-50"
+            >
+              {exporting ? "Preparing..." : "Download my data"}
+            </button>
+          </div>
+
+          <div className="border-t border-neutral-700 pt-3">
+            <p className="font-semibold text-gray-200">Import data</p>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Restores your profile, settings, hidden-character flags and achievement/Legacy Challenge progress
+              from a file this Export produced. It won&apos;t touch gear, stats, professions, talents or your
+              wishlist - re-sync the addon/tray app for those.
+            </p>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json"
+              onChange={handleImportFile}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={handleImportClick}
+              disabled={importing}
+              className="mt-2 rounded border border-neutral-600 px-3 py-1.5 text-sm hover:bg-neutral-700 disabled:opacity-50"
+            >
+              {importing ? "Restoring..." : "Restore from file..."}
+            </button>
+          </div>
+
+          <div className="border-t border-neutral-700 pt-3">
+            <p className="font-semibold text-gray-200">Reset profile customisation</p>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Clears your display name, avatar, banner, motto and Showcase picks back to default. Characters,
+              stats and achievements aren&apos;t affected.
+            </p>
+            <button
+              type="button"
+              onClick={handleResetCustomization}
+              disabled={resetting}
+              className="mt-2 rounded border border-neutral-600 px-3 py-1.5 text-sm hover:bg-neutral-700 disabled:opacity-50"
+            >
+              {resetting ? "Resetting..." : "Reset customisation"}
+            </button>
+          </div>
+
+          <div className="border-t border-red-900/50 pt-3">
+            <p className="font-semibold text-red-400">Delete tracker account</p>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Permanently deletes your characters, gear, stats, achievements and Legacy Challenge progress, and
+              resets your profile. This can&apos;t be undone. Your login isn&apos;t deleted - you can sync again
+              anytime to start fresh.
+            </p>
+            {!showDeleteConfirm ? (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="mt-2 rounded border border-red-700 px-3 py-1.5 text-sm text-red-400 hover:bg-red-950/40"
+              >
+                Delete my tracker data
+              </button>
+            ) : (
+              <div className="mt-2 flex flex-col gap-2 rounded border border-red-800 bg-red-950/20 p-3">
+                <p className="text-xs text-gray-300">
+                  Type <span className="font-mono font-semibold text-red-400">DELETE</span> to confirm. This
+                  can&apos;t be undone.
+                </p>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  className="w-40 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
+                  placeholder="DELETE"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDeleteAccount}
+                    disabled={deleteConfirmText !== "DELETE" || deleting}
+                    className="rounded bg-red-700 px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
+                  >
+                    {deleting ? "Deleting..." : "Permanently delete"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDeleteConfirm(false);
+                      setDeleteConfirmText("");
+                    }}
+                    className="rounded border border-neutral-600 px-3 py-1.5 text-sm hover:bg-neutral-700"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {manageMessage && <p className="text-xs text-gray-400">{manageMessage}</p>}
+        </div>
+      </section>
     </main>
   );
 }
