@@ -25,6 +25,23 @@
 export const BLUE_TRACKER_FEED = "https://www.wowhead.com/forever/blue-tracker?rss";
 export const BLUE_TRACKER_REVALIDATE_SECONDS = 900;
 
+// Pinned changelog post (2026-10-03, "this is the main changelog for
+// updates for the beta and when game launches I will change this to just
+// game update change logs... we should pin it to that top bar so when the
+// date changes users can see it") - Blizzard reuses the SAME blue post for
+// this (just edits the date in its title each time, e.g. "Updated 1
+// October" / "Updated October 1"), so rather than treating it as one more
+// item in the list, the News page pulls out whichever post matches this
+// title pattern and pins it in its own banner above both tabs.
+//
+// This is the one thing in this file that's expected to need editing by
+// hand later, not from a feed-format change but from Jordan's own plan: once
+// the game launches and these become "game update change logs" instead of
+// "Beta Development Notes", update this pattern to match the new title
+// (e.g. /change log/i or /patch notes/i) - everything else (pickPinnedPost,
+// the banner in news-page/page.tsx) keeps working unchanged.
+export const PINNED_POST_TITLE_PATTERN = /development notes/i;
+
 export type BluePost = {
   title: string;
   link: string;
@@ -111,9 +128,50 @@ function parseFeed(xml: string): BluePost[] {
   return posts;
 }
 
+// De-dupe key for one post (2026-10-03, "it does give some duplicates") -
+// Blizzard cross-posts the same blue post to both the US and EU forums, and
+// Wowhead's combined Forever tracker surfaces both as separate items with
+// different links (…/topic/us/… vs …/topic/eu/…). Their TITLES can differ
+// too when the post embeds a date, since US and EU phrase a date
+// differently ("Updated 1 October" vs "Updated October 1" - the exact
+// "Beta Development Notes" pair this request called out) - so title isn't a
+// reliable de-dupe key on its own. The post BODY (excerpt) is copy-pasted
+// identically to both regions' forums, so that's what this keys on when
+// there's enough of it to be meaningful; a title with any trailing
+// "- Updated <date>"-style clause and punctuation stripped out is the
+// fallback for the rare post with no excerpt at all.
+function dedupeKey(post: BluePost): string {
+  const excerptKey = post.excerpt.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 140);
+  if (excerptKey.length >= 20) return excerptKey;
+  return post.title
+    .toLowerCase()
+    .replace(/[-–]\s*updated\b.*$/i, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+// Keeps the first post seen for each de-dupe key - callers sort newest-first
+// before calling this, so "first seen" is also "most recent of the pair".
+function dedupe(posts: BluePost[]): BluePost[] {
+  const seen = new Set<string>();
+  const result: BluePost[] = [];
+  for (const post of posts) {
+    const key = dedupeKey(post);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(post);
+  }
+  return result;
+}
+
+function sortByDateDesc(posts: BluePost[]): BluePost[] {
+  return [...posts].sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0));
+}
+
 // Fetched at most once every BLUE_TRACKER_REVALIDATE_SECONDS, however many
 // people (or scheduled pings) call this - same dedupe-on-url+options
-// behavior as loadNews() in lib/news.ts.
+// behavior as loadNews() in lib/news.ts. Returned posts are newest-first and
+// already de-duplicated across US/EU regional cross-posts.
 export async function loadBluePosts(): Promise<BluePost[] | null> {
   try {
     const res = await fetch(BLUE_TRACKER_FEED, {
@@ -121,8 +179,17 @@ export async function loadBluePosts(): Promise<BluePost[] | null> {
       next: { revalidate: BLUE_TRACKER_REVALIDATE_SECONDS },
     });
     if (!res.ok) return null;
-    return parseFeed(await res.text());
+    return dedupe(sortByDateDesc(parseFeed(await res.text())));
   } catch {
     return null;
   }
+}
+
+// Finds the newest post matching PINNED_POST_TITLE_PATTERN (see its own
+// comment above) so the News page can pin it in a banner instead of leaving
+// it to show up (and get buried) as just another card in the list. `posts`
+// is expected already sorted newest-first, as loadBluePosts() returns it, so
+// the first match is the current one.
+export function pickPinnedPost(posts: BluePost[]): BluePost | null {
+  return posts.find((p) => PINNED_POST_TITLE_PATTERN.test(p.title)) ?? null;
 }
