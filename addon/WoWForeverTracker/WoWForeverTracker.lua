@@ -91,6 +91,30 @@ local function regionTexts(frame, budget)
     return texts
 end
 
+-- Safe IsShown() check that never throws. Moved up here (2026-10-03) from
+-- the pvprankframefind diagnostic once it turned out scanPvpRankFromUI
+-- needs it too: the PvP rank panel is a combat-protected frame on this
+-- client, and its IsShown() result comes back as a "secret value" that
+-- insecure addon code isn't even allowed to boolean-test directly (`if
+-- shown then` on it throws "attempt to perform boolean test on a secret
+-- value"). Doing that test INSIDE this function's own pcall catches that,
+-- and a thrown "can't tell" is treated as "assume shown" rather than
+-- "assume hidden" - for a protected frame like this one, refusing to look
+-- at it just because we can't prove it's visible would mean never scanning
+-- it at all.
+local function isShownSafe(widget)
+    local ok, result = pcall(function()
+        if widget.IsShown and widget:IsShown() then
+            return true
+        end
+        return false
+    end)
+    if ok then
+        return result
+    end
+    return true
+end
+
 -- Same idea but for a function value you already have in hand (e.g. one
 -- pulled out of a C_* table), rather than a global name. Every existing
 -- caller of this only ever needed a single return value, so this only ever
@@ -1127,6 +1151,21 @@ local LEGACY_ACHIEVEMENTS_MAX = 600
 local function collectLegacyAchievements()
     local out = {}
 
+    -- GetCategoryList()/GetAchievementInfo() only return real data once
+    -- Blizzard_AchievementUI has loaded - normally that happens the moment
+    -- the player opens the in-game Achievements panel. The server added a
+    -- level-25 gate on actually OPENING that panel (2026-10, Jordan), which
+    -- meant a character below level 25 could never trigger the load and
+    -- this function would always come back empty - "Nothing synced yet"
+    -- forever, with no way to fix it in-game. The gate blocks showing
+    -- AchievementFrame, not loading the addon module behind it, so forcing
+    -- the load here - without ever calling AchievementFrame:Show() or
+    -- ShowUIPanel - sidesteps the level gate entirely. Safe to call every
+    -- sync; IsAddOnLoaded short-circuits it to a no-op once it's loaded.
+    if type(_G.IsAddOnLoaded) ~= "function" or not _G.IsAddOnLoaded("Blizzard_AchievementUI") then
+        safeCall(_G.LoadAddOn, "Blizzard_AchievementUI")
+    end
+
     local getCategoryList = _G.GetCategoryList
     local getCategoryInfo = _G.GetCategoryInfo
     local getCategoryNum = _G.GetCategoryNumAchievements
@@ -1317,12 +1356,124 @@ legacyPointsScanFrame:SetScript("OnUpdate", function(_, elapsed)
     pcall(scanLegacyPointsFromUI)
 end)
 
+-----------------------------------------------------------------------
+-- PvP Rank scanning (2026-10-03)
+-----------------------------------------------------------------------
+-- There's no working API for this on this server's client (/wft pvpdump
+-- confirmed GetPVPLifetimeStats()/GetPVPThisWeekStats() come back mostly
+-- nil, and the classic UnitPVPRank/GetPVPRankInfo functions don't exist
+-- here at all) - found via /wft pvprankframefind instead that the real
+-- "Player vs. Player" panel is a named global frame, _G.PVPRankFrame, with
+-- everything we need sitting in plain FontString regions:
+--   - a frame with 3 regions: " Season N", the rank's name (e.g.
+--     "Civilian"), and "Rank Points: X / Y"
+--   - a separate Button nested a couple levels down (next to the rank
+--     badge's cooldown-swipe icon) whose own text is just the rank NUMBER
+--     (e.g. "0" for Civilian) - this is the one that actually matters,
+--     since it's a real number we can compare against the cap, rather than
+--     14 rank names we'd have to hand-map ourselves. The panel's own text
+--     confirms the cap: "up to a maximum of 24750 for Rank 14", so ranks
+--     run 0-14 and 14 is the top.
+--
+-- Same opportunistic-capture pattern as scanLegacyPointsFromUI: this can
+-- only see a number while the player actually has the panel open, so it
+-- caches into WFTSyncDB and keeps the HIGHEST rank ever seen (rank is only
+-- supposed to go up, but there's no reason to let a weird read knock a
+-- cached high value back down).
+local function scanPvpRankFromUI()
+    local frame = _G.PVPRankFrame
+    if not frame or not isShownSafe(frame) then
+        return false
+    end
+
+    local rankName, rankPoints, rankPointsMax, rankNumber
+    local budget = { count = 0 }
+
+    local function walk(f, depth)
+        if not f or depth > 8 or budget.count > 2000 then
+            return
+        end
+        local ok, children = pcall(function()
+            return { f:GetChildren() }
+        end)
+        if not ok or not children then
+            return
+        end
+        for _, child in ipairs(children) do
+            budget.count = budget.count + 1
+            if budget.count > 2000 then
+                return
+            end
+            local texts = regionTexts(child, budget)
+            for _, t in ipairs(texts) do
+                local cur, max = t:match("Rank Points:%s*(%d+)%s*/%s*(%d+)")
+                if cur and max then
+                    rankPoints = tonumber(cur)
+                    rankPointsMax = tonumber(max)
+                end
+            end
+            if not rankName and #texts >= 2 then
+                -- The rank's display name is whichever region text isn't
+                -- the "Season N" label or the "Rank Points: x / y" line -
+                -- in the confirmed dump that's the middle one of three,
+                -- but matched by exclusion here rather than by position in
+                -- case the panel ever reorders or adds a region.
+                for _, t in ipairs(texts) do
+                    if not t:match("^%s*Season%s+%d+%s*$") and not t:match("Rank Points:") then
+                        rankName = t:match("^%s*(.-)%s*$")
+                    end
+                end
+            end
+            if not rankNumber then
+                local okType, objType = pcall(function()
+                    return child.GetObjectType and child:GetObjectType()
+                end)
+                if okType and objType == "Button" and #texts == 1 and tonumber(texts[1]) then
+                    rankNumber = tonumber(texts[1])
+                end
+            end
+            walk(child, depth + 1)
+        end
+    end
+
+    walk(frame, 0)
+
+    if not rankNumber then
+        return false
+    end
+
+    WFTSyncDB = WFTSyncDB or {}
+    WFTSyncDB.pvpRank = WFTSyncDB.pvpRank or {}
+    if not WFTSyncDB.pvpRank.rank or rankNumber > WFTSyncDB.pvpRank.rank then
+        WFTSyncDB.pvpRank.rank = rankNumber
+        WFTSyncDB.pvpRank.rankName = rankName
+    end
+    if rankPoints and rankPointsMax then
+        WFTSyncDB.pvpRank.points = rankPoints
+        WFTSyncDB.pvpRank.pointsMax = rankPointsMax
+    end
+    return true
+end
+
+local pvpRankScanFrame = CreateFrame("Frame")
+local pvpRankScanElapsed = 0
+pvpRankScanFrame:SetScript("OnUpdate", function(_, elapsed)
+    -- Same once/second throttle as legacyPointsScanFrame - scanPvpRankFromUI
+    -- already bails out instantly via isShownSafe when the panel's closed.
+    pvpRankScanElapsed = pvpRankScanElapsed + elapsed
+    if pvpRankScanElapsed < 1 then
+        return
+    end
+    pvpRankScanElapsed = 0
+    pcall(scanPvpRankFromUI)
+end)
+
 local function buildExport()
     local out = {}
     local tocversion = select(4, safeGet("GetBuildInfo"))
     local okDate, timestamp = safeCall(_G.date, "%Y-%m-%d %H:%M:%S")
     out.meta = {
-        addonVersion = "1.8.10",
+        addonVersion = "1.9.1",
         tocversion = tocversion,
         exportedAt = okDate and timestamp or nil,
     }
@@ -1342,6 +1493,13 @@ local function buildExport()
     -- never-crash-the-export guard.
     local okLegacy, legacyAchievements = pcall(collectLegacyAchievements)
     out.legacyAchievements = okLegacy and legacyAchievements or nil
+    -- PvP rank (see scanPvpRankFromUI above) - this is opportunistic, like
+    -- legacyPointValues: it's only populated once the player has actually
+    -- opened the Player vs. Player panel at least once this session (or a
+    -- previous one - WFTSyncDB persists across sessions), so it's nil
+    -- until then rather than a fake 0.
+    out.pvpRank = (type(WFTSyncDB) == "table" and type(WFTSyncDB.pvpRank) == "table")
+        and WFTSyncDB.pvpRank or nil
     return out
 end
 
@@ -3074,6 +3232,189 @@ local function cmdLegacyFrameTreeDump()
 end
 
 -----------------------------------------------------------------------
+-- /wft pvprankframefind (2026-10-03) - we don't know this server's PvP
+-- Rank Points panel's frame name the way we know _G.LegacySystemFrame, so
+-- legacyframetreedump's "dump one known frame" approach doesn't apply yet.
+-- Instead this searches the WHOLE visible UI tree from UIParent downward
+-- for any widget whose own text or region text contains "Rank Points" (the
+-- label seen in the user's screenshot of the Player vs. Player panel,
+-- e.g. "Rank Points: 0 / 750") - same widgetOwnText/regionTexts helpers
+-- scanLegacyPointsFromUI and dumpFrameTree already use. For every match it
+-- prints the full parent chain (frame names/types from the match up to
+-- UIParent) so we can see which frame to point a real scanner at, then
+-- dumps that nearest NAMED ancestor's full subtree the same way
+-- legacyframetreedump does, piped through the same export window.
+--
+-- Diagnostic only - doesn't touch buildExport()'s output, so per the
+-- version-bump rule this doesn't need a version bump on its own.
+----------------------------------------------------------------------
+
+local function framePathName(frame)
+    local names = {}
+    local current = frame
+    local hops = 0
+    while current and hops < 15 do
+        hops = hops + 1
+        local okName, name = pcall(function()
+            return current.GetName and current:GetName()
+        end)
+        local okType, objType = pcall(function()
+            return current.GetObjectType and current:GetObjectType()
+        end)
+        table.insert(names, ((okName and name) or "<unnamed>") .. " [" .. ((okType and objType) or "?") .. "]")
+        local okParent, parent = pcall(function()
+            return current.GetParent and current:GetParent()
+        end)
+        current = okParent and parent or nil
+    end
+    return table.concat(names, " <- ")
+end
+
+-- Recursively searches `frame` and its descendants for any widget whose
+-- own text or region text contains `needle` (case-insensitive), appending
+-- matches to `matches`. Same depth/budget guards as dumpFrameTree so a
+-- deep UI tree (UIParent has a LOT under it) can't hang the client.
+--
+-- IMPORTANT: UIParent's children include every panel the client has ever
+-- created, shown or not - the bag frames, auction house, guild frame,
+-- mail, every other closed window all live there permanently, hidden.
+-- The first version of this recursed into those hidden subtrees too, so
+-- the 4000-widget budget was spent on frames nobody can see before the
+-- walk ever reached the open PvP panel, and it came back with zero
+-- matches even though the panel was clearly open on screen. Fixed by only
+-- recursing into a child when IT is shown - a hidden frame's children
+-- can't be showing "Rank Points" either, so there's nothing worth
+-- descending into, and skipping those subtrees entirely is what makes the
+-- remaining budget land on the frames actually on screen.
+--
+-- 2026-10-03: the real PvP panel turned out to be a combat-protected
+-- frame, and this client's secure execution model marks its IsShown()
+-- result as a "secret value" that insecure addon code isn't even allowed
+-- to boolean-test (`if shown then` itself throws "attempt to perform
+-- boolean test on a secret value"). That's confirmation we reached the
+-- right frame, not a reason to give up on it - isShownSafe (moved up near
+-- widgetOwnText/regionTexts so scanPvpRankFromUI can use it too) does the
+-- true/false check INSIDE its own pcall, and treats a thrown "can't tell"
+-- as "assume shown" rather than skip, since refusing to recurse into
+-- exactly the protected panel we're hunting for would defeat the whole
+-- command.
+local function findFramesWithText(frame, needle, depth, budget, matches)
+    if not frame or depth > 12 or budget.count > 6000 then
+        return
+    end
+    local ok, children = pcall(function()
+        return { frame:GetChildren() }
+    end)
+    if not ok or not children then
+        return
+    end
+    for _, child in ipairs(children) do
+        budget.count = budget.count + 1
+        if budget.count > 6000 then
+            return
+        end
+        if isShownSafe(child) then
+            local ownText = widgetOwnText(child)
+            local texts = regionTexts(child, budget)
+            local haystack = (ownText or "") .. " " .. table.concat(texts, " ")
+            if haystack:lower():find(needle:lower(), 1, true) then
+                table.insert(matches, child)
+            end
+            -- Only descend into frames that are actually on screen - see
+            -- the note above. A hidden child is skipped entirely, which is
+            -- what keeps this fast enough to reach the open panel at all.
+            findFramesWithText(child, needle, depth + 1, budget, matches)
+        end
+    end
+end
+
+local function cmdPvpRankFrameFind()
+    print("|cffffcc00WFT pvprankframefind - searching the visible UI for 'Rank Points':|r")
+    print("  Open the Player vs. Player panel from your screenshot FIRST, then run this.")
+
+    local matches = {}
+    local budget = { count = 0 }
+    local ok, err = pcall(findFramesWithText, UIParent, "Rank Points", 0, budget, matches)
+    if not ok then
+        print("|cffff0000WFT pvprankframefind error:|r " .. tostring(err))
+        return
+    end
+
+    if #matches == 0 then
+        print("  No visible widget contains \"Rank Points\" - make sure the panel is open and showing a rank (not blank/loading), then try again.")
+        -- Fallback: list every top-level frame currently shown directly
+        -- under UIParent. If the text search still comes up empty with
+        -- the panel open, this at least narrows down which top-level
+        -- frame IS the PvP panel, so the next attempt can target it by
+        -- name directly instead of searching for its text.
+        local shownTop = {}
+        local okChildren, children = pcall(function()
+            return { UIParent:GetChildren() }
+        end)
+        if okChildren and children then
+            for _, child in ipairs(children) do
+                if isShownSafe(child) then
+                    local okName, name = pcall(function()
+                        return child.GetName and child:GetName()
+                    end)
+                    local okType, objType = pcall(function()
+                        return child.GetObjectType and child:GetObjectType()
+                    end)
+                    table.insert(shownTop, ((okName and name) or "<unnamed>") .. " [" .. ((okType and objType) or "?") .. "]")
+                end
+            end
+        end
+        print(("  %d top-level frame(s) currently shown under UIParent - copy/paste the export window back:"):format(#shownTop))
+        showExportWindow(table.concat(shownTop, "\n"))
+        return
+    end
+
+    print(("  %d matching widget(s) found."):format(#matches))
+
+    local out = {}
+    local namedAncestor = nil
+    for i, match in ipairs(matches) do
+        local path = framePathName(match)
+        table.insert(out, ("match %d path: %s"):format(i, path))
+        if not namedAncestor then
+            -- Walk up from this match to the nearest ancestor that actually
+            -- has a global name - that's the frame worth dumping in full,
+            -- the same way legacyframetreedump dumps LegacySystemFrame.
+            local current = match
+            local hops = 0
+            while current and hops < 15 do
+                hops = hops + 1
+                local okName, name = pcall(function()
+                    return current.GetName and current:GetName()
+                end)
+                if okName and name then
+                    namedAncestor = { frame = current, name = name }
+                    break
+                end
+                local okParent, parent = pcall(function()
+                    return current.GetParent and current:GetParent()
+                end)
+                current = okParent and parent or nil
+            end
+        end
+    end
+
+    table.insert(out, "")
+    if namedAncestor then
+        table.insert(out, ("Dumping nearest named ancestor: %s"):format(namedAncestor.name))
+        local dumpBudget = { count = 0 }
+        local dumpOk, dumpErr = pcall(dumpFrameTree, namedAncestor.frame, 0, dumpBudget, out)
+        if not dumpOk then
+            table.insert(out, "dumpFrameTree error: " .. tostring(dumpErr))
+        end
+    else
+        table.insert(out, "No named ancestor found within 15 hops - every frame in the chain is anonymous.")
+    end
+
+    showExportWindow(table.concat(out, "\n"))
+end
+
+-----------------------------------------------------------------------
 -- /wft legacyiconprobe (2026-09-27) - points are confirmed synced/correct
 -- now, but the icon art on the website still shows a blank placeholder for
 -- every Legacy Challenge card. achievementBoard.ts's `remoteIcon` field is
@@ -3179,6 +3520,8 @@ SlashCmdList["WFT"] = function(rawMsg)
         cmdLegacyTreeDataDump()
     elseif msg == "legacyframetreedump" then
         cmdLegacyFrameTreeDump()
+    elseif msg == "pvprankframefind" then
+        cmdPvpRankFrameFind()
     elseif msg == "legacyiconprobe" then
         cmdLegacyIconProbe()
     elseif msg == "recipeprobe" then
@@ -3218,6 +3561,7 @@ SlashCmdList["WFT"] = function(rawMsg)
         print("  /wft legacysystemprobe - force-load Blizzard's Legacy System UI module and check what API appears (diagnostic, for me to look at - run this with the Legacy Challenges panel closed first)")
         print("  /wft legacytreedatadump - dump LegacyTreeData, found via legacysystemprobe (diagnostic, for me to look at - run legacysystemprobe first this session)")
         print("  /wft legacyframetreedump - dump the real widget names under the Legacy Challenges panel (diagnostic, for me to look at - OPEN the panel in game first, then run this)")
+        print("  /wft pvprankframefind - search the open PvP panel for 'Rank Points' and dump its frame tree (diagnostic, for me to look at - OPEN the Player vs. Player panel in game first, then run this)")
         print("  /wft legacyiconprobe - check what type/value GetAchievementInfo's icon field actually is (diagnostic, for me to look at)")
         print("  /wft recipeprobe - check for a recipe-listing API on this client (diagnostic, for me to look at)")
         print("  /wft recipeschema - check whether this client can give back a recipe's reagents/description too, not just its name (diagnostic, for me to look at - run /wft recipescan at least once first)")
