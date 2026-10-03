@@ -731,6 +731,39 @@ export default function ItemSearch() {
     // into the search box below (which would fight the user's own typing).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  // Deep link straight to one item's details (2026-10-03, account page Item
+  // Showcase - "click it and it takes you to the item page with that item's
+  // information open and ready") - landing here with ?itemId=123 fetches
+  // just that item by id and opens it in the inspector immediately, without
+  // the visitor needing to type a search themselves. Pulled in as its own
+  // state (rather than piggybacking on `results`/`selectedId`) so a bad or
+  // not-found id just quietly does nothing instead of fighting the normal
+  // search flow.
+  const [directItem, setDirectItem] = useState<ItemResult | null>(null);
+  const [directItemLoading, setDirectItemLoading] = useState(false);
+  useEffect(() => {
+    const itemId = searchParams.get("itemId");
+    if (!itemId) {
+      setDirectItem(null);
+      return;
+    }
+    let cancelled = false;
+    setDirectItemLoading(true);
+    fetch(`/api/items/search?id=${encodeURIComponent(itemId)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        setDirectItem(data.items?.[0] ?? null);
+      })
+      .finally(() => {
+        if (!cancelled) setDirectItemLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   const [quality, setQuality] = useState("");
   const [stat, setStat] = useState("");
   const [category, setCategory] = useState("");
@@ -901,6 +934,22 @@ export default function ItemSearch() {
 
   return (
     <div>
+      {directItemLoading && (
+        <p className="mb-3 text-sm text-gray-500">Loading item...</p>
+      )}
+      {!directItemLoading && directItem && (
+        <div className="mb-4 flex justify-center">
+          <ItemInspector
+            item={directItem}
+            character={selectedCharacter}
+            allCharacters={characters}
+            onClose={() => setDirectItem(null)}
+          />
+        </div>
+      )}
+      {!directItemLoading && searchParams.get("itemId") && !directItem && (
+        <p className="mb-3 text-sm text-gray-400">That item couldn&apos;t be found.</p>
+      )}
       <div
         className="space-y-3 rounded-md border p-3"
         style={{ background: "linear-gradient(180deg, rgba(20,17,12,0.85), rgba(10,9,6,0.85))", borderColor: "#4a4030" }}

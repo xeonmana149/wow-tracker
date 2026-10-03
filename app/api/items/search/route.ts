@@ -50,6 +50,35 @@ const JS_SCAN_LIMIT = 300;
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
+
+  // Direct id lookup (2026-10-03, account page Item Showcase - "click it and
+  // it takes you to the item page with that item's information open and
+  // ready") - a single item by its own database id, bypassing every other
+  // filter below. Used by ItemSearch.tsx's ?itemId= deep link so landing on
+  // the Items page from a showcase pick shows exactly that item's details
+  // immediately, without the visitor having to search for it by name
+  // themselves. `hidden` items are intentionally still excluded here, same
+  // as the normal search path - a hidden item shouldn't become reachable
+  // just because something happens to link straight to its id.
+  const idParam = searchParams.get("id");
+  if (idParam) {
+    const id = Number(idParam);
+    if (!Number.isFinite(id)) {
+      return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+    }
+    const { data, error } = await supabaseAdmin
+      .from("items")
+      .select(
+        "id, name, quality, quality_color, item_class, item_subclass, inventory_type, level, required_level, armor, damage_min, damage_max, weapon_speed, weapon_dps, binding, durability, spell_lines, profession_requirement, reagents_text, classes_text, item_set_line, item_set_pieces, item_set_bonuses, stats, sell_price, icon, icon_name, verified, tooltip"
+      )
+      .eq("id", id)
+      .eq("hidden", false)
+      .maybeSingle();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!data) return NextResponse.json({ items: [], total: 0, page: 1, pageSize: 1 });
+    return NextResponse.json({ items: [data], total: 1, page: 1, pageSize: 1 });
+  }
+
   const q = (searchParams.get("q") ?? "").trim();
   const quality = (searchParams.get("quality") ?? "").trim().toUpperCase();
   const stat = (searchParams.get("stat") ?? "").trim();
