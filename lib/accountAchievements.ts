@@ -176,33 +176,43 @@ export function localAccountBadgeIconSrc(slug: string) {
   return `/account-badge-icons/${slug}.png`;
 }
 
-// Resolves a badge's actual icon URL. Priority: an admin-set override (the
-// badge_icons table, edited from the /dev/badges tester - see
-// lib/badgeIconOverrides.ts) always wins since it's an explicit one-off
-// swap-in; otherwise this badge's own local art if it has any; otherwise its
-// coded-in CDN icon from ACCOUNT_ACHIEVEMENT_BADGES.
+// Resolves a badge's actual icon URL. Priority: this badge's own local art
+// if it has any; otherwise an admin-set override (the badge_icons table);
+// otherwise its coded-in CDN icon from ACCOUNT_ACHIEVEMENT_BADGES.
 //
 // `overrides` defaults to {} so every existing call site (none of which used
 // to pass overrides at all) keeps working unchanged.
 //
 // 2026-10-03 fix ("master merchant icon wrong in dashboard but right in
 // account page") - AccountBadges.tsx (the Dashboard panel) had its own
-// copy of this exact priority chain and WAS checking overrides; this
-// function (used by AccountBadgesGrid.tsx on the Account Overview page)
-// never took overrides at all, so a dev-set override only ever showed up on
-// the Dashboard. Both now go through this one function so they can't drift
-// apart again. Callers should use this instead of reaching into
-// ACCOUNT_ACHIEVEMENT_BADGES[kind].icon + wowIconUrl() directly, so a badge
-// getting local art (or an override) later doesn't need a second place
-// updated.
+// copy of this exact chain and WAS checking overrides; this function (used
+// by AccountBadgesGrid.tsx on the Account Overview page) never took
+// overrides at all, so a dev-set override only ever showed up on the
+// Dashboard. Both now go through this one function so they can't drift
+// apart again.
+//
+// 2026-10-03, same day - PRIORITY FLIPPED (was override-wins-over-everything)
+// after that same fix surfaced a second bug: a stale "tycoon" override row
+// set back before Master Merchant had local art was now winning on BOTH
+// pages, showing the old plain CDN coin icon everywhere instead of the real
+// master-merchant.png art. The /dev/badges page's own icon-override editor
+// was removed back on 2026-09-25 (see its header comment - "the per-icon
+// 'customize icons' editor...isn't used any more"), so there's no in-app way
+// left to clear a stale row like that. Since every account badge now has its
+// own confirmed local art (2026-10-03's "fill out every badge" pass), local
+// art winning is the right default going forward - an override only still
+// matters as a stopgap for a future badge added without art yet. Callers
+// should use this instead of reaching into ACCOUNT_ACHIEVEMENT_BADGES[kind]
+// .icon + wowIconUrl() directly, so a badge getting local art (or an
+// override) later doesn't need a second place updated.
 export function accountBadgeIconSrc(
   kind: AccountAchievementKind,
   overrides: BadgeIconOverrides = {}
 ): string {
-  const overrideIcon = overrides[kind];
-  if (overrideIcon) return wowIconUrl(overrideIcon);
   const slug = ACCOUNT_ACHIEVEMENT_LOCAL_ICONS[kind];
   if (slug) return localAccountBadgeIconSrc(slug);
+  const overrideIcon = overrides[kind];
+  if (overrideIcon) return wowIconUrl(overrideIcon);
   return wowIconUrl(ACCOUNT_ACHIEVEMENT_BADGES[kind].icon);
 }
 
