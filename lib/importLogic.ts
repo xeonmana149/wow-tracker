@@ -1093,33 +1093,54 @@ export async function applyImport(
     );
     const newlyCompleted = realLegacyAchievements.filter((a) => a.completed && !previouslyCompleted.has(a.id));
 
+    // icon joins ui_points as a "don't overwrite a known value with a blank
+    // one" field (2026-10-03, "annoying cause icons worked before" - real
+    // syncs turned out to sometimes report no icon for an achievement even
+    // though a previous sync DID capture a real one, same opportunistic
+    // shape as ui_points, just never given the same protection). Before
+    // this fix, every sync unconditionally wrote `icon: a.icon ?? null`,
+    // so a sync with no icon this time would blank out a good one from
+    // before - exactly what sql/legacy-achievement-shared-reference.sql's
+    // own Step 2 did when it unconditionally preferred one account's data
+    // as "the baseline" (`icon = EXCLUDED.icon`, no COALESCE, unlike that
+    // same migration's own ui_points column right next to it). That
+    // migration already ran and account_legacy_achievements' old icon
+    // column is gone (Step 4), so whatever it wiped can't be recovered
+    // from the database - only a future sync that actually reports a real
+    // icon can refill it, and this fix is what makes that refill stick
+    // instead of getting blanked out again by the next sync that doesn't
+    // have it. category/name/description/points are left as "always
+    // overwrite" (unchanged) - no evidence yet that those have the same
+    // sometimes-missing problem icon turned out to have.
     const definitionRow = (a: NonNullable<ParsedExport["legacyAchievements"]>[number]) => ({
       achievement_id: a.id,
       category: a.category,
       name: a.name,
       description: a.description ?? null,
-      icon: a.icon ?? null,
       points: a.points ?? null,
       updated_at: new Date().toISOString(),
     });
 
-    const definitionsWithUiPoints = realLegacyAchievements
-      .filter((a) => typeof a.uiPoints === "number")
-      .map((a) => ({ ...definitionRow(a), ui_points: a.uiPoints }));
-    const definitionsWithoutUiPoints = realLegacyAchievements
-      .filter((a) => typeof a.uiPoints !== "number")
-      .map((a) => definitionRow(a));
+    const bucketKey = (a: NonNullable<ParsedExport["legacyAchievements"]>[number]) =>
+      `${a.icon != null ? 1 : 0}:${typeof a.uiPoints === "number" ? 1 : 0}`;
 
-    if (definitionsWithUiPoints.length > 0) {
-      const { error } = await supabase
-        .from("legacy_achievement_definitions")
-        .upsert(definitionsWithUiPoints, { onConflict: "achievement_id" });
-      if (error) throw new Error(error.message);
+    const buckets = new Map<string, NonNullable<ParsedExport["legacyAchievements"]>>();
+    for (const a of realLegacyAchievements) {
+      const key = bucketKey(a);
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key)!.push(a);
     }
-    if (definitionsWithoutUiPoints.length > 0) {
+
+    for (const [key, group] of buckets) {
+      const [hasIcon, hasUiPoints] = key.split(":").map((v) => v === "1");
+      const rows = group.map((a) => ({
+        ...definitionRow(a),
+        ...(hasIcon ? { icon: a.icon } : {}),
+        ...(hasUiPoints ? { ui_points: a.uiPoints } : {}),
+      }));
       const { error } = await supabase
         .from("legacy_achievement_definitions")
-        .upsert(definitionsWithoutUiPoints, { onConflict: "achievement_id" });
+        .upsert(rows, { onConflict: "achievement_id" });
       if (error) throw new Error(error.message);
     }
 
