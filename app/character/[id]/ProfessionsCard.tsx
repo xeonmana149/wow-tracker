@@ -141,7 +141,7 @@ export default function ProfessionsCard({
                     <button
                       type="button"
                       onClick={() => setOpenRecipesId(isOpen ? null : p.id)}
-                      className="rounded px-1.5 py-0.5 text-xs text-gray-400 hover:bg-neutral-700 hover:text-white"
+                      className="rounded px-1.5 py-0.5 text-xs font-bold text-yellow-300 hover:bg-neutral-700"
                     >
                       {isOpen ? "Hide" : `${recipeCount} recipe${recipeCount === 1 ? "" : "s"} known`}
                     </button>
