@@ -223,7 +223,7 @@ export async function loadAccountViewData(
       professionRows: profRows,
       statRows: stRows,
       pvpTopRankCharacterCount,
-      legacyCompletedCount: legacy.filter((r) => r.completed).length,
+      legacyRows: legacy,
       earnedAchievementCount,
       totalAchievementCount,
     });

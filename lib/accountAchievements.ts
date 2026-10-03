@@ -119,24 +119,36 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
   },
 };
 
-// Local custom art for account badges (2026-09-30) - same idea as
-// FLAT_LOCAL_ICONS/TIERED_LOCAL_ICONS in lib/achievementBadges.ts: a badge
-// with an entry here shows Jordan's own art from /public/account-badge-
-// icons/<slug>.png instead of its ACCOUNT_ACHIEVEMENT_BADGES.icon CDN
-// fallback. Only badges with actual art get listed here; everything else
-// keeps using its CDN icon until art exists for it too - adding one is
-// just: drop the file, add one line below.
+// Local custom art for account badges (2026-09-30, filled out to cover
+// every badge 2026-10-03) - same idea as FLAT_LOCAL_ICONS/TIERED_LOCAL_ICONS
+// in lib/achievementBadges.ts: a badge with an entry here shows Jordan's own
+// art from /public/account-badge-icons/<slug>.png instead of its
+// ACCOUNT_ACHIEVEMENT_BADGES.icon CDN fallback. Every account badge now has
+// its own art, matching the current display names (class_collector's file
+// is "full-roster.png" for "Full Roster", tycoon's is "master-merchant.png"
+// for "Master Merchant", etc.) - kept as a Partial type rather than a plain
+// Record so a future new kind added without art yet doesn't need a
+// placeholder entry here, it'll just fall back to its CDN icon until one
+// exists.
 export const ACCOUNT_ACHIEVEMENT_LOCAL_ICONS: Partial<Record<AccountAchievementKind, string>> = {
-  class_collector: "class-collector",
+  // Display name "Full Roster" - filename matches the rename, not the kind.
+  class_collector: "full-roster",
   alliance_completionist: "alliance-completionist",
   horde_completionist: "horde-completionist",
   diplomat: "diplomat",
   master_of_all_trades: "master-of-all-trades",
-  // File on disk is "Tycoon.png" (capitalized) - rename it to lowercase
-  // "tycoon.png" in public/account-badge-icons/ to match this slug. Linux/
-  // Vercel's filesystem is case-sensitive, so a mismatch here 404s instead
-  // of silently falling back to the CDN icon.
-  tycoon: "tycoon",
+  // Display name "Master Merchant" - filename matches the rename.
+  tycoon: "master-merchant",
+  // Display name "Blood of the Enemy" - filename matches the rename.
+  battle_scarred: "blood-of-the-enemy",
+  pvp_dynasty: "pvp-dynasty",
+  apex_predator: "apex-predator",
+  // Display name "Legacy Complete" - filename matches the rename.
+  legacy_master: "legacy-complete",
+  // Display name "The Completionist".
+  completionist: "the-completionist",
+  // Display name "Time Lost in Azeroth" - filename matches the rename.
+  marathon: "time-lost-in-azeroth",
 };
 
 export function localAccountBadgeIconSrc(slug: string) {
@@ -349,19 +361,36 @@ export async function checkAccountAchievements(
     await tryAward("pvp_dynasty");
   }
 
-  // Legacy Complete (2026-09-30) - every Legacy Challenge achievement
-  // completed. account_legacy_achievements gets a row for every known
-  // achievement on each sync (completed or not - see importLogic.ts), so a
-  // fully-synced, fully-completed account has exactly LEGACY_ACHIEVEMENT_
-  // TOTAL rows, all completed:true. Requiring the full row count (not just
-  // "every row we happen to have is completed") guards against awarding
-  // this to an account that's only synced a handful of categories so far.
+  // Legacy Complete (2026-09-30, narrowed 2026-10-03 - "only account for
+  // challenges that give legacy points") - every Legacy Challenge
+  // achievement that actually awards Legacy Points, completed.
+  // account_legacy_achievements gets a row for every known achievement on
+  // each sync (completed or not - see importLogic.ts), so a fully-synced
+  // account has exactly LEGACY_ACHIEVEMENT_TOTAL rows. ui_points is scraped
+  // from the in-game UI and is null until that achievement's been scanned
+  // at least once, 0 if scanned and confirmed worth nothing, or >0 if it
+  // gives points (see achievementBoard.ts's LegacyAchievementRow comment).
+  // Two conditions, both required:
+  //  - every row has been scanned at least once (ui_points !== null) - an
+  //    account that's never opened a category keeps those rows at
+  //    ui_points: null forever, which must NOT silently count as "doesn't
+  //    give points" - otherwise never scanning a tab would be a free pass
+  //    around whatever that tab's achievements require.
+  //  - every row confirmed to give points (ui_points > 0) is completed -
+  //    rows confirmed worth 0 points don't block it, which is the actual
+  //    "only" change being made here; completed-but-0-point rows and
+  //    incomplete-but-0-point rows are equally fine.
   const { data: legacyRows } = await supabase
     .from("account_legacy_achievements")
-    .select("completed")
+    .select("completed, ui_points")
     .eq("user_id", userId);
-  const legacy = legacyRows ?? [];
-  if (legacy.length >= LEGACY_ACHIEVEMENT_TOTAL && legacy.every((r) => r.completed)) {
+  const legacy = (legacyRows ?? []) as { completed: boolean; ui_points: number | null }[];
+  const legacyFullyScanned =
+    legacy.length >= LEGACY_ACHIEVEMENT_TOTAL && legacy.every((r) => r.ui_points !== null);
+  const legacyPointRowsAllComplete = legacy
+    .filter((r) => (r.ui_points ?? 0) > 0)
+    .every((r) => r.completed);
+  if (legacyFullyScanned && legacyPointRowsAllComplete) {
     await tryAward("legacy_master");
   }
 
@@ -422,16 +451,20 @@ export async function checkAccountAchievements(
 //
 // Not every badge gets an entry - "big_family"'s replacement aside, a few
 // genuinely don't reduce to one meaningful fraction:
-//  - legacy_master and completionist DO get one (completed/total), even
-//    though their real gating also requires "fully synced" - a progress
-//    bar reading 111/111 before every category's been browsed at least
-//    once is a reasonable approximation, not worth a second caveat metric.
+//  - legacy_master's fraction is point-giving-rows-completed / point-
+//    giving-rows-known-so-far, which deliberately leaves out the "every row
+//    has to be scanned at least once" half of the real gate (see
+//    checkAccountAchievements) - a live, growing denominator is a
+//    reasonable approximation of progress, not worth a second caveat
+//    metric, and it can never show "complete" while un-scanned categories
+//    remain since those just aren't counted in the denominator yet either.
+//  - completionist DOES get a plain completed/total too.
 export function computeAccountBadgeProgress({
   chars,
   professionRows,
   statRows,
   pvpTopRankCharacterCount,
-  legacyCompletedCount,
+  legacyRows,
   earnedAchievementCount,
   totalAchievementCount,
 }: {
@@ -439,7 +472,12 @@ export function computeAccountBadgeProgress({
   professionRows: { profession: string; skill: number }[];
   statRows: { category: string; name: string; value: string }[];
   pvpTopRankCharacterCount: number;
-  legacyCompletedCount: number;
+  // Raw rows, not a precomputed count (2026-10-03, "only account for
+  // challenges that give legacy points") - the fraction needs to filter to
+  // point-giving rows itself (ui_points > 0), same rows/condition
+  // checkAccountAchievements gates the actual award on, so this can't drift
+  // from what "Legacy Complete" really requires.
+  legacyRows: { completed: boolean; ui_points: number | null }[];
   earnedAchievementCount: number;
   totalAchievementCount: number;
 }): Partial<Record<AccountAchievementKind, { value: number; target: number }>> {
@@ -492,7 +530,18 @@ export function computeAccountBadgeProgress({
     }, 0);
   progress.apex_predator = { value: totalBossKills, target: APEX_PREDATOR_BOSS_KILLS };
 
-  progress.legacy_master = { value: legacyCompletedCount, target: LEGACY_ACHIEVEMENT_TOTAL };
+  // Target is a live count of rows confirmed to give points so far (grows
+  // as more categories get scanned/revealed), not the flat
+  // LEGACY_ACHIEVEMENT_TOTAL - that constant still gates the actual award
+  // (see checkAccountAchievements) to make sure every category's been
+  // scanned at least once, but it's not the right denominator for "how many
+  // of the ones that matter have you finished" once you know some rows are
+  // worth 0 points.
+  const legacyPointRows = legacyRows.filter((r) => (r.ui_points ?? 0) > 0);
+  progress.legacy_master = {
+    value: legacyPointRows.filter((r) => r.completed).length,
+    target: legacyPointRows.length,
+  };
 
   progress.completionist = { value: earnedAchievementCount, target: totalAchievementCount };
 
