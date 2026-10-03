@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
 import GameIcon from "../../GameIcon";
 import { PROFESSION_ICONS } from "../../../lib/icons";
+import { RecipeChipList, type Recipe } from "../../../lib/recipeDisplay";
 
 const PRIMARY = [
   "Alchemy",
@@ -21,15 +22,16 @@ const SECONDARY = ["Cooking", "First Aid", "Fishing"];
 const MAX_SKILL = 300;
 const MAX_PRIMARY = 2;
 
-// Only the count matters here - a recipe entry is a bare string on an
-// older addon build, or a richer object (icon/reagents/tooltip/etc.) on
-// newer ones, same as everywhere else recipes are read from. This card
-// doesn't need any of those extra fields, just how many there are.
+// A recipe entry is a bare string on an older addon build, or a richer
+// object (icon/reagents/tooltip/etc.) on newer ones - same shape
+// CraftingDirectory reads, now rendered the same expandable way here too
+// (2026-10-03, "maybe that list should be part of the character page
+// somehow?" - this used to just show a bare "N recipes known" count).
 type Profession = {
   id: string;
   profession: string;
   skill: number;
-  recipes?: (string | { name: string })[] | null;
+  recipes?: (string | Recipe)[] | null;
 };
 
 export default function ProfessionsCard({
@@ -46,6 +48,9 @@ export default function ProfessionsCard({
   const [newProfession, setNewProfession] = useState("");
   const [newSkill, setNewSkill] = useState(1);
   const [message, setMessage] = useState("");
+  // Which profession's recipe list is expanded - at most one at a time,
+  // same "click to reveal" behavior as CraftingDirectory's CrafterRow.
+  const [openRecipesId, setOpenRecipesId] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -122,6 +127,7 @@ export default function ProfessionsCard({
       <ul className="mt-3 flex flex-col gap-3">
         {sorted.map((p) => {
           const recipeCount = Array.isArray(p.recipes) ? p.recipes.length : 0;
+          const isOpen = openRecipesId === p.id;
           return (
             <li key={p.id}>
               <div className="flex items-center justify-between gap-3">
@@ -130,12 +136,16 @@ export default function ProfessionsCard({
                   <span>
                     {p.profession}
                     {PRIMARY.includes(p.profession) ? "" : " (secondary)"}
-                    {recipeCount > 0 && (
-                      <span className="ml-1.5 text-xs text-gray-500">
-                        · {recipeCount} recipe{recipeCount === 1 ? "" : "s"} known
-                      </span>
-                    )}
                   </span>
+                  {recipeCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setOpenRecipesId(isOpen ? null : p.id)}
+                      className="rounded px-1.5 py-0.5 text-xs text-gray-400 hover:bg-neutral-700 hover:text-white"
+                    >
+                      {isOpen ? "Hide" : `${recipeCount} recipe${recipeCount === 1 ? "" : "s"} known`}
+                    </button>
+                  )}
                 </span>
 
                 {isOwner ? (
@@ -172,6 +182,12 @@ export default function ProfessionsCard({
                   style={{ width: `${(p.skill / MAX_SKILL) * 100}%` }}
                 />
               </div>
+
+              {isOpen && recipeCount > 0 && (
+                <div className="mt-2 pl-9">
+                  <RecipeChipList recipes={p.recipes ?? []} />
+                </div>
+              )}
             </li>
           );
         })}
