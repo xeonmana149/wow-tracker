@@ -161,13 +161,11 @@ export const ACCOUNT_ACHIEVEMENT_LOCAL_ICONS: Partial<Record<AccountAchievementK
   battle_scarred: "blood-of-the-enemy",
   pvp_dynasty: "pvp-dynasty",
   apex_predator: "apex-predator",
-  // legacy_master intentionally has no entry here - unlike every other
-  // badge, there's no confirmed local art file for it on disk (it was
-  // removed before the 2026-10-03 "fill out every badge" pass), so it
-  // falls back to its CDN icon in ACCOUNT_ACHIEVEMENT_BADGES above rather
-  // than risk pointing at a /account-badge-icons/ file that doesn't exist
-  // (which would just 404 instead of falling back). Add an entry here once
-  // real art is uploaded for it.
+  // Display name "Legacy Complete" - "legacy-complete.png" now confirmed
+  // present in /public/account-badge-icons/ (2026-10-03), so this no longer
+  // needs to fall back to a CDN icon. It briefly had no entry here because
+  // no local art file existed yet at the time.
+  legacy_master: "legacy-complete",
   // Display name "The Completionist".
   completionist: "the-completionist",
   // Display name "Time Lost in Azeroth" - filename matches the rename.
