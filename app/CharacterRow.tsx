@@ -135,7 +135,16 @@ export default function CharacterRow({ c }: { c: CardCharacter }) {
           )}
 
           {(c.achievements ?? []).length > 0 && (
-            <span className="flex items-center gap-1">
+            // min-w-0 lets this flex child actually shrink to the row's
+            // available width instead of forcing the row wider forever (the
+            // classic flexbox-overflow trap - a flex item ignores its
+            // sibling's space and keeps its full content width unless told
+            // it's allowed to shrink below that). overflow-x-auto then
+            // gives it its own horizontal scrollbar once a character has
+            // more badges than fit, instead of spilling across whatever
+            // sits to the row's right (2026-10-03, "character achievements
+            // endlessly scroll over all the other text").
+            <span className="flex min-w-0 shrink items-center gap-1 overflow-x-auto">
               {(c.achievements ?? []).map((a) => {
                 if (a.kind === "gold" && a.tier) {
                   const localIcon = TIERED_LOCAL_ICONS.gold;

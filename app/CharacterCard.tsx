@@ -304,7 +304,14 @@ export default function CharacterCard({
               </span>
             </div>
             {(c.achievements ?? []).length > 0 && (
-              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              // Capped height + its own scrollbar (2026-10-03, "character
+              // achievements endlessly scroll over all the other text and
+              // should stay bound to the character box") - with enough
+              // earned badges this row used to just keep wrapping onto more
+              // and more lines with nothing capping it, growing the card
+              // taller than its neighbors (the "Other Characters" column,
+              // the page content below) instead of staying contained.
+              <div className="mt-1.5 flex max-h-28 flex-wrap items-center gap-2 overflow-y-auto">
                 {(c.achievements ?? []).map((a) => {
                   if (a.kind === "gold" && a.tier) {
                     const localIcon = TIERED_LOCAL_ICONS.gold;

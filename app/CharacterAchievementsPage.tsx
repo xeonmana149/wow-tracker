@@ -37,7 +37,13 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
   // is a cross-cutting filter ("show me every non-tiered achievement")
   // rather than another entry in the family list.
   const [family, setFamily] = useState<AchievementFamily | "all" | "oneOff">("all");
-  const [sort, setSort] = useState<SortMode>("category");
+  // Default changed from "category" to "highestTier" (2026-10-03, "ordered
+  // by highest tier so platinums onwards and then the one off achievements
+  // without tiers start afterwards") - see the highestTier case below for
+  // how that ordering is actually built. Still just the first entry
+  // selected in the dropdown, so anyone can switch back to grouping by
+  // category same as before.
+  const [sort, setSort] = useState<SortMode>("highestTier");
 
   // Showcase pinning - which earned achievements show up in the compact
   // strip on the character page (AchievementShowcase.tsx / pickShowcaseItems
@@ -139,12 +145,21 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
     switch (sort) {
       case "alphabetical":
         return list.sort((a, b) => a.name.localeCompare(b.name));
-      case "highestTier":
-        return list.sort((a, b) => {
-          const rankA = a.tier ? TIER_RANK[a.tier] : a.earned ? -0.5 : -1;
-          const rankB = b.tier ? TIER_RANK[b.tier] : b.earned ? -0.5 : -1;
-          return rankB - rankA;
-        });
+      case "highestTier": {
+        // Every tiered achievement outranks every one-off, full stop - a
+        // Copper-tier badge (rank 10) still beats an EARNED one-off (rank
+        // 1), and even an unearned/in-progress tiered badge (rank 5, no
+        // tier yet) stays above every one-off. Only within each of those
+        // two groups does earned/tier level break the tie. This is what
+        // "platinums onwards, then the one-offs start afterwards" means -
+        // the old version mixed an earned one-off in among the tiers
+        // (between Copper and everything unearned), which wasn't that.
+        const rankFor = (item: AchievementBoardItem) => {
+          if (item.tiered) return item.tier ? 10 + TIER_RANK[item.tier] : 5;
+          return item.earned ? 1 : 0;
+        };
+        return list.sort((a, b) => rankFor(b) - rankFor(a));
+      }
       case "closest":
         return list.sort((a, b) => {
           const pctA = a.tiered && a.nextThreshold ? (a.value ?? 0) / a.nextThreshold : a.earned ? 1 : 0;
