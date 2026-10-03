@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { AccountView } from "../AccountView";
 import { loadAccountViewData, loadShowcasePickerData, type AccountViewData, type ShowcasePickerData } from "../../lib/accountView";
+import { logActivity } from "../../lib/activityLog";
 import {
   AVATAR_ICON_OPTIONS,
   BANNER_STYLE_OPTIONS,
@@ -163,6 +164,15 @@ export default function AccountOverviewPage() {
       setProfileSaveError(error.message);
       return;
     }
+
+    // Activity log (2026-10-03, sql/activity-log.sql) - fire-and-forget, see
+    // logActivity's own comment on why this never blocks or fails the save
+    // itself. Only the first call site wired up so far; the sync pipeline
+    // (achievements/legacy/account-badges/new-characters) still needs its
+    // own logActivity calls added at the award points in lib/importLogic.ts
+    // and app/api/sync/route.ts - that's a separate change against the live
+    // sync path, not bundled into this one.
+    void logActivity(supabase, { userId, kind: "profile_updated", label: "Updated their profile" });
 
     // Reload the whole account view rather than hand-reconstructing the four
     // showcase picks locally. A local reconstruction of favoriteAchievement

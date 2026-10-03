@@ -61,6 +61,7 @@ export function AccountView({
   onEditShowcase?: () => void;
 }) {
   const {
+    userId,
     displayName,
     memberSince,
     avatarIcon,
@@ -186,19 +187,23 @@ export function AccountView({
 
       {belowHeader}
 
-      {/* Only Overview is built - the rest are staged follow-ups rather than
-          dead links or empty promises. */}
+      {/* Achievements/Settings are still staged follow-ups rather than dead
+          links. Statistics and Activity (2026-10-03) now go to their own
+          pages - see app/account/[userId]/statistics and .../activity. Both
+          work for any account (not just your own), same as the rest of this
+          page, so they link by `userId` rather than assuming "your own
+          account". */}
       <div className="mt-4 flex flex-wrap gap-2">
         <span className="tab-btn tab-btn-active">Overview</span>
         <span className="tab-btn cursor-not-allowed opacity-50" title="Coming soon">
           Achievements
         </span>
-        <span className="tab-btn cursor-not-allowed opacity-50" title="Coming soon">
+        <Link href={`/account/${userId}/statistics`} className="tab-btn">
           Statistics
-        </span>
-        <span className="tab-btn cursor-not-allowed opacity-50" title="Coming soon">
+        </Link>
+        <Link href={`/account/${userId}/activity`} className="tab-btn">
           Activity
-        </span>
+        </Link>
         <span className="tab-btn cursor-not-allowed opacity-50" title="Coming soon">
           Settings
         </span>
