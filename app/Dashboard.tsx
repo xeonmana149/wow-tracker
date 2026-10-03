@@ -15,7 +15,7 @@ import NextList, { type NextListItem } from "./NextList";
 import { MoneyDisplay } from "./MoneyIcons";
 import AccountSyncSetup from "./AccountSyncSetup";
 import AccountBadges from "./AccountBadges";
-import { awardAchievement, ACHIEVEMENT_MESSAGE, type AchievementTier } from "../lib/achievements";
+import type { AchievementTier } from "../lib/achievements";
 import type { AccountAchievementKind } from "../lib/accountAchievements";
 import { loadBadgeIconOverrides, type BadgeIconOverrides } from "../lib/badgeIconOverrides";
 import { LATEST_VERSIONS } from "../lib/versions";
@@ -265,24 +265,15 @@ export default function Dashboard({
           message: `Reached ${points} Legacy point${points === 1 ? "" : "s"}`,
         });
 
-        // The "maxed Legacy" achievement is a character badge, but Legacy
-        // points are account-wide - awarded to whichever character is
-        // marked as your Main, since that's the natural "face" of the
-        // account. Skipped quietly if you don't have one set.
-        if (points >= LEGACY_CAP) {
-          const mainCharacter = characters.find((c) => c.character_type === "Main");
-          if (mainCharacter) {
-            const earned = await awardAchievement(supabase, mainCharacter.id, "maxed_legacy");
-            if (earned) {
-              await supabase.from("activity_events").insert({
-                character_id: mainCharacter.id,
-                user_id: userId,
-                kind: "achievement_earned",
-                message: ACHIEVEMENT_MESSAGE.maxed_legacy(mainCharacter.name),
-              });
-            }
-          }
-        }
+        // The "maxed Legacy" character achievement (awarded here, to
+        // whichever character was marked Main) was removed 2026-10-03,
+        // Jordan's call - "pretty much a duplicate of the legacy account
+        // badge": hitting LEGACY_CAP here is the exact same moment the
+        // Legacy Challenges page already shows "111/111 completed · 65/65
+        // Legacy Points", so a second achievement badge for the identical
+        // milestone added nothing. The activity_events row above (plain
+        // "Reached N Legacy points") already covers telling the Recent
+        // Activity feed about it.
       } catch {
         // ignored on purpose
       }

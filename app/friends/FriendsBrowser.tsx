@@ -10,6 +10,7 @@ import {
   RING_TIER_BADGES,
   TIERED_LOCAL_ICONS,
   FLAT_LOCAL_ICONS,
+  sortedAchievementsForDisplay,
 } from "../CharacterCard";
 import GameIcon from "../GameIcon";
 import TierFramedIcon from "../TierFramedIcon";
@@ -55,8 +56,16 @@ function achievementCount(c: CardCharacter) {
 // chain CharacterCard.tsx uses for its own (collapsed) badge row, just
 // pulled out so the detail drawer here can show it without duplicating a
 // second copy of CharacterCard's expanded layout.
+//
+// 2026-10-03: ordering now goes through the same sortedAchievementsForDisplay
+// CharacterCard.tsx/CharacterRow.tsx use (highest tier first, then one-offs
+// in their original order) - this row used to just render achievements in
+// whatever order they came back from the database, so the Friends page
+// showed a different order than every other badge strip on the site for the
+// exact same character. Flat badges also get the same hover `preview` as
+// everywhere else now (the bigger-art tooltip), matching CharacterCard/Row.
 function AchievementRow({ c, size = 40 }: { c: CardCharacter; size?: number }) {
-  const achievements = c.achievements ?? [];
+  const achievements = sortedAchievementsForDisplay(c.achievements ?? []);
   if (achievements.length === 0) return <p className="text-sm text-gray-500">No achievements yet.</p>;
 
   const createdLabel = c.created_at
@@ -85,7 +94,9 @@ function AchievementRow({ c, size = 40 }: { c: CardCharacter; size?: number }) {
         const label = a.kind === "character_created" && createdLabel ? `Created ${createdLabel}` : badge.label;
         const flatLocalIcon = FLAT_LOCAL_ICONS[a.kind as AchievementKind];
         if (flatLocalIcon) {
-          return <GameIcon key={a.kind} src={localBadgeIconSrc(flatLocalIcon)} label={label} size={size} round />;
+          return (
+            <GameIcon key={a.kind} src={localBadgeIconSrc(flatLocalIcon)} label={label} size={size} round preview />
+          );
         }
         return <BadgePlaceholder key={a.kind} label={label} size={size} round />;
       })}

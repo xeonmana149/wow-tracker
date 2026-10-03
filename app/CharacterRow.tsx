@@ -170,7 +170,14 @@ export default function CharacterRow({ c }: { c: CardCharacter }) {
                 const flatLocalIcon = FLAT_LOCAL_ICONS[a.kind as AchievementKind];
                 if (flatLocalIcon) {
                   return (
-                    <GameIcon key={a.kind} src={localBadgeIconSrc(flatLocalIcon)} label={label} size={28} round />
+                    <GameIcon
+                      key={a.kind}
+                      src={localBadgeIconSrc(flatLocalIcon)}
+                      label={label}
+                      size={28}
+                      round
+                      preview
+                    />
                   );
                 }
                 return <BadgePlaceholder key={a.kind} label={label} size={28} round />;

@@ -279,9 +279,9 @@ export default function AchievementRow({
                 and why. Reuses the exact same MilestoneBar as a tiered item,
                 just with no threshold dots (there's no Copper/Silver/Gold
                 ladder, only one target). Everything else (character_created,
-                legendary_item, founding_member, renaissance, maxed_legacy,
-                the level milestones) has no natural "progress" number and
-                keeps the plain earned/not-earned line. */}
+                legendary_item, founding_member, renaissance, the level
+                milestones) has no natural "progress" number and keeps the
+                plain earned/not-earned line. */}
             {item.value !== null && (
               <>
                 <MilestoneBar value={item.value} maxValue={item.nextThreshold ?? item.value} thresholds={[]} className="w-full max-w-sm" />

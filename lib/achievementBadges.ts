@@ -27,7 +27,6 @@ export const ACHIEVEMENT_BADGES: Record<AchievementKind, { icon: string; label: 
   legendary_item: { icon: "inv_hammer_unique_sulfuras", label: "Obtained a Legendary item" },
   maxed_profession: { icon: "inv_misc_wrench_01", label: "Maxed a profession" },
   renaissance: { icon: "inv_misc_book_09", label: "Maxed every profession (2 primary + all 3 secondary)" },
-  maxed_legacy: { icon: "inv_misc_rune_01", label: "Maxed the account's Legacy points" },
   top_pvp_rank: { icon: "achievement_pvp_rank_grandmarshal", label: "Reached the top PvP rank" },
   founding_member: { icon: "inv_misc_map_01", label: "Founding Member - created during launch week" },
   // Personality badges (2026-09-25) - one-off, no tiers, sourced from a
@@ -351,7 +350,6 @@ export const TIERED_LOCAL_ICONS: Partial<Record<TieredAchievementKind, string>> 
 // the CDN-icon versions they replace.
 export const FLAT_LOCAL_ICONS: Partial<Record<AchievementKind, string>> = {
   max_level: "max-level",
-  maxed_legacy: "maxed-legacy",
   top_pvp_rank: "top-pvp-rank",
   founding_member: "founding-member",
   greeter: "greeter",

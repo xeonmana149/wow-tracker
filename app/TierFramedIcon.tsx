@@ -1,8 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { TIER_FRAME_SRC, FRAME_HOLE_RATIO, localBadgeIconSrc } from "../lib/badgeFrames";
 import type { GoldTier } from "../lib/achievements";
+
+// Tooltip sizing/positioning - mirrors GameIcon.tsx's approach exactly
+// (2026-10-03 fix, see that file's own comment for the history): a
+// fixed-position portal rendered into document.body, computed from the
+// anchor's own getBoundingClientRect(), instead of the old in-flow
+// group-hover tooltip this component used to render. That in-flow version
+// worked fine until CharacterCard.tsx's achievement strip got wrapped in a
+// `max-h-28 overflow-y-auto` scroll box (2026-10-03, "achievements
+// endlessly scroll over all the other text") - after that, every tiered
+// badge's hover tooltip got silently clipped by that scrollable ancestor,
+// since an absolutely-positioned in-flow tooltip can never escape an
+// ancestor with overflow set. A portal tooltip renders outside that
+// ancestor entirely, so it can't be clipped by it (same reasoning that
+// already fixed this exact bug for GameIcon's own tooltip, and for
+// ActivityAchievementIcon.tsx).
+const TOOLTIP_GAP = 8;
+
+type TooltipPos = {
+  centerX: number;
+  openAbove: boolean;
+  top: number;
+};
+
+function computeTooltipPos(rect: DOMRect): TooltipPos {
+  const centerX = rect.left + rect.width / 2;
+  const openAbove = rect.top > 220;
+  const top = openAbove ? rect.top - TOOLTIP_GAP : rect.bottom + TOOLTIP_GAP;
+  return { centerX, openAbove, top };
+}
 
 // Renders a local plain icon (from /public/badge-icons/) with the matching
 // tier's reusable border frame (from /public/badge-frames/) layered on top
@@ -24,10 +54,21 @@ export default function TierFramedIcon({
 }) {
   const iconSrc = localBadgeIconSrc(icon);
   const [failed, setFailed] = useState(false);
+  const [pos, setPos] = useState<TooltipPos | null>(null);
+  const anchorRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     setFailed(false);
   }, [iconSrc]);
+
+  function showTooltip() {
+    if (!anchorRef.current) return;
+    setPos(computeTooltipPos(anchorRef.current.getBoundingClientRect()));
+  }
+
+  function hideTooltip() {
+    setPos(null);
+  }
 
   const innerSize = Math.round(size * FRAME_HOLE_RATIO);
   const inset = Math.round((size - innerSize) / 2);
@@ -42,8 +83,11 @@ export default function TierFramedIcon({
 
   return (
     <span
-      className="group/icon relative inline-block shrink-0 align-middle"
+      ref={anchorRef}
+      className="relative inline-block shrink-0 align-middle"
       style={{ width: size, height: size }}
+      onMouseEnter={showTooltip}
+      onMouseLeave={hideTooltip}
     >
       {failed ? (
         <span
@@ -73,35 +117,53 @@ export default function TierFramedIcon({
         className="pointer-events-none absolute inset-0 h-full w-full"
       />
 
-      {/* Same themed tooltip convention as GameIcon, now with a large
-          preview of the actual art on top instead of just the label. */}
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 flex w-max max-w-[260px] -translate-x-1/2 scale-95 flex-col items-center gap-2 rounded-lg border border-amber-700/70 bg-neutral-950 px-3 py-2.5 text-sm font-medium leading-snug text-amber-100 opacity-0 shadow-lg shadow-black/60 transition-all duration-100 group-hover/icon:scale-100 group-hover/icon:opacity-100"
-      >
-        {!failed && (
-          <span className="relative block shrink-0" style={{ width: previewSize, height: previewSize }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={iconSrc}
-              alt=""
-              draggable={false}
-              className="absolute rounded object-cover"
-              style={{ width: previewInner, height: previewInner, top: previewInset, left: previewInset }}
+      {/* Portal-based tooltip, same convention as GameIcon - rendered into
+          document.body at position: fixed so a scrollable or
+          opacity-reduced ancestor can't clip or fade it out. Still shows
+          the large art preview on top of the label, same as before. */}
+      {pos &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            role="tooltip"
+            className="pointer-events-none fixed z-[999] flex w-max max-w-[260px] flex-col items-center gap-2 rounded-lg border border-amber-700/70 bg-neutral-950 px-3 py-2.5 text-sm font-medium leading-snug text-amber-100 shadow-lg shadow-black/60"
+            style={{
+              left: pos.centerX,
+              top: pos.top,
+              transform: pos.openAbove ? "translate(-50%, -100%)" : "translateX(-50%)",
+            }}
+          >
+            {!failed && (
+              <span className="relative block shrink-0" style={{ width: previewSize, height: previewSize }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={iconSrc}
+                  alt=""
+                  draggable={false}
+                  className="absolute rounded object-cover"
+                  style={{ width: previewInner, height: previewInner, top: previewInset, left: previewInset }}
+                />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={TIER_FRAME_SRC[tier]}
+                  alt=""
+                  aria-hidden="true"
+                  draggable={false}
+                  className="pointer-events-none absolute inset-0 h-full w-full"
+                />
+              </span>
+            )}
+            <span className="text-center">{label}</span>
+            <span
+              className={`absolute left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-amber-700/70 bg-neutral-950 ${
+                pos.openAbove
+                  ? "top-full -translate-y-1/2 border-b border-r"
+                  : "bottom-full translate-y-1/2 border-l border-t"
+              }`}
             />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={TIER_FRAME_SRC[tier]}
-              alt=""
-              aria-hidden="true"
-              draggable={false}
-              className="pointer-events-none absolute inset-0 h-full w-full"
-            />
-          </span>
+          </div>,
+          document.body
         )}
-        <span className="text-center">{label}</span>
-        <span className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-amber-700/70 bg-neutral-950" />
-      </span>
     </span>
   );
 }

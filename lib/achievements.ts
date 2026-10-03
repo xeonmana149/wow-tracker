@@ -11,7 +11,16 @@ export type AchievementKind =
   | "legendary_item"
   | "maxed_profession"
   | "renaissance"
-  | "maxed_legacy"
+  // "maxed_legacy" ("Legacy Complete") removed (2026-10-03, Jordan's call -
+  // "pretty much a duplicate of the legacy account badge") - it fired from
+  // Dashboard.tsx whenever a character's Legacy Challenges points hit the
+  // full 65/65, which is exactly the same moment the Legacy Challenges page
+  // itself already shows "111/111 completed · 65/65 Legacy Points" - a
+  // second achievement badge for the identical milestone added nothing.
+  // Kept out of this union (not awarded or displayed any more) but left in
+  // the DB's achievements_kind_check CHECK constraint, same as every other
+  // removed kind this project has retired - existing earned rows are
+  // harmless, just no longer looked up by name anywhere.
   | "top_pvp_rank"
   | "founding_member"
   | "hugger"
@@ -536,7 +545,6 @@ export const ACHIEVEMENT_MESSAGE: Record<AchievementKind, (name: string) => stri
   legendary_item: (name) => `${name} obtained a Legendary item!`,
   maxed_profession: (name) => `${name} maxed a profession!`,
   renaissance: (name) => `${name} maxed every profession - a true Renaissance character!`,
-  maxed_legacy: (name) => `${name} maxed the account's Legacy points!`,
   top_pvp_rank: (name) => `${name} reached the top PvP rank!`,
   founding_member: (name) => `${name} earned the Founding Member badge!`,
   hugger: (name) => `${name} has given 100+ hugs - Hugger!`,

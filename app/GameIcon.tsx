@@ -29,9 +29,9 @@ type TooltipPos = {
 // name, and assuming a fixed width here (as an earlier version of this
 // did) put the box's on-screen center at half that assumed width away
 // from the icon instead of centered on it.
-function computeTooltipPos(rect: DOMRect): TooltipPos {
+function computeTooltipPos(rect: DOMRect, minSpaceAbove = 60): TooltipPos {
   const centerX = rect.left + rect.width / 2;
-  const openAbove = rect.top > 60;
+  const openAbove = rect.top > minSpaceAbove;
   const top = openAbove ? rect.top - TOOLTIP_GAP : rect.bottom + TOOLTIP_GAP;
   return { centerX, openAbove, top };
 }
@@ -42,6 +42,7 @@ export default function GameIcon({
   label,
   size = 32,
   round = false,
+  preview = false,
 }: {
   // Local icon by name (looked up under /talent-icons/) - used for
   // classes, races and professions, which are bundled locally.
@@ -54,12 +55,20 @@ export default function GameIcon({
   label: string;
   size?: number;
   round?: boolean;
+  // Blows the same art up big enough to actually see the detail in it,
+  // same idea as TierFramedIcon's own hover preview (2026-10-03, "the
+  // hover bigger icon and more info should work ... including the one
+  // offs"). Off by default - this component also renders every class/
+  // race/profession icon on the site, where a label-only tooltip is all
+  // that's wanted, so callers opt in per-icon (flat achievement badges do).
+  preview?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const [pos, setPos] = useState<TooltipPos | null>(null);
   const anchorRef = useRef<HTMLSpanElement>(null);
   const shape = round ? "rounded-full" : "rounded";
   const resolvedSrc = src ?? (name ? iconUrl(name) : null);
+  const previewSize = 160;
 
   // Without this, once one icon 404s (setting failed=true), this component
   // instance would show the fallback tile forever - even after `src`/`name`
@@ -73,7 +82,10 @@ export default function GameIcon({
 
   function showTooltip() {
     if (!anchorRef.current) return;
-    setPos(computeTooltipPos(anchorRef.current.getBoundingClientRect()));
+    // A preview tooltip is taller (room for the big art above the label),
+    // so it needs more headroom before it's willing to flip and open above
+    // the icon instead of below it.
+    setPos(computeTooltipPos(anchorRef.current.getBoundingClientRect(), preview ? previewSize + 80 : 60));
   }
 
   function hideTooltip() {
@@ -121,14 +133,27 @@ export default function GameIcon({
         createPortal(
           <div
             role="tooltip"
-            className="pointer-events-none fixed z-[999] w-max max-w-[260px] rounded-lg border border-amber-700/70 bg-neutral-950 px-3 py-2 text-sm font-medium leading-snug text-amber-100 shadow-lg shadow-black/60"
+            className={`pointer-events-none fixed z-[999] w-max max-w-[260px] rounded-lg border border-amber-700/70 bg-neutral-950 px-3 py-2 text-sm font-medium leading-snug text-amber-100 shadow-lg shadow-black/60 ${
+              preview ? "flex flex-col items-center gap-2 py-2.5" : ""
+            }`}
             style={{
               left: pos.centerX,
               top: pos.top,
               transform: pos.openAbove ? "translate(-50%, -100%)" : "translateX(-50%)",
             }}
           >
-            {label}
+            {preview && resolvedSrc && !failed && (
+              <span className="relative block shrink-0" style={{ width: previewSize, height: previewSize }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={resolvedSrc}
+                  alt=""
+                  draggable={false}
+                  className={`h-full w-full border border-amber-900/70 object-cover ${shape}`}
+                />
+              </span>
+            )}
+            <span className={preview ? "text-center" : ""}>{label}</span>
             <span
               className={`absolute left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-amber-700/70 bg-neutral-950 ${
                 pos.openAbove

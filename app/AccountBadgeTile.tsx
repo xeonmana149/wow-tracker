@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ACCOUNT_BADGE_FRAME_SRC, ACCOUNT_BADGE_FRAME_HOLE_RATIO } from "../lib/badgeFrames";
 
 // Hover-preview tile for the Account Badges row (2026-09-30, "now I want
@@ -30,6 +30,9 @@ export default function AccountBadgeTile({
   earned,
   progress,
   breakdown,
+  pinned,
+  onTogglePin,
+  onRequestClose,
 }: {
   icon: string; // resolved image URL (e.g. from wowIconUrl() or a local /account-badge-icons/ path)
   name: string;
@@ -50,18 +53,41 @@ export default function AccountBadgeTile({
   // for a badge with no natural breakdown, in which case clicking the tile
   // does nothing extra.
   breakdown?: { label: string; value: string }[];
+  // Pinned-open state is now CONTROLLED by the parent grid (2026-10-03,
+  // "shouldn't be able to open multiple breakdowns like this, it should
+  // close the other") rather than each tile keeping its own independent
+  // `pinned` boolean - that let every tile pin open at once, since nothing
+  // tied them together. The parent keeps a single "which one kind is open"
+  // value and only ever lets one tile be pinned at a time.
+  pinned: boolean;
+  // Click the icon - parent decides whether that opens this tile (and
+  // closes whichever other one was open) or closes this one.
+  onTogglePin: () => void;
+  // Fired when this tile is pinned and a mousedown lands outside it
+  // anywhere else on the page - "clicking off on anything on the website
+  // should close it as well".
+  onRequestClose: () => void;
 }) {
   const [hover, setHover] = useState(false);
-  // Click pins the tooltip open with the breakdown showing, independent of
-  // hover - lets someone actually read a longer breakdown list (e.g. every
-  // profession's maxing character) without the tooltip disappearing the
-  // moment the mouse drifts off the tile, and gives touch devices (no
-  // hover at all) a way to open it in the first place.
-  const [pinned, setPinned] = useState(false);
   const open = hover || pinned;
+  const rootRef = useRef<HTMLSpanElement>(null);
   const size = 56; // matches the h-14 w-14 tile AccountView used before this
   const innerSize = Math.round(size * ACCOUNT_BADGE_FRAME_HOLE_RATIO);
   const inset = Math.round((size - innerSize) / 2);
+
+  // Closes this tile's breakdown the moment a click lands anywhere else on
+  // the page - the document listener is only attached while this tile is
+  // actually pinned open, so unrelated tiles pay no cost for it.
+  useEffect(() => {
+    if (!pinned) return;
+    function handlePointerDown(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        onRequestClose();
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [pinned, onRequestClose]);
 
   // 190, up from 140 (2026-10-02, "make the icon hover size for account
   // badges a little bigger to better see the artwork") - w-64 below was
@@ -73,13 +99,14 @@ export default function AccountBadgeTile({
 
   return (
     <span
+      ref={rootRef}
       className="group/badge relative flex w-16 flex-col items-center gap-1 text-center"
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
       <button
         type="button"
-        onClick={() => setPinned((p) => !p)}
+        onClick={onTogglePin}
         title={breakdown ? "Click for a breakdown" : undefined}
         className={`relative inline-block shrink-0 ${earned ? "" : "opacity-40 grayscale"} ${
           breakdown ? "cursor-pointer" : "cursor-default"

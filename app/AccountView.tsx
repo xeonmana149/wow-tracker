@@ -1,14 +1,10 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ShowcaseBadge } from "./AchievementShowcase";
-import AccountBadgeTile from "./AccountBadgeTile";
+import AccountBadgesGrid from "./AccountBadgesGrid";
 import { FAMILY_META, type AchievementFamily } from "../lib/achievements";
 import { RACE_FACTION } from "../lib/options";
-import {
-  ACCOUNT_ACHIEVEMENT_BADGES,
-  accountBadgeIconSrc,
-  type AccountAchievementKind,
-} from "../lib/accountAchievements";
+import { ACCOUNT_ACHIEVEMENT_BADGES } from "../lib/accountAchievements";
 import { avatarIconSrc, bannerImageSrc, findAvatarIconOption, findBannerOption, bannerClassName } from "../lib/profileCustomization";
 import { formatDate, type AccountViewData } from "../lib/accountView";
 
@@ -284,43 +280,22 @@ export function AccountView({
               icon styles to look like character achievements just maybe
               without the border", then "now I want the hover system that
               achievements get ... implement for account badges" - each
-              tile is AccountBadgeTile (its own "use client" component,
-              since this component has no hooks/state on purpose), giving
-              the same hover-to-enlarge card ShowcaseBadge uses for
-              character achievements. badge.label is "Name - description",
-              same split already used elsewhere in this file. Every badge
-              (local custom art included) gets the shared ornate frame -
-              Jordan's call, "no I want the ornate frame ... just scaled
-              properly" (see lib/badgeFrames.ts's ACCOUNT_BADGE_FRAME_*). */}
-          <div className="mt-2 flex flex-wrap gap-3">
-            {(Object.keys(ACCOUNT_ACHIEVEMENT_BADGES) as AccountAchievementKind[]).map((kind) => {
-              const earned = accountBadges.includes(kind);
-              const badge = ACCOUNT_ACHIEVEMENT_BADGES[kind];
-              const [name, ...rest] = badge.label.split(" - ");
-              return (
-                <AccountBadgeTile
-                  key={kind}
-                  icon={accountBadgeIconSrc(kind)}
-                  name={name}
-                  description={rest.join(" - ")}
-                  earned={earned}
-                  // "X / Y" + bar for whatever badges reduce to one
-                  // fraction (2026-10-03) - see computeAccountBadgeProgress.
-                  // Some kinds have no entry (nothing trackable, e.g.
-                  // founding_member-style one-offs if those existed here),
-                  // in which case AccountBadgeTile just doesn't show one.
-                  progress={accountBadgeProgress[kind]}
-                  // Per-character/class/race breakdown of what's feeding
-                  // this badge's progress (2026-10-03, "shows the info of
-                  // just where the stats are coming from") - click the tile
-                  // to pin it open. Undefined for a badge with no natural
-                  // breakdown (e.g. The Completionist, which would mean
-                  // listing 100+ achievement kinds).
-                  breakdown={accountBadgeBreakdown[kind]}
-                />
-              );
-            })}
-          </div>
+              tile is AccountBadgeTile, giving the same hover-to-enlarge
+              card ShowcaseBadge uses for character achievements. Every
+              badge (local custom art included) gets the shared ornate
+              frame - Jordan's call, "no I want the ornate frame ... just
+              scaled properly" (see lib/badgeFrames.ts's
+              ACCOUNT_BADGE_FRAME_*).
+              AccountBadgesGrid (its own "use client" component, since this
+              component has no hooks/state on purpose - see this file's own
+              header comment) owns which single tile is pinned open at a
+              time (2026-10-03, "shouldn't be able to open multiple
+              breakdowns ... should close the other"). */}
+          <AccountBadgesGrid
+            accountBadges={accountBadges}
+            accountBadgeProgress={accountBadgeProgress}
+            accountBadgeBreakdown={accountBadgeBreakdown}
+          />
         </div>
       </div>
 

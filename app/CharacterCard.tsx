@@ -372,6 +372,7 @@ export default function CharacterCard({
                         label={label}
                         size={46}
                         round
+                        preview
                       />
                     );
                   }
