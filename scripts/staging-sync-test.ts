@@ -113,18 +113,26 @@ function buildLegacyAchievements(): {
   completed: boolean;
   uiPoints: number;
 }[] {
-  // Every row completed AND every row's ui_points revealed (>0) - the exact
-  // "fully scanned, everything that gives points is done" state
-  // checkAccountAchievements requires for Legacy Complete (see the
-  // 2026-10-03 point-gating fix). Real Legacy Challenge IDs don't matter
-  // here - checkAccountAchievements only cares about count/completed/
-  // ui_points, not which specific achievement each row is.
+  // Every row completed - that's the "fully scanned, everything done" state
+  // checkAccountAchievements' Legacy Complete check requires (it only looks
+  // at completed, not points - see checkAccountAchievements' legacy section).
+  //
+  // Points: 2026-10-03 fix (Jordan: "no legacy challenge gives you 10 legacy
+  // points and only 65 challenges actually give a legacy point each") - only
+  // LEGACY_POINTS_EARNING of the LEGACY_ACHIEVEMENT_TOTAL (111) challenges
+  // actually award a point in the real game, 1 point each, matching the
+  // site's own "X / 65 Legacy Points" display (app/AccountView.tsx) - the
+  // other 46 are completion-only, 0 points. Previously every one of the 111
+  // synthetic rows gave 10 points (1,110 total), nowhere close to the real
+  // 65-point cap. Real Legacy Challenge IDs/which specific ones give points
+  // still don't matter here - only the count and the completed/points shape.
+  const LEGACY_POINTS_EARNING = 65;
   return Array.from({ length: LEGACY_ACHIEVEMENT_TOTAL }, (_, i) => ({
     id: 900000 + i,
     category: "Synthetic",
     name: `Synthetic Legacy Achievement ${i + 1}`,
     completed: true,
-    uiPoints: 10,
+    uiPoints: i < LEGACY_POINTS_EARNING ? 1 : 0,
   }));
 }
 
