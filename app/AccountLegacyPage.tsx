@@ -65,12 +65,47 @@ export default function AccountLegacyPage() {
       }
       setSignedIn(true);
 
-      const { data: legacyRows } = await supabase
-        .from("account_legacy_achievements")
-        .select("achievement_id, category, name, description, completed, criteria, icon, points, ui_points")
-        .eq("user_id", userData.user.id);
+      // Definitions (name/icon/category/points) are shared across every
+      // account (2026-10-03 - see sql/legacy-achievement-shared-reference.sql);
+      // only completed/criteria actually belong to this account. Two plain
+      // queries merged here client-side, rather than a Supabase embedded
+      // join, to keep this page working the same way whether or not a
+      // foreign key relationship is set up between the two tables yet.
+      const [{ data: definitionRows }, { data: completionRows }] = await Promise.all([
+        supabase
+          .from("legacy_achievement_definitions")
+          .select("achievement_id, category, name, description, icon, points, ui_points"),
+        supabase
+          .from("account_legacy_achievements")
+          .select("achievement_id, completed, criteria")
+          .eq("user_id", userData.user.id),
+      ]);
 
-      setItems(buildLegacyAchievementItems((legacyRows ?? []) as LegacyAchievementRow[]));
+      const definitionById = new Map((definitionRows ?? []).map((d) => [d.achievement_id, d]));
+      const merged: LegacyAchievementRow[] = (completionRows ?? [])
+        .map((c) => {
+          const def = definitionById.get(c.achievement_id);
+          // A completion row with no matching definition shouldn't normally
+          // happen (every achievement_id a sync can report also writes its
+          // own definition in the same sync - see lib/importLogic.ts), but
+          // skip defensively rather than showing a blank/nameless card if
+          // one ever turns up out of order.
+          if (!def) return null;
+          return {
+            achievement_id: c.achievement_id,
+            category: def.category,
+            name: def.name,
+            description: def.description,
+            completed: c.completed,
+            criteria: c.criteria,
+            icon: def.icon,
+            points: def.points,
+            ui_points: def.ui_points,
+          };
+        })
+        .filter((r): r is LegacyAchievementRow => r !== null);
+
+      setItems(buildLegacyAchievementItems(merged));
       setLoading(false);
     }
     load();

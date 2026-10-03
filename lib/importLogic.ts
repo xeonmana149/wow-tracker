@@ -1006,62 +1006,78 @@ export async function applyImport(
   // sync, so this upserts into account_legacy_achievements keyed on
   // (user_id, achievement_id) rather than the old per-character table
   // (character_legacy_achievements, now unused - see
-  // sql/items-migration-25.sql). A sync from ANY character on the account
-  // overwrites the account's current completed/criteria state in place -
-  // there's no tier/points system here to award separately, this is
-  // display-only data straight from the game's own pane.
+  // sql/items-migration-25.sql).
   //
-  // ui_points needs SEPARATE, more careful handling than everything else
-  // here (2026-09-27, caught before it shipped a data-loss bug): it comes
-  // from the addon's passive UI scan (see scanLegacyPointsFromUI), cached in
+  // Split into two tables (2026-10-03, Jordan's request - see
+  // sql/legacy-achievement-shared-reference.sql): category/name/description/
+  // icon/points/ui_points are Blizzard GAME CONSTANTS, identical for every
+  // player, not per-account data - a sync from ANY account writes them into
+  // the single shared legacy_achievement_definitions table. Only
+  // completed/criteria actually vary per account, so only those go into
+  // account_legacy_achievements. This also fixes the one bug this split
+  // could have made worse: a bad/incomplete sync (like the staging test
+  // script that polluted a real account - see
+  // sql/cleanup-staging-test-pollution.sql) now can't corrupt what every
+  // OTHER account sees as the achievement's name/icon/points, only that
+  // one account's own completion state.
+  //
+  // ui_points keeps the same careful handling as before this split, just
+  // applied to the shared table instead of a per-account one: it comes from
+  // the addon's passive UI scan (see scanLegacyPointsFromUI), cached in
   // WFTSyncDB - which is SavedVariablesPerCharacter, NOT shared across
-  // alts. So character A might have browsed the Adventure/Alchemy/etc. tabs
-  // and captured real ui_points values, while character B - who's never
-  // opened the Legacy Challenges panel at all - has an empty cache and syncs
-  // `uiPoints: undefined` for every single achievement. If that were upserted
-  // as `ui_points: null` like every other field here, character B's sync
-  // would silently WIPE OUT every ui_points value character A already
-  // captured, every time B syncs - a real point value should never be
-  // erased just because THIS sync's character happens not to have seen it.
-  // So achievements with a real captured value this sync go through one
-  // upsert that includes ui_points (so a NEWLY discovered value does get
-  // written); achievements with no value THIS sync go through a separate
-  // upsert that omits the ui_points key entirely, so Postgres's ON CONFLICT
-  // DO UPDATE simply never touches that column and whatever's already
-  // recorded stays exactly as it was.
+  // alts or accounts. So most syncs report `uiPoints: undefined` for most
+  // achievements (whichever ones that character/account hasn't browsed in
+  // the Legacy Challenges panel yet), and a sync like that must never
+  // overwrite a ui_points value some OTHER account's character already
+  // captured. Achievements with a real captured value this sync go through
+  // one upsert that includes ui_points (so a newly discovered value does get
+  // written, and now benefits every account, not just this one); achievements
+  // with no value this sync go through a separate upsert that omits the
+  // ui_points key entirely, so Postgres's ON CONFLICT DO UPDATE simply never
+  // touches that column and whatever's already recorded (by anyone) stays
+  // exactly as it was.
   if (parsed.legacyAchievements && parsed.legacyAchievements.length > 0) {
-    const baseRow = (a: NonNullable<ParsedExport["legacyAchievements"]>[number]) => ({
-      user_id: before.user_id,
+    const definitionRow = (a: NonNullable<ParsedExport["legacyAchievements"]>[number]) => ({
       achievement_id: a.id,
       category: a.category,
       name: a.name,
       description: a.description ?? null,
-      completed: a.completed,
-      criteria: a.criteria && a.criteria.length > 0 ? a.criteria : null,
       icon: a.icon ?? null,
       points: a.points ?? null,
       updated_at: new Date().toISOString(),
     });
 
-    const withUiPoints = parsed.legacyAchievements
+    const definitionsWithUiPoints = parsed.legacyAchievements
       .filter((a) => typeof a.uiPoints === "number")
-      .map((a) => ({ ...baseRow(a), ui_points: a.uiPoints }));
-    const withoutUiPoints = parsed.legacyAchievements
+      .map((a) => ({ ...definitionRow(a), ui_points: a.uiPoints }));
+    const definitionsWithoutUiPoints = parsed.legacyAchievements
       .filter((a) => typeof a.uiPoints !== "number")
-      .map((a) => baseRow(a));
+      .map((a) => definitionRow(a));
 
-    if (withUiPoints.length > 0) {
+    if (definitionsWithUiPoints.length > 0) {
       const { error } = await supabase
-        .from("account_legacy_achievements")
-        .upsert(withUiPoints, { onConflict: "user_id,achievement_id" });
+        .from("legacy_achievement_definitions")
+        .upsert(definitionsWithUiPoints, { onConflict: "achievement_id" });
       if (error) throw new Error(error.message);
     }
-    if (withoutUiPoints.length > 0) {
+    if (definitionsWithoutUiPoints.length > 0) {
       const { error } = await supabase
-        .from("account_legacy_achievements")
-        .upsert(withoutUiPoints, { onConflict: "user_id,achievement_id" });
+        .from("legacy_achievement_definitions")
+        .upsert(definitionsWithoutUiPoints, { onConflict: "achievement_id" });
       if (error) throw new Error(error.message);
     }
+
+    const completionRows = parsed.legacyAchievements.map((a) => ({
+      user_id: before.user_id,
+      achievement_id: a.id,
+      completed: a.completed,
+      criteria: a.criteria && a.criteria.length > 0 ? a.criteria : null,
+      updated_at: new Date().toISOString(),
+    }));
+    const { error: completionError } = await supabase
+      .from("account_legacy_achievements")
+      .upsert(completionRows, { onConflict: "user_id,achievement_id" });
+    if (completionError) throw new Error(completionError.message);
   }
 
   // Account-wide achievements - re-checked on every sync since any of the
