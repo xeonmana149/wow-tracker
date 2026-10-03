@@ -1036,7 +1036,28 @@ export async function applyImport(
   // ui_points key entirely, so Postgres's ON CONFLICT DO UPDATE simply never
   // touches that column and whatever's already recorded (by anyone) stays
   // exactly as it was.
-  if (parsed.legacyAchievements && parsed.legacyAchievements.length > 0) {
+  // LEGACY_ACHIEVEMENT_TEST_ID_FLOOR (2026-10-03) - real Blizzard achievement
+  // IDs on this server are confirmed well under this (111 achievements
+  // total, see the comment on ParsedExport.legacyAchievements above).
+  // scripts/staging-sync-test.ts's synthetic fixture deliberately uses IDs
+  // >= 900000 so it can never collide with a real one. Before the shared-
+  // reference split (sql/legacy-achievement-shared-reference.sql), running
+  // that script against a throwaway account could only ever pollute that
+  // one account's own rows - but legacy_achievement_definitions is shared by
+  // every account, so a sync reporting a fake ID would now write a fake
+  // "Synthetic Legacy Achievement N" entry into the ONE table every real
+  // account's Legacy Challenges page reads from (this exact thing happened
+  // 2026-10-03 - see sql/cleanup-shared-definitions-test-pollution.sql).
+  // Filtering any ID at or past this floor out of EVERY sync, for everyone,
+  // not just a special-cased test account, makes that structurally
+  // impossible from here on - at the cost of staging-sync-test.ts no longer
+  // being able to exercise the Legacy Challenges part of a sync at all.
+  const LEGACY_ACHIEVEMENT_TEST_ID_FLOOR = 900000;
+  const realLegacyAchievements = (parsed.legacyAchievements ?? []).filter(
+    (a) => a.id < LEGACY_ACHIEVEMENT_TEST_ID_FLOOR
+  );
+
+  if (realLegacyAchievements.length > 0) {
     const definitionRow = (a: NonNullable<ParsedExport["legacyAchievements"]>[number]) => ({
       achievement_id: a.id,
       category: a.category,
@@ -1047,10 +1068,10 @@ export async function applyImport(
       updated_at: new Date().toISOString(),
     });
 
-    const definitionsWithUiPoints = parsed.legacyAchievements
+    const definitionsWithUiPoints = realLegacyAchievements
       .filter((a) => typeof a.uiPoints === "number")
       .map((a) => ({ ...definitionRow(a), ui_points: a.uiPoints }));
-    const definitionsWithoutUiPoints = parsed.legacyAchievements
+    const definitionsWithoutUiPoints = realLegacyAchievements
       .filter((a) => typeof a.uiPoints !== "number")
       .map((a) => definitionRow(a));
 
@@ -1067,7 +1088,13 @@ export async function applyImport(
       if (error) throw new Error(error.message);
     }
 
-    const completionRows = parsed.legacyAchievements.map((a) => ({
+    // completionRows is also filtered to realLegacyAchievements, not just
+    // the definitions above - account_legacy_achievements.achievement_id now
+    // has a foreign key into legacy_achievement_definitions (see the
+    // shared-reference migration), so writing a completion row for a fake ID
+    // that was never allowed to get a definition would just fail the sync
+    // with a foreign-key error instead of silently succeeding.
+    const completionRows = realLegacyAchievements.map((a) => ({
       user_id: before.user_id,
       achievement_id: a.id,
       completed: a.completed,

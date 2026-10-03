@@ -17,6 +17,31 @@
 // you're done: delete the whole test account, rather than hunting down
 // individual characters.
 //
+// LEGACY CHALLENGES - REWORKED, NOT SKIPPED (2026-10-03) - this used to send
+// 111 fabricated rows with fake IDs (900000+), which was fine when
+// account_legacy_achievements was per-account, but legacy_achievement_definitions
+// is now a single table SHARED by every account (see
+// sql/legacy-achievement-shared-reference.sql), so those fake IDs would write
+// "Synthetic Legacy Achievement N" into the real data every account's Legacy
+// Challenges page reads from - which is exactly what happened the first time
+// this ran after that migration shipped (see
+// sql/cleanup-shared-definitions-test-pollution.sql), and why the sync route
+// now hard-filters out any achievement_id >= 900000 before it ever reaches
+// either legacy table (lib/importLogic.ts's LEGACY_ACHIEVEMENT_TEST_ID_FLOOR)
+// - a fake-ID payload is accepted by /api/sync but silently dropped.
+//
+// So this now reads the REAL rows already sitting in legacy_achievement_definitions
+// (via the admin client, before any character syncs) and replays THOSE exact
+// achievement_id/category/name/icon/points/ui_points values back with
+// completed: true - the upsert just rewrites the same real data over itself
+// (a harmless no-op for the shared table) while still genuinely exercising
+// the write path and letting Legacy Complete fire for real. Requires at
+// least LEGACY_ACHIEVEMENT_TOTAL real rows to already exist (i.e. at least
+// one real account has fully synced Legacy Challenges at least once) - if
+// fewer exist, this part is skipped with a warning rather than inventing
+// placeholder data, since there's no longer a safe way for this script to
+// manufacture legacy achievement data from nothing.
+//
 // SETUP (one-time, a few minutes):
 //   1. Sign up a new throwaway account on your site (a second email works
 //      fine, or a test account if you have one).
@@ -40,8 +65,8 @@
 // throwaway-account warning above matters.
 
 import { createClient } from "@supabase/supabase-js";
-import { TIER_COUNTERS, tierThresholds, PERSONALITY_BADGES, TIERED_ACHIEVEMENT_KINDS, type TieredAchievementKind } from "../lib/achievements";
-import { LEGACY_ACHIEVEMENT_TOTAL, TIME_LOST_IN_AZEROTH_HOURS, ALL_PROFESSIONS } from "../lib/accountAchievements";
+import { TIER_COUNTERS, tierThresholds, PERSONALITY_BADGES, TIERED_ACHIEVEMENT_KINDS, TOP_PVP_RANK_CAP, type TieredAchievementKind } from "../lib/achievements";
+import { LEGACY_ACHIEVEMENT_TOTAL, PVP_DYNASTY_THRESHOLD, TIME_LOST_IN_AZEROTH_HOURS, ALL_PROFESSIONS } from "../lib/accountAchievements";
 import { CLASSES, RACE_FACTION } from "../lib/options";
 
 const SYNC_URL = process.env.SYNC_URL ?? "http://localhost:3000/api/sync";
@@ -106,33 +131,50 @@ function buildStatistics(): { id: number; category: string; name: string; value:
   return rows;
 }
 
-function buildLegacyAchievements(): {
+type LegacyAchievementPayloadRow = {
   id: number;
   category: string;
   name: string;
+  description?: string | null;
   completed: boolean;
-  uiPoints: number;
-}[] {
-  // Every row completed - that's the "fully scanned, everything done" state
-  // checkAccountAchievements' Legacy Complete check requires (it only looks
-  // at completed, not points - see checkAccountAchievements' legacy section).
-  //
-  // Points: 2026-10-03 fix (Jordan: "no legacy challenge gives you 10 legacy
-  // points and only 65 challenges actually give a legacy point each") - only
-  // LEGACY_POINTS_EARNING of the LEGACY_ACHIEVEMENT_TOTAL (111) challenges
-  // actually award a point in the real game, 1 point each, matching the
-  // site's own "X / 65 Legacy Points" display (app/AccountView.tsx) - the
-  // other 46 are completion-only, 0 points. Previously every one of the 111
-  // synthetic rows gave 10 points (1,110 total), nowhere close to the real
-  // 65-point cap. Real Legacy Challenge IDs/which specific ones give points
-  // still don't matter here - only the count and the completed/points shape.
-  const LEGACY_POINTS_EARNING = 65;
-  return Array.from({ length: LEGACY_ACHIEVEMENT_TOTAL }, (_, i) => ({
-    id: 900000 + i,
-    category: "Synthetic",
-    name: `Synthetic Legacy Achievement ${i + 1}`,
+  icon?: number | null;
+  points?: number | null;
+  uiPoints?: number;
+};
+
+// Reads the REAL rows already in the shared legacy_achievement_definitions
+// table and replays them back with completed: true - see the file-header
+// comment above for why this can no longer fabricate its own IDs. Returns
+// an empty array (with a warning) if fewer than LEGACY_ACHIEVEMENT_TOTAL real
+// rows exist yet, rather than padding with placeholder data.
+async function buildLegacyAchievements(): Promise<LegacyAchievementPayloadRow[]> {
+  const { data, error } = await admin
+    .from("legacy_achievement_definitions")
+    .select("achievement_id, category, name, description, icon, points, ui_points");
+
+  if (error) {
+    console.warn(`Could not read legacy_achievement_definitions (${error.message}) - skipping Legacy Challenges this run.`);
+    return [];
+  }
+  if (!data || data.length < LEGACY_ACHIEVEMENT_TOTAL) {
+    console.warn(
+      `Only ${data?.length ?? 0}/${LEGACY_ACHIEVEMENT_TOTAL} real rows in legacy_achievement_definitions - ` +
+        `need at least one real account to have fully synced Legacy Challenges before this script can exercise ` +
+        `them. Skipping Legacy Challenges this run (legacy_complete and the Legacy Challenges page itself are ` +
+        `unaffected either way).`
+    );
+    return [];
+  }
+
+  return data.map((row) => ({
+    id: row.achievement_id as number,
+    category: row.category as string,
+    name: row.name as string,
+    description: row.description as string | null,
     completed: true,
-    uiPoints: i < LEGACY_POINTS_EARNING ? 1 : 0,
+    icon: row.icon as number | null,
+    points: row.points as number | null,
+    uiPoints: typeof row.ui_points === "number" ? row.ui_points : undefined,
   }));
 }
 
@@ -162,7 +204,7 @@ async function sendSync(payload: SyncPayload): Promise<any> {
   return json;
 }
 
-async function syncOneCharacter(cls: string, race: string, index: number, legacyPayload: ReturnType<typeof buildLegacyAchievements>) {
+async function syncOneCharacter(cls: string, race: string, index: number, legacyPayload: LegacyAchievementPayloadRow[]) {
   // Exactly two words - the DB enforces this (characters_name_two_words
   // check constraint, see the comment in api-sync-route.ts). Don't slice or
   // pad this further; any extra space creates a third word and the create
@@ -200,6 +242,13 @@ async function syncOneCharacter(cls: string, race: string, index: number, legacy
     professions: buildProfessions(),
     statistics: buildStatistics(),
     legacyAchievements: legacyPayload,
+    // Every synth character reports the top rank (2026-10-03) - nothing
+    // about this field requires an actual in-game UI scan, that's only how
+    // the REAL addon populates it (scanPvpRankFromUI); the sync route just
+    // trusts whatever the payload says, so this script can set it directly
+    // to exercise top_pvp_rank (one character is enough) and pvp_dynasty
+    // (needs PVP_DYNASTY_THRESHOLD - every character here clears that).
+    pvpRank: { rank: TOP_PVP_RANK_CAP, rankName: "Grand Marshal", points: 999999, pointsMax: 999999 },
   });
 
   return name;
@@ -213,7 +262,13 @@ async function run() {
   // characters as possible.
   const allRaces = Object.keys(RACE_FACTION);
   const pairCount = Math.max(CLASSES.length, allRaces.length);
-  const legacyPayload = buildLegacyAchievements();
+  if (pairCount < PVP_DYNASTY_THRESHOLD) {
+    // Can't happen with the current class/race lists, but if either ever
+    // shrinks below the threshold, fail loudly here rather than silently
+    // under-covering pvp_dynasty below.
+    console.warn(`Only ${pairCount} synth characters planned, but pvp_dynasty needs ${PVP_DYNASTY_THRESHOLD} - it won't be reliably exercised this run.`);
+  }
+  const legacyPayload = await buildLegacyAchievements();
 
   const createdNames: string[] = [];
   for (let i = 0; i < pairCount; i++) {
@@ -258,7 +313,7 @@ async function run() {
   }
 
   console.log("\n=== Character-level FLAT achievements fired this run ===");
-  for (const kind of ["max_level", "maxed_profession", "renaissance", "legendary_item", ...PERSONALITY_BADGES.map((b) => b.kind), "level_10", "level_20", "level_30", "level_40", "level_50"]) {
+  for (const kind of ["max_level", "maxed_profession", "renaissance", "legendary_item", "top_pvp_rank", ...PERSONALITY_BADGES.map((b) => b.kind), "level_10", "level_20", "level_30", "level_40", "level_50"]) {
     const ok = earnedFlatAnywhere.has(kind);
     console.log(`${ok ? "PASS" : "FAIL"}  ${kind}`);
   }
@@ -273,11 +328,20 @@ async function run() {
     "master_merchant",
     "blood_of_the_enemy",
     "apex_predator",
+    "pvp_dynasty",
     "legacy_complete",
     "the_completionist",
     "time_lost_in_azeroth",
   ];
   for (const kind of expectedAccountKinds) {
+    // legacy_complete can only fire if buildLegacyAchievements() found real
+    // reference data to replay (see its own comment) - skip rather than FAIL
+    // when there was nothing to test against, so a clean/empty database
+    // doesn't look like a broken pipeline.
+    if (kind === "legacy_complete" && legacyPayload.length === 0) {
+      console.log("SKIP  legacy_complete (no real legacy_achievement_definitions rows to replay yet)");
+      continue;
+    }
     const ok = earnedAccountKinds.has(kind);
     console.log(`${ok ? "PASS" : "FAIL"}  ${kind}`);
   }
@@ -285,17 +349,11 @@ async function run() {
   console.log(
     [
       "",
-      "NOT exercised by this run, needs a different kind of check:",
-      "  - top_pvp_rank / pvp_dynasty: now awarded for real (2026-10-03) via",
-      "    the addon's scanPvpRankFromUI() + importLogic.ts's TOP_PVP_RANK_CAP",
-      "    check, but that requires the addon to have actually scanned the",
-      "    in-game PvP rank panel at least once - this synthetic run has no",
-      "    way to fake that UI scan, so both stay untested here. Test for",
-      "    real: open the Player vs. Player panel in-game on a Rank 14",
-      "    character (or wait for one to reach it) and sync.",
-      "",
       `Clean-up reminder: delete the throwaway account (or at least the`,
-      `${createdNames.length} \"Synth ...\" characters) when you're done.`,
+      `${createdNames.length} \"Synth ...\" characters) when you're done. Also run`,
+      `DELETE FROM account_legacy_achievements WHERE user_id = '${userId}';`,
+      `afterward if legacy_complete was tested above, so this throwaway`,
+      `account doesn't keep sitting at "111/111 complete" forever.`,
     ].join("\n")
   );
 }
