@@ -27,6 +27,10 @@ export default async function ItemsPage({
   const { data, error } = await supabase
     .from("characters")
     .select("id, name, class, user_id, profiles!user_id(display_name), character_professions(profession, skill, recipes)")
+    // Character Settings (2026-10-03, sql/account-settings.sql) - a
+    // character marked hidden shouldn't show up in the public Crafting
+    // Directory, same as everywhere else public on the site.
+    .eq("hidden", false)
     .order("name", { ascending: true });
 
   const characters = (data ?? []) as unknown as (CraftingCharacter & {

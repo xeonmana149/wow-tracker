@@ -95,7 +95,7 @@ export default function AccountOverviewPage() {
       }
       setSignedIn(true);
       setUserId(userData.user.id);
-      const loaded = await loadAccountViewData(supabase, userData.user.id, userData.user.created_at ?? null);
+      const loaded = await loadAccountViewData(supabase, userData.user.id, userData.user.created_at ?? null, true);
       setData(loaded);
       setDraftDisplayName(loaded.displayName);
       setDraftAvatarIcon(loaded.avatarIcon);
@@ -205,7 +205,7 @@ export default function AccountOverviewPage() {
     // real per-character resolution (perCharacterItems) gets this right, so
     // it's simpler and safer to just re-run it than to duplicate its logic
     // here for an optimistic update.
-    const refreshed = await loadAccountViewData(supabase, userId, data.memberSince);
+    const refreshed = await loadAccountViewData(supabase, userId, data.memberSince, true);
     setData(refreshed);
     setEditingProfile(false);
   }

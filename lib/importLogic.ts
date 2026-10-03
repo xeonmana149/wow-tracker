@@ -18,6 +18,13 @@ import {
 } from "./achievements";
 import { checkAccountAchievements } from "./accountAchievements";
 import { applyLiveObservation, ensureItemsExist } from "./items";
+// Site-wide Activity Log mirroring (2026-10-03, "basic version... toggles
+// that control which events the Activity feed highlights" - the Settings
+// page's Notifications tab) - see the big comment down by the
+// `activity_events` insert at the bottom of applyImport for why this reuses
+// the SAME `events` array that table has always been built from, rather than
+// recomputing anything.
+import { logActivity } from "./activityLog";
 
 export type ParsedTraitNode = {
   entryID?: number;
@@ -295,7 +302,7 @@ const GOLD_MILESTONES = [100, 500, 1000, 5000];
 // (2026-10-03) - centralized so this file, accountAchievements.ts and
 // achievementBoard.ts's display logic can't drift from each other the way
 // the DB check constraints kept drifting from the code earlier this
-// session. See lib/achievements.ts's comment above those exports.
+// session.
 
 // The professions this server treats as secondary (see the earlier
 // correction: no Archaeology on this server, just these three) - used for
@@ -1135,6 +1142,35 @@ export async function applyImport(
       await supabase.from("activity_events").insert(events);
     } catch {
       // ignored on purpose
+    }
+
+    // Site-wide Activity Log mirror (2026-10-03, Settings/Notifications work)
+    // - every event already built above for the OLD per-account
+    // `activity_events` table gets mirrored into the NEW global `activity_log`
+    // table (sql/activity-log.sql) that the Activity page and the Settings
+    // "highlight" toggles actually read from. Reusing `events` verbatim
+    // means the two logs can never disagree about what happened on this
+    // sync - nothing here is recomputed. An account-wide achievement (no
+    // single character - `character_id: null`) is relabeled
+    // "account_achievement_earned" here specifically so the Notifications
+    // toggle can tell the two apart; the OLD activity_events table's `kind`
+    // column is untouched (still just "achievement_earned" there) since its
+    // own schema was never designed to distinguish the two and isn't being
+    // changed now. logActivity is fire-and-forget by design (see its own
+    // comment), so a flood of events from one sync can't slow it down or
+    // fail it.
+    for (const event of events) {
+      const activityLogKind =
+        event.kind === "achievement_earned" && event.character_id === null
+          ? "account_achievement_earned"
+          : event.kind;
+      void logActivity(supabase, {
+        userId: event.user_id,
+        characterId: event.character_id,
+        characterName: event.character_id ? before.name : null,
+        kind: activityLogKind,
+        label: event.message,
+      });
     }
   }
 

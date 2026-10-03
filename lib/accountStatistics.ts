@@ -46,11 +46,20 @@ export type AccountStatisticsData = {
 export async function loadAccountStatisticsData(client: SupabaseClient, userId: string): Promise<AccountStatisticsData> {
   const { data: characterRows } = await client
     .from("characters")
-    .select("id, name")
+    .select("id, name, hidden, include_in_statistics")
     .eq("user_id", userId)
     .order("level", { ascending: false });
-  const characters = (characterRows ?? []) as { id: string; name: string }[];
+  const allCharacters = (characterRows ?? []) as { id: string; name: string; hidden: boolean; include_in_statistics: boolean }[];
+  // Character Settings (2026-10-03, sql/account-settings.sql) - a hidden
+  // character doesn't get a tab here at all (this page is reachable by
+  // anyone, same as Account Achievements/Activity - see loadAccountViewData's
+  // own comment on why there's no owner-vs-visitor branch at this layer).
+  const characters = allCharacters.filter((c) => !c.hidden);
   const characterIds = characters.map((c) => c.id);
+  // Separate from `hidden` - a character can keep its own stats tab while
+  // being left out of the combined account-wide total (e.g. a twink/test
+  // character whose numbers would just skew the aggregate).
+  const statsCountTowardTotal = new Set(characters.filter((c) => c.include_in_statistics).map((c) => c.id));
 
   if (characterIds.length === 0) {
     return { characters: [], statsByCharacter: {}, aggregated: [] };
@@ -68,5 +77,11 @@ export async function loadAccountStatisticsData(client: SupabaseClient, userId: 
     statsByCharacter[r.character_id]?.push({ category: r.category, name: r.name, value: r.value });
   }
 
-  return { characters, statsByCharacter, aggregated: aggregateNumericStatistics(rows) };
+  const aggregateRows = rows.filter((r) => statsCountTowardTotal.has(r.character_id));
+
+  return {
+    characters: characters.map((c) => ({ id: c.id, name: c.name })),
+    statsByCharacter,
+    aggregated: aggregateNumericStatistics(aggregateRows),
+  };
 }

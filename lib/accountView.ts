@@ -46,6 +46,20 @@ export type CharacterRow = {
   // comment. Null until the player's opened the in-game PvP panel at least
   // once.
   top_pvp_rank: number | null;
+  // Character Settings (2026-10-03, sql/account-settings.sql) - `hidden`
+  // means "don't show this character anywhere public" (filtered out here via
+  // loadAccountViewData's `includeHidden` param, and separately in every
+  // other public listing query - see items/page.tsx, friends-page.tsx,
+  // crafting/crafting-page.tsx, lib/leaderboards.ts, lib/accountStatistics.ts
+  // for the matching `.eq("hidden", false)`/`!inner` filters). This is
+  // application-level filtering, not RLS - see the Settings SQL migration's
+  // own header comment for why.
+  hidden: boolean;
+  // Whether this character's numbers count toward the Account Statistics
+  // page's aggregated totals (lib/accountStatistics.ts) - separate from
+  // `hidden`: a character can still show its own stats tab while being
+  // excluded from the combined total (e.g. a test/twink character).
+  include_in_statistics: boolean;
 };
 
 type AchievementRowDB = {
@@ -212,7 +226,19 @@ export type AccountViewData = {
 export async function loadAccountViewData(
   client: SupabaseClient,
   userId: string,
-  authCreatedAt: string | null
+  authCreatedAt: string | null,
+  // Character Settings (2026-10-03) - whether to include characters the
+  // owner has marked `hidden`. Defaults to false (exclude) so a caller that
+  // forgets to pass this gets the SAFE behavior rather than accidentally
+  // leaking a hidden character - the owner's own /account page is the one
+  // place that explicitly passes true. Every other page using this function
+  // (the public /account/[userId] overview, .../achievements,
+  // .../statistics) is reachable by anyone, including when it's the owner
+  // looking at their own account through that same public-shaped URL (there's
+  // no per-page way to tell "is the viewer the owner" from a server
+  // component here), so they all get the exclude-by-default behavior too -
+  // a hidden character only shows up in full on your own /account page.
+  includeHidden: boolean = false
 ): Promise<AccountViewData> {
   const [
     { data: profileRow },
@@ -230,7 +256,7 @@ export async function loadAccountViewData(
       .maybeSingle(),
     client
       .from("characters")
-      .select("id, name, level, class, race, character_type, time_played_hours, money_copper, top_pvp_rank")
+      .select("id, name, level, class, race, character_type, time_played_hours, money_copper, top_pvp_rank, hidden, include_in_statistics")
       .eq("user_id", userId),
     client.from("account_achievements").select("kind").eq("user_id", userId),
     client.from("account_legacy_achievements").select("completed, ui_points").eq("user_id", userId),
@@ -239,7 +265,12 @@ export async function loadAccountViewData(
     loadBadgeIconOverrides(client),
   ]);
 
-  const chars = (characterRows ?? []) as CharacterRow[];
+  const allChars = (characterRows ?? []) as CharacterRow[];
+  // Filtered AFTER the fetch, not with an `.eq("hidden", false)` on the
+  // query above - the owner's own call (includeHidden: true) needs the
+  // unfiltered list, and filtering here keeps both cases going through the
+  // exact same single query/shape rather than branching the select itself.
+  const chars = includeHidden ? allChars : allChars.filter((c) => !c.hidden);
   const characterIds = chars.map((c) => c.id);
   const legacy = (legacyRows ?? []) as LegacyRow[];
 

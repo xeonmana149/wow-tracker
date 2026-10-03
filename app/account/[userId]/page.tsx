@@ -32,7 +32,7 @@ export default async function PublicAccountPage({ params }: { params: Promise<{ 
   const { userId } = await params;
 
   const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
-  const data = await loadAccountViewData(supabaseAdmin, userId, authUser?.user?.created_at ?? null);
+  const data = await loadAccountViewData(supabaseAdmin, userId, authUser?.user?.created_at ?? null, false);
 
   if (!data.found) {
     return (

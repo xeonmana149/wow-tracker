@@ -16,7 +16,7 @@ export default async function AccountAchievementsPage({ params }: { params: Prom
   const { userId } = await params;
 
   const { data: profileRow } = await supabaseAdmin.from("profiles").select("display_name").eq("id", userId).maybeSingle();
-  const data = await loadAccountViewData(supabaseAdmin, userId, null);
+  const data = await loadAccountViewData(supabaseAdmin, userId, null, false);
 
   return (
     <main className="mx-auto max-w-6xl p-4 text-white md:p-6">

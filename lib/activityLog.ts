@@ -69,9 +69,12 @@ type ActivityRowRaw = {
   created_at: string;
   // Postgrest returns a related row as an object (or null if the profile
   // somehow doesn't exist) - never an array, since `user_id` is a plain
-  // to-one foreign key here, not a to-many relationship.
-  profiles: { display_name: string } | null;
+  // to-one foreign key here, not a to-many relationship. `show_activity` is
+  // only read to make the `!inner` + `.eq` filter above possible; it isn't
+  // surfaced on ActivityRow itself.
+  profiles: { display_name: string; show_activity: boolean } | null;
 };
+
 
 // Cursor-paginated by created_at rather than offset/page-number - matches
 // "infinite long scrolldown" (ActivityFeed.tsx just keeps asking for
@@ -90,12 +93,21 @@ export async function loadActivityPage(
   userId: string | null,
   before: string | null
 ): Promise<{ rows: ActivityRow[]; hasMore: boolean }> {
+  // Settings page's "Show my activity in the global Activity feed" toggle
+  // (2026-10-03, sql/account-settings.sql's `show_activity`) - only applied
+  // to the GLOBAL feed (`userId` null). Looking at one specific account's
+  // own activity (the "X Only" scope) still shows everything for that
+  // account, since you've explicitly asked for it rather than stumbling
+  // onto it in the global stream. Needs `profiles!inner` (not the plain
+  // `profiles(...)` embed used elsewhere) so `.eq("profiles.show_activity")`
+  // actually filters rows instead of just annotating them.
   let query = client
     .from("activity_log")
-    .select("id, user_id, character_id, character_name, kind, label, created_at, profiles(display_name)")
+    .select("id, user_id, character_id, character_name, kind, label, created_at, profiles!inner(display_name, show_activity)")
     .order("created_at", { ascending: false })
     .limit(PAGE_SIZE + 1);
   if (userId) query = query.eq("user_id", userId);
+  else query = query.eq("profiles.show_activity", true);
   if (before) query = query.lt("created_at", before);
 
   const { data, error } = await query;

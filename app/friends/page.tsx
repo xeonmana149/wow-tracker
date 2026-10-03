@@ -19,6 +19,9 @@ export default async function Friends() {
       .select(
         "*, profiles!user_id(display_name, legacy_points), character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained), achievements(kind, tier)"
       )
+      // Character Settings (2026-10-03) - a hidden character doesn't show up
+      // for anyone browsing Friends.
+      .eq("hidden", false)
       .order("level", { ascending: false }),
     loadCardData(),
   ]);

@@ -28,6 +28,7 @@ export default async function Crafting() {
   const { data, error } = await supabase
     .from("characters")
     .select("id, name, class, user_id, profiles!user_id(display_name), character_professions(profession, skill, recipes)")
+    .eq("hidden", false)
     .order("name", { ascending: true });
 
   const characters = (data ?? []) as unknown as (CraftingCharacter & {

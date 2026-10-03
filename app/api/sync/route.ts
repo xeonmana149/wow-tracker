@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 import { applyImport, type ParsedExport } from "../../../lib/importLogic";
+import { logActivity } from "../../../lib/activityLog";
 
 // Plain "1.5.0" style dotted version strings, compared numerically part by
 // part (not string comparison, so "1.10.0" correctly beats "1.9.0"). Missing
@@ -141,6 +142,19 @@ export async function POST(req: NextRequest) {
       } catch {
         // ignored on purpose
       }
+
+      // Site-wide Activity Log mirror (2026-10-03, see importLogic.ts's own
+      // comment on why this mirrors the old activity_events insert above
+      // rather than replacing it) - the one event in this route that
+      // doesn't go through applyImport, so it needs its own logActivity call
+      // rather than picking it up from that function's events array.
+      void logActivity(supabaseAdmin, {
+        userId,
+        characterId,
+        characterName: gameName,
+        kind: "character_created",
+        label: `${gameName} joined the roster`,
+      });
     }
   }
 

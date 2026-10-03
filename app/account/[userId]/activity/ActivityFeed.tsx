@@ -33,6 +33,37 @@ export default function ActivityFeed({ accountUserId, accountName }: { accountUs
   const rowsRef = useRef<ActivityRow[]>([]);
   rowsRef.current = rows;
 
+  // Settings page's Notifications tab ("basic version... toggles that
+  // control which events the Activity feed highlights", 2026-10-03) - a
+  // `activity_log.kind` gets a highlighted style for whoever's CURRENTLY
+  // SIGNED IN and has that kind's toggle on, regardless of whose row it is
+  // or whose account page this is - it's the viewer's own preference, not
+  // the page owner's. Defaults to both on (matching sql/account-settings.sql's
+  // column defaults) for a logged-out visitor or anyone who hasn't touched
+  // their Settings yet, so this starts as a bit of visual interest rather
+  // than silently doing nothing until someone opts in.
+  const [highlightKinds, setHighlightKinds] = useState<Set<string>>(
+    new Set(["achievement_earned", "account_achievement_earned"])
+  );
+
+  useEffect(() => {
+    async function loadPrefs() {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("notify_achievement_earned, notify_account_achievement_earned")
+        .eq("id", userData.user.id)
+        .maybeSingle();
+      if (!profileRow) return;
+      const next = new Set<string>();
+      if (profileRow.notify_achievement_earned) next.add("achievement_earned");
+      if (profileRow.notify_account_achievement_earned) next.add("account_achievement_earned");
+      setHighlightKinds(next);
+    }
+    loadPrefs();
+  }, []);
+
   const loadPage = useCallback(
     async (before: string | null, replace: boolean) => {
       if (loadingRef.current) return;
@@ -108,7 +139,11 @@ export default function ActivityFeed({ accountUserId, accountName }: { accountUs
       {rows.map((r) => (
         <div
           key={r.id}
-          className="flex items-center justify-between gap-3 rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+          className={`flex items-center justify-between gap-3 rounded border px-3 py-2 text-sm ${
+            highlightKinds.has(r.kind)
+              ? "border-amber-600/60 bg-amber-950/20"
+              : "border-neutral-700 bg-neutral-900"
+          }`}
         >
           <span className="min-w-0 truncate">
             {/* Account name only shown in the global feed - in the

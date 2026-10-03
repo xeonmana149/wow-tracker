@@ -187,12 +187,13 @@ export function AccountView({
 
       {belowHeader}
 
-      {/* Settings is still a staged follow-up rather than a dead link.
-          Achievements, Statistics and Activity (2026-10-03) now go to their
-          own pages - see app/account/[userId]/achievements, .../statistics
-          and .../activity. All work for any account (not just your own),
-          same as the rest of this page, so they link by `userId` rather
-          than assuming "your own account". */}
+      {/* Achievements, Statistics, Activity and Settings (2026-10-03) all go
+          to their own pages - see app/account/[userId]/achievements,
+          .../statistics, .../activity and .../settings. All link by `userId`
+          rather than assuming "your own account" - Overview/Achievements/
+          Statistics/Activity show the same thing to anyone, while Settings
+          itself checks ownership and only lets the real owner edit
+          anything. */}
       <div className="mt-4 flex flex-wrap gap-2">
         <span className="tab-btn tab-btn-active">Overview</span>
         <Link href={`/account/${userId}/achievements`} className="tab-btn">
@@ -204,9 +205,9 @@ export function AccountView({
         <Link href={`/account/${userId}/activity`} className="tab-btn">
           Activity
         </Link>
-        <span className="tab-btn cursor-not-allowed opacity-50" title="Coming soon">
+        <Link href={`/account/${userId}/settings`} className="tab-btn">
           Settings
-        </span>
+        </Link>
       </div>
 
       {/* ACCOUNT OVERVIEW - 5 horizontal summary cards, replacing the old
