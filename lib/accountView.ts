@@ -7,7 +7,7 @@ import {
   type TieredAchievementKind,
 } from "./achievements";
 import { FLAT_ACHIEVEMENT_NAME } from "./achievementCategories";
-import type { AccountAchievementKind } from "./accountAchievements";
+import { computeAccountBadgeProgress, type AccountAchievementKind } from "./accountAchievements";
 
 // Shared account-overview data loading (2026-09-30, split out of
 // app/account/page.tsx when "how do we see other players account pages?"
@@ -39,7 +39,11 @@ export type CharacterRow = {
 
 type AchievementRowDB = { character_id: string; kind: string; tier: AchievementTier | null; earned_at: string | null };
 type StatRow = { character_id: string; category: string; name: string; value: string };
-type ProfessionRow = { character_id: string; recipes: unknown[] | null };
+// profession/skill added (2026-10-03) alongside the existing recipes field
+// - both now needed here since computeAccountBadgeProgress's Master of All
+// Trades fraction wants the same maxed-skill-count the award check uses,
+// not just recipes (which only feeds Completionist/recipes achievements).
+type ProfessionRow = { character_id: string; profession: string; skill: number; recipes: unknown[] | null };
 type LegacyRow = { completed: boolean; ui_points: number | null };
 
 export type RecentAchievement = {
@@ -111,6 +115,11 @@ export type AccountViewData = {
   itemOwner: Map<string, string>;
   recent: RecentAchievement[];
   accountBadges: AccountAchievementKind[];
+  // "X / Y" progress for whichever account badges reduce to one meaningful
+  // fraction - see computeAccountBadgeProgress in accountAchievements.ts
+  // for which ones and why. Absent entries (not every badge has one) mean
+  // AccountBadgeTile falls back to its plain earned/not-earned display.
+  accountBadgeProgress: Partial<Record<AccountAchievementKind, { value: number; target: number }>>;
   legacyEarned: number;
   legacyPoints: number;
 };
@@ -145,10 +154,12 @@ export async function loadAccountViewData(
 
   const chars = (characterRows ?? []) as CharacterRow[];
   const characterIds = chars.map((c) => c.id);
+  const legacy = (legacyRows ?? []) as LegacyRow[];
 
   let mergedItems: AchievementBoardItem[] = [];
   let itemOwner = new Map<string, string>();
   let recent: RecentAchievement[] = [];
+  let accountBadgeProgress: ReturnType<typeof computeAccountBadgeProgress> = {};
 
   if (characterIds.length > 0) {
     const [{ data: achievementRows }, { data: statRows }, { data: professionRows }] = await Promise.all([
@@ -157,7 +168,10 @@ export async function loadAccountViewData(
         .from("character_statistics")
         .select("character_id, category, name, value")
         .in("character_id", characterIds),
-      client.from("character_professions").select("character_id, recipes").in("character_id", characterIds),
+      client
+        .from("character_professions")
+        .select("character_id, profession, skill, recipes")
+        .in("character_id", characterIds),
     ]);
 
     const achRows = (achievementRows ?? []) as AchievementRowDB[];
@@ -195,6 +209,25 @@ export async function loadAccountViewData(
     mergedItems = merged.items;
     itemOwner = merged.ownerByKey;
 
+    // Same totalAchievementCount quirk checkAccountAchievements has -
+    // every character's buildAchievementItems() call returns the same-
+    // length list shape (it's not actually per-character), so just the
+    // first character's count stands in for "total possible".
+    const earnedAchievementCount = mergedItems.filter((i) => i.earned).length;
+    const totalAchievementCount = perCharacterItems[0]?.items.length ?? 0;
+    const pvpTopRankCharacterCount = new Set(
+      achRows.filter((a) => a.kind === "top_pvp_rank").map((a) => a.character_id)
+    ).size;
+    accountBadgeProgress = computeAccountBadgeProgress({
+      chars,
+      professionRows: profRows,
+      statRows: stRows,
+      pvpTopRankCharacterCount,
+      legacyCompletedCount: legacy.filter((r) => r.completed).length,
+      earnedAchievementCount,
+      totalAchievementCount,
+    });
+
     const charName = new Map(chars.map((c) => [c.id, c.name]));
     recent = achRows
       .filter((a) => !!a.earned_at)
@@ -209,8 +242,6 @@ export async function loadAccountViewData(
         label: labelFor(a.kind),
       }));
   }
-
-  const legacy = (legacyRows ?? []) as LegacyRow[];
 
   return {
     // A profile row missing AND zero characters means this userId doesn't
@@ -228,6 +259,7 @@ export async function loadAccountViewData(
     itemOwner,
     recent,
     accountBadges: ((accountAchievementRows ?? []) as { kind: AccountAchievementKind }[]).map((r) => r.kind),
+    accountBadgeProgress,
     // Only count achievements that actually earn Legacy Points - matching
     // the same "don't include any that don't give legacy points" fix made
     // to AccountLegacyPage.tsx's own completed count (2026-09-30). Without

@@ -158,31 +158,38 @@ const ACCOUNT_ACHIEVEMENT_MESSAGE: Record<AccountAchievementKind, (name: string)
   marathon: (name) => `${name} has played 1,000+ hours combined across their characters - The Marathon!`,
 };
 
-const MAX_CHARACTER_LEVEL = 60;
+// Exported from here down (2026-10-03, "do that similar thing for all
+// account badges that are trackable") - computeAccountBadgeProgress below
+// needs the exact same numbers checkAccountAchievements awards against, so
+// a progress bar can never show "100%" on a badge that isn't actually
+// earned yet (or vice versa). Single source of truth, same reasoning as
+// TIER_COUNTERS being shared between the sync route and the leaderboards
+// page.
+export const MAX_CHARACTER_LEVEL = 60;
 const MAX_SKILL = 300;
 const SECONDARY_PROFESSIONS = ["First Aid", "Cooking", "Fishing"];
-const ALL_PROFESSIONS = [...PRIMARY_PROFESSIONS, ...SECONDARY_PROFESSIONS];
+export const ALL_PROFESSIONS = [...PRIMARY_PROFESSIONS, ...SECONDARY_PROFESSIONS];
 // 1,000 combined Honorable Kills across every character on the account -
 // same "Honorable Kills"/"Total Honorable Kills" stat the per-character
 // honorable_kills achievement already sums (see TIER_COUNTERS in
 // achievements.ts), just totalled account-wide instead of per-character.
-const BATTLE_SCARRED_HONORABLE_KILLS = 1000;
-const TYCOON_GOLD = 10000;
-const PVP_DYNASTY_THRESHOLD = 2;
+export const BATTLE_SCARRED_HONORABLE_KILLS = 1000;
+export const TYCOON_GOLD = 10000;
+export const PVP_DYNASTY_THRESHOLD = 2;
 // 1,000 combined boss kills (dungeon + raid together - see the
 // AccountAchievementKind comment on apex_predator for why this isn't
 // split by instance type) across every character on the account.
-const APEX_PREDATOR_BOSS_KILLS = 1000;
+export const APEX_PREDATOR_BOSS_KILLS = 1000;
 // Legacy Challenges total (2026-09-27, confirmed in achievementBoard.ts's
 // buildLegacyAchievementItems comments) - the addon reports every known
 // Legacy Challenge achievement's state on each sync (not just completed
 // ones), so a fully-synced account should have exactly this many rows in
 // account_legacy_achievements. If Blizzard/the server ever adds more, bump
 // this - a stale-low number would let Legacy Master fire early.
-const LEGACY_ACHIEVEMENT_TOTAL = 111;
+export const LEGACY_ACHIEVEMENT_TOTAL = 111;
 // Starting estimate, not tuned against real playtime data yet - easy to
 // retune later, this is just one number.
-const MARATHON_HOURS = 1000;
+export const MARATHON_HOURS = 1000;
 
 async function award(
   supabase: SupabaseClient,
@@ -389,4 +396,94 @@ export async function checkAccountAchievements(
   }
 
   return newMessages;
+}
+
+// Account badge progress (2026-10-03, "do that similar thing for all
+// account badges that are trackable" - same "116 / 200" + bar treatment
+// AchievementShowcase already gives an unearned tiered character
+// achievement, just for the one-off account badges instead). Pure/no DB
+// access on purpose - callers (loadAccountViewData, which already fetches
+// everything below for other reasons) pass in plain data they already
+// have, rather than this function re-querying Supabase itself. Every
+// threshold here is the exact same exported constant checkAccountAchievements
+// awards against, so a badge can never show "complete" progress without
+// actually being earned (or the reverse).
+//
+// Not every badge gets an entry - "big_family"'s replacement aside, a few
+// genuinely don't reduce to one meaningful fraction:
+//  - legacy_master and completionist DO get one (completed/total), even
+//    though their real gating also requires "fully synced" - a progress
+//    bar reading 111/111 before every category's been browsed at least
+//    once is a reasonable approximation, not worth a second caveat metric.
+export function computeAccountBadgeProgress({
+  chars,
+  professionRows,
+  statRows,
+  pvpTopRankCharacterCount,
+  legacyCompletedCount,
+  earnedAchievementCount,
+  totalAchievementCount,
+}: {
+  chars: { level: number; class: string; race: string; money_copper: number | null; time_played_hours: number | null }[];
+  professionRows: { profession: string; skill: number }[];
+  statRows: { category: string; name: string; value: string }[];
+  pvpTopRankCharacterCount: number;
+  legacyCompletedCount: number;
+  earnedAchievementCount: number;
+  totalAchievementCount: number;
+}): Partial<Record<AccountAchievementKind, { value: number; target: number }>> {
+  const progress: Partial<Record<AccountAchievementKind, { value: number; target: number }>> = {};
+
+  const maxedChars = chars.filter((c) => c.level >= MAX_CHARACTER_LEVEL);
+  const maxedClasses = new Set(maxedChars.map((c) => c.class));
+  progress.class_collector = { value: maxedClasses.size, target: CLASSES.length };
+
+  const maxedRaces = new Set(maxedChars.map((c) => c.race));
+  const allRaces = Object.keys(RACE_FACTION);
+  const allianceRaces = allRaces.filter((r) => RACE_FACTION[r] === "Alliance");
+  const hordeRaces = allRaces.filter((r) => RACE_FACTION[r] === "Horde");
+  progress.alliance_completionist = {
+    value: allianceRaces.filter((r) => maxedRaces.has(r)).length,
+    target: allianceRaces.length,
+  };
+  progress.horde_completionist = {
+    value: hordeRaces.filter((r) => maxedRaces.has(r)).length,
+    target: hordeRaces.length,
+  };
+  // Diplomat needs BOTH completionists done - every race on either faction
+  // maxed, combined into one fraction out of every race in the game.
+  progress.diplomat = { value: allRaces.filter((r) => maxedRaces.has(r)).length, target: allRaces.length };
+
+  const maxedProfessions = new Set(professionRows.filter((p) => p.skill >= MAX_SKILL).map((p) => p.profession));
+  progress.master_of_all_trades = { value: maxedProfessions.size, target: ALL_PROFESSIONS.length };
+
+  const totalCopper = chars.reduce((sum, c) => sum + (c.money_copper ?? 0), 0);
+  progress.tycoon = { value: Math.floor(totalCopper / 10000), target: TYCOON_GOLD };
+
+  const totalHoursPlayed = chars.reduce((sum, c) => sum + (c.time_played_hours ?? 0), 0);
+  progress.marathon = { value: Math.round(totalHoursPlayed), target: MARATHON_HOURS };
+
+  progress.pvp_dynasty = { value: pvpTopRankCharacterCount, target: PVP_DYNASTY_THRESHOLD };
+
+  const totalHonorableKills = statRows
+    .filter((s) => s.category === "Honorable Kills" && s.name === "Total Honorable Kills")
+    .reduce((sum, s) => {
+      const n = Number(s.value.replace(/,/g, ""));
+      return Number.isFinite(n) ? sum + n : sum;
+    }, 0);
+  progress.battle_scarred = { value: totalHonorableKills, target: BATTLE_SCARRED_HONORABLE_KILLS };
+
+  const totalBossKills = statRows
+    .filter((s) => s.category === "Boss Kills")
+    .reduce((sum, s) => {
+      const n = Number(s.value.replace(/,/g, ""));
+      return Number.isFinite(n) ? sum + n : sum;
+    }, 0);
+  progress.apex_predator = { value: totalBossKills, target: APEX_PREDATOR_BOSS_KILLS };
+
+  progress.legacy_master = { value: legacyCompletedCount, target: LEGACY_ACHIEVEMENT_TOTAL };
+
+  progress.completionist = { value: earnedAchievementCount, target: totalAchievementCount };
+
+  return progress;
 }

@@ -43,6 +43,7 @@ export function AccountView({
     itemOwner,
     recent,
     accountBadges,
+    accountBadgeProgress,
     legacyEarned,
     legacyPoints,
   } = data;
@@ -302,6 +303,12 @@ export function AccountView({
                   name={name}
                   description={rest.join(" - ")}
                   earned={earned}
+                  // "X / Y" + bar for whatever badges reduce to one
+                  // fraction (2026-10-03) - see computeAccountBadgeProgress.
+                  // Some kinds have no entry (nothing trackable, e.g.
+                  // founding_member-style one-offs if those existed here),
+                  // in which case AccountBadgeTile just doesn't show one.
+                  progress={accountBadgeProgress[kind]}
                 />
               );
             })}

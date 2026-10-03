@@ -28,11 +28,19 @@ export default function AccountBadgeTile({
   name,
   description,
   earned,
+  progress,
 }: {
   icon: string; // resolved image URL (e.g. from wowIconUrl() or a local /account-badge-icons/ path)
   name: string;
   description: string;
   earned: boolean;
+  // "X / Y" + bar, same treatment ShowcaseBadge gives an unearned tiered
+  // character achievement (2026-10-03, "copy that and do exactly the same
+  // for the account badges... for all account badges that are trackable") -
+  // see computeAccountBadgeProgress in lib/accountAchievements.ts for which
+  // badges get one. Undefined for a badge with no single meaningful
+  // fraction, which just falls back to the plain "Not yet earned" line.
+  progress?: { value: number; target: number };
 }) {
   const [hover, setHover] = useState(false);
   const size = 56; // matches the h-14 w-14 tile AccountView used before this
@@ -103,7 +111,26 @@ export default function AccountBadgeTile({
           </span>
           <div className="text-sm font-bold text-amber-100">{name}</div>
           <div className="mt-1 text-xs leading-snug text-gray-300">{description}</div>
-          {!earned && <div className="mt-1.5 text-[11px] text-gray-500">Not yet earned</div>}
+          {!earned &&
+            (progress ? (
+              <>
+                <div className="mt-1.5 text-[11px] text-gray-400">
+                  {progress.value.toLocaleString()} / {progress.target.toLocaleString()}
+                </div>
+                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
+                  <div
+                    className="h-full rounded-full bg-[#c9a566]"
+                    style={{
+                      width: `${
+                        progress.target > 0 ? Math.min(100, Math.round((progress.value / progress.target) * 100)) : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="mt-1.5 text-[11px] text-gray-500">Not yet earned</div>
+            ))}
           <span className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-amber-700/70 bg-neutral-950" />
         </div>
       )}
