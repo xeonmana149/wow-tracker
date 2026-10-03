@@ -10,6 +10,14 @@
 // Uses the same env vars as staging-sync-test.ts - run it right after that
 // script, in the same terminal (the env vars are already set):
 //   npx tsx scripts/diagnose-badge-failures.ts
+//
+// 2026-10-03: the account-badge kind strings below were renamed to match
+// their display names/icon filenames (see AccountAchievementKind's comment
+// in lib/accountAchievements.ts) - these are the NEW names. If your database
+// has a CHECK constraint or enum type on account_achievements.kind, it needs
+// the new values added (and, if any of the old kind strings were ever
+// actually earned by a real account, a data migration to rename those rows)
+// - see the SQL migration delivered alongside this rename.
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -36,7 +44,7 @@ async function run() {
   const characterId = anyCharacter?.id as string | undefined;
 
   console.log("=== account_achievements upserts (the ones staging-sync-test.ts said FAILED) ===");
-  for (const kind of ["marathon", "battle_scarred", "apex_predator", "legacy_master", "completionist"]) {
+  for (const kind of ["time_lost_in_azeroth", "blood_of_the_enemy", "apex_predator", "legacy_complete", "the_completionist"]) {
     const { data, error } = await admin
       .from("account_achievements")
       .upsert({ user_id: userId, kind }, { onConflict: "user_id,kind", ignoreDuplicates: true })
@@ -47,7 +55,7 @@ async function run() {
   }
 
   console.log("\n=== account_achievements upserts (ones that PASSED, for comparison) ===");
-  for (const kind of ["tycoon", "class_collector"]) {
+  for (const kind of ["master_merchant", "full_roster"]) {
     const { data, error } = await admin
       .from("account_achievements")
       .upsert({ user_id: userId, kind }, { onConflict: "user_id,kind", ignoreDuplicates: true })

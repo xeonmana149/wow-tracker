@@ -11,12 +11,18 @@ type AchievementRowDB = { character_id: string; kind: string; tier: AchievementT
 // characters at once, unlike the per-character achievements in
 // achievements.ts. Each is a one-off yes/no per account.
 export type AccountAchievementKind =
-  | "class_collector"
+  // Renamed from "class_collector" (2026-10-03, "rename all account badges
+  // achievement names in code to the pictures" - the internal kind
+  // identifiers now match the display names/filenames instead of carrying
+  // old pre-rename names). See the matching SQL migration for the
+  // account_achievements.kind data rename this requires.
+  | "full_roster"
   | "alliance_completionist"
   | "horde_completionist"
   | "diplomat"
   | "master_of_all_trades"
-  | "tycoon"
+  // Renamed from "tycoon" (2026-10-03).
+  | "master_merchant"
   // Replaced "big_family" (2026-10-03, "not hard to just make 10
   // characters" - that one only checked chars.length >= 10, so it was
   // free to cash in by rolling throwaway level-1 alts, no actual play
@@ -24,7 +30,8 @@ export type AccountAchievementKind =
   // the per-character honorable_kills achievement already tracks (see
   // TIER_COUNTERS in achievements.ts) across every character on the
   // account - real, hard-won PvP effort instead of a roster headcount.
-  | "battle_scarred"
+  // Renamed from "battle_scarred" (2026-10-03).
+  | "blood_of_the_enemy"
   | "pvp_dynasty"
   // Replaced "one_man_army" (2026-10-03) - that one was just 3+ characters
   // at the level cap, no boss-kill requirement despite the name's "army"
@@ -57,9 +64,12 @@ export type AccountAchievementKind =
   // already a single account-wide table (the Legacy Challenges panel is
   // the same 111-achievement list for every character), so this just
   // checks that every row is both synced and completed.
-  | "legacy_master"
-  | "completionist"
-  | "marathon";
+  // Renamed from "legacy_master" (2026-10-03).
+  | "legacy_complete"
+  // Renamed from "completionist" (2026-10-03).
+  | "the_completionist"
+  // Renamed from "marathon" (2026-10-03).
+  | "time_lost_in_azeroth";
 
 // Icon names are real WoW icon names, resolved to actual game art through
 // wowIconUrl() (see lib/icons.ts) by whatever renders these - AccountBadges
@@ -68,11 +78,10 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
   AccountAchievementKind,
   { icon: string; label: string }
 > = {
-  // Display name "Full Roster" (2026-10-03, renamed from "Class Collector")
-  // - the `kind` key stays class_collector since that's what's actually
-  // stored in account_achievements rows; only the label shown on the site
-  // changes.
-  class_collector: {
+  // Display name "Full Roster" (renamed from "Class Collector" 2026-10-03;
+  // the `kind` key itself was renamed from class_collector to full_roster
+  // the same day, see AccountAchievementKind's comment).
+  full_roster: {
     icon: "achievement_general",
     label: "Full Roster - A level-60 character of every class.",
   },
@@ -92,14 +101,15 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
     icon: "trade_engineering",
     label: "Master of All Trades - Every profession maxed by someone on the account.",
   },
-  // Display name "Master Merchant" (2026-10-03, renamed from "Tycoon").
-  tycoon: {
+  // Display name "Master Merchant" (renamed from "Tycoon"; kind renamed
+  // from tycoon to master_merchant 2026-10-03).
+  master_merchant: {
     icon: "inv_misc_coin_06",
     label: "Master Merchant - 10,000 gold or more, combined across your characters.",
   },
-  // Display name "Blood of the Enemy" (2026-10-03, renamed from
-  // "Battle-Scarred").
-  battle_scarred: {
+  // Display name "Blood of the Enemy" (renamed from "Battle-Scarred"; kind
+  // renamed from battle_scarred to blood_of_the_enemy 2026-10-03).
+  blood_of_the_enemy: {
     icon: "achievement_pvp_h_08",
     label: "Blood of the Enemy - 1,000 or more combined Honorable Kills across your characters.",
   },
@@ -121,17 +131,19 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
   // that CDN) since vanilla. If this still doesn't look right, it can be
   // fine-tuned per-badge from the /dev/badges icon override tool without
   // another code change.
-  legacy_master: {
+  // Kind renamed from legacy_master to legacy_complete 2026-10-03.
+  legacy_complete: {
     icon: "inv_misc_trophy_02",
     label: "Legacy Complete - Every Legacy Challenge completed.",
   },
-  completionist: {
+  // Kind renamed from completionist to the_completionist 2026-10-03.
+  the_completionist: {
     icon: "inv_misc_trophy_01",
     label: "The Completionist - Every character achievement earned by someone on the account.",
   },
-  // Display name "Time Lost in Azeroth" (2026-10-03, renamed from
-  // "The Marathon").
-  marathon: {
+  // Display name "Time Lost in Azeroth" (renamed from "The Marathon"; kind
+  // renamed from marathon to time_lost_in_azeroth 2026-10-03).
+  time_lost_in_azeroth: {
     icon: "inv_misc_pocketwatch_01",
     label: "Time Lost in Azeroth - 1,000 or more hours played, combined across all characters.",
   },
@@ -142,34 +154,36 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
 // in lib/achievementBadges.ts: a badge with an entry here shows Jordan's own
 // art from /public/account-badge-icons/<slug>.png instead of its
 // ACCOUNT_ACHIEVEMENT_BADGES.icon CDN fallback. Every account badge now has
-// its own art, matching the current display names (class_collector's file
-// is "full-roster.png" for "Full Roster", tycoon's is "master-merchant.png"
-// for "Master Merchant", etc.) - kept as a Partial type rather than a plain
-// Record so a future new kind added without art yet doesn't need a
-// placeholder entry here, it'll just fall back to its CDN icon until one
-// exists.
+// its own art, and since 2026-10-03's kind rename the kind keys themselves
+// match these filenames too (full_roster -> "full-roster.png", etc.) - kept
+// as a Partial type rather than a plain Record so a future new kind added
+// without art yet doesn't need a placeholder entry here, it'll just fall
+// back to its CDN icon until one exists.
 export const ACCOUNT_ACHIEVEMENT_LOCAL_ICONS: Partial<Record<AccountAchievementKind, string>> = {
-  // Display name "Full Roster" - filename matches the rename, not the kind.
-  class_collector: "full-roster",
+  full_roster: "full-roster",
   alliance_completionist: "alliance-completionist",
   horde_completionist: "horde-completionist",
   diplomat: "diplomat",
   master_of_all_trades: "master-of-all-trades",
-  // Display name "Master Merchant" - filename matches the rename.
-  tycoon: "master-merchant",
-  // Display name "Blood of the Enemy" - filename matches the rename.
-  battle_scarred: "blood-of-the-enemy",
+  // Filename stays "master-merchant-v2" (2026-10-03). The code and the file
+  // both checked out correct in isolation (right mapping, right coin-bag art
+  // confirmed in master-merchant.png), yet the page kept showing an old
+  // wrong picture - the classic signature of a cached image: browsers (and
+  // CDNs) cache a static asset by its URL, so overwriting a file's bytes
+  // without changing its filename can leave old cached copies being served
+  // indefinitely. Pointing at a brand-new filename forces a fresh fetch
+  // everywhere, since that exact URL was never cached before.
+  // ACTION NEEDED: upload the correct coin-bag art to
+  // /public/account-badge-icons/master-merchant-v2.png if you haven't
+  // already (the old master-merchant.png can stay or be deleted, it's just
+  // unused now).
+  master_merchant: "master-merchant-v2",
+  blood_of_the_enemy: "blood-of-the-enemy",
   pvp_dynasty: "pvp-dynasty",
   apex_predator: "apex-predator",
-  // Display name "Legacy Complete" - "legacy-complete.png" now confirmed
-  // present in /public/account-badge-icons/ (2026-10-03), so this no longer
-  // needs to fall back to a CDN icon. It briefly had no entry here because
-  // no local art file existed yet at the time.
-  legacy_master: "legacy-complete",
-  // Display name "The Completionist".
-  completionist: "the-completionist",
-  // Display name "Time Lost in Azeroth" - filename matches the rename.
-  marathon: "time-lost-in-azeroth",
+  legacy_complete: "legacy-complete",
+  the_completionist: "the-completionist",
+  time_lost_in_azeroth: "time-lost-in-azeroth",
 };
 
 export function localAccountBadgeIconSrc(slug: string) {
@@ -217,18 +231,18 @@ export function accountBadgeIconSrc(
 }
 
 const ACCOUNT_ACHIEVEMENT_MESSAGE: Record<AccountAchievementKind, (name: string) => string> = {
-  class_collector: (name) => `${name} has a level-60 character of every class - Full Roster!`,
+  full_roster: (name) => `${name} has a level-60 character of every class - Full Roster!`,
   alliance_completionist: (name) => `${name} has maxed a character of every Alliance race!`,
   horde_completionist: (name) => `${name} has maxed a character of every Horde race!`,
   diplomat: (name) => `${name} has maxed a character of every race, on both factions!`,
   master_of_all_trades: (name) => `${name}'s account has maxed every profession!`,
-  tycoon: (name) => `${name} has amassed 10,000 gold across their characters - Master Merchant!`,
-  battle_scarred: (name) => `${name} has racked up 1,000 or more combined Honorable Kills - Blood of the Enemy!`,
+  master_merchant: (name) => `${name} has amassed 10,000 gold across their characters - Master Merchant!`,
+  blood_of_the_enemy: (name) => `${name} has racked up 1,000 or more combined Honorable Kills - Blood of the Enemy!`,
   pvp_dynasty: (name) => `${name} has two or more characters at the top PvP rank!`,
   apex_predator: (name) => `${name} has racked up 1,000 or more combined boss kills - Apex Predator!`,
-  legacy_master: (name) => `${name}'s account has completed every Legacy Challenge!`,
-  completionist: (name) => `${name}'s account has earned every character achievement - The Completionist!`,
-  marathon: (name) => `${name} has played 1,000 or more hours, combined across their characters - Time Lost in Azeroth!`,
+  legacy_complete: (name) => `${name}'s account has completed every Legacy Challenge!`,
+  the_completionist: (name) => `${name}'s account has earned every character achievement - The Completionist!`,
+  time_lost_in_azeroth: (name) => `${name} has played 1,000 or more hours, combined across their characters - Time Lost in Azeroth!`,
 };
 
 // Exported from here down (2026-10-03, "do that similar thing for all
@@ -252,8 +266,10 @@ export const ALL_PROFESSIONS = [...PRIMARY_PROFESSIONS, ...SECONDARY_PROFESSIONS
 // same "Honorable Kills"/"Total Honorable Kills" stat the per-character
 // honorable_kills achievement already sums (see TIER_COUNTERS in
 // achievements.ts), just totalled account-wide instead of per-character.
-export const BATTLE_SCARRED_HONORABLE_KILLS = 1000;
-export const TYCOON_GOLD = 10000;
+// Renamed from BATTLE_SCARRED_HONORABLE_KILLS (2026-10-03).
+export const BLOOD_OF_THE_ENEMY_HONORABLE_KILLS = 1000;
+// Renamed from TYCOON_GOLD (2026-10-03).
+export const MASTER_MERCHANT_GOLD = 10000;
 export const PVP_DYNASTY_THRESHOLD = 2;
 // 1,000 combined boss kills (dungeon + raid together - see the
 // AccountAchievementKind comment on apex_predator for why this isn't
@@ -267,8 +283,9 @@ export const APEX_PREDATOR_BOSS_KILLS = 1000;
 // this - a stale-low number would let Legacy Complete fire early.
 export const LEGACY_ACHIEVEMENT_TOTAL = 111;
 // Starting estimate, not tuned against real playtime data yet - easy to
-// retune later, this is just one number.
-export const MARATHON_HOURS = 1000;
+// retune later, this is just one number. Renamed from MARATHON_HOURS
+// (2026-10-03).
+export const TIME_LOST_IN_AZEROTH_HOURS = 1000;
 
 async function award(
   supabase: SupabaseClient,
@@ -318,7 +335,7 @@ export async function checkAccountAchievements(
   const maxedChars = chars.filter((c) => c.level >= MAX_CHARACTER_LEVEL);
   const maxedClasses = new Set(maxedChars.map((c) => c.class));
   if (CLASSES.every((cls) => maxedClasses.has(cls))) {
-    await tryAward("class_collector");
+    await tryAward("full_roster");
   }
 
   const maxedRaces = new Set(maxedChars.map((c) => c.race));
@@ -332,15 +349,15 @@ export async function checkAccountAchievements(
   if (hasAlliance && hasHorde) await tryAward("diplomat");
 
   const totalCopper = chars.reduce((sum, c) => sum + (c.money_copper ?? 0), 0);
-  if (totalCopper >= TYCOON_GOLD * 10000) {
-    await tryAward("tycoon");
+  if (totalCopper >= MASTER_MERCHANT_GOLD * 10000) {
+    await tryAward("master_merchant");
   }
 
   // Time Lost in Azeroth (2026-09-30) - combined played time across every
   // character on the account, no per-character minimum.
   const totalHoursPlayed = chars.reduce((sum, c) => sum + (c.time_played_hours ?? 0), 0);
-  if (totalHoursPlayed >= MARATHON_HOURS) {
-    await tryAward("marathon");
+  if (totalHoursPlayed >= TIME_LOST_IN_AZEROTH_HOURS) {
+    await tryAward("time_lost_in_azeroth");
   }
 
   const characterIds = chars.map((c) => c.id);
@@ -367,8 +384,8 @@ export async function checkAccountAchievements(
       const n = Number(s.value.replace(/,/g, ""));
       return Number.isFinite(n) ? sum + n : sum;
     }, 0);
-  if (totalHonorableKills >= BATTLE_SCARRED_HONORABLE_KILLS) {
-    await tryAward("battle_scarred");
+  if (totalHonorableKills >= BLOOD_OF_THE_ENEMY_HONORABLE_KILLS) {
+    await tryAward("blood_of_the_enemy");
   }
 
   // Apex Predator (2026-10-03, replaced "One-Man Army" - see the
@@ -431,7 +448,7 @@ export async function checkAccountAchievements(
   const legacyFullyScanned = (legacyRows?.length ?? 0) >= LEGACY_ACHIEVEMENT_TOTAL;
   const legacyPointRowsAllComplete = (legacyRows ?? []).every((r) => r.completed);
   if (legacyFullyScanned && legacyPointRowsAllComplete) {
-    await tryAward("legacy_master");
+    await tryAward("legacy_complete");
   }
 
   // The Completionist (2026-09-30) - every character achievement (the same
@@ -472,7 +489,7 @@ export async function checkAccountAchievements(
     }
   }
   if (totalAchievementCount > 0 && earnedKeys.size >= totalAchievementCount) {
-    await tryAward("completionist");
+    await tryAward("the_completionist");
   }
 
   return newMessages;
@@ -513,7 +530,7 @@ export function computeAccountBadgeProgress({
 
   const maxedChars = chars.filter((c) => c.level >= MAX_CHARACTER_LEVEL);
   const maxedClasses = new Set(maxedChars.map((c) => c.class));
-  progress.class_collector = { value: maxedClasses.size, target: CLASSES.length };
+  progress.full_roster = { value: maxedClasses.size, target: CLASSES.length };
 
   const maxedRaces = new Set(maxedChars.map((c) => c.race));
   const allRaces = Object.keys(RACE_FACTION);
@@ -535,10 +552,10 @@ export function computeAccountBadgeProgress({
   progress.master_of_all_trades = { value: maxedProfessions.size, target: ALL_PROFESSIONS.length };
 
   const totalCopper = chars.reduce((sum, c) => sum + (c.money_copper ?? 0), 0);
-  progress.tycoon = { value: Math.floor(totalCopper / 10000), target: TYCOON_GOLD };
+  progress.master_merchant = { value: Math.floor(totalCopper / 10000), target: MASTER_MERCHANT_GOLD };
 
   const totalHoursPlayed = chars.reduce((sum, c) => sum + (c.time_played_hours ?? 0), 0);
-  progress.marathon = { value: Math.round(totalHoursPlayed), target: MARATHON_HOURS };
+  progress.time_lost_in_azeroth = { value: Math.round(totalHoursPlayed), target: TIME_LOST_IN_AZEROTH_HOURS };
 
   progress.pvp_dynasty = { value: pvpTopRankCharacterCount, target: PVP_DYNASTY_THRESHOLD };
 
@@ -548,7 +565,7 @@ export function computeAccountBadgeProgress({
       const n = Number(s.value.replace(/,/g, ""));
       return Number.isFinite(n) ? sum + n : sum;
     }, 0);
-  progress.battle_scarred = { value: totalHonorableKills, target: BATTLE_SCARRED_HONORABLE_KILLS };
+  progress.blood_of_the_enemy = { value: totalHonorableKills, target: BLOOD_OF_THE_ENEMY_HONORABLE_KILLS };
 
   const totalBossKills = statRows
     .filter((s) => s.category === "Boss Kills")
@@ -558,12 +575,12 @@ export function computeAccountBadgeProgress({
     }, 0);
   progress.apex_predator = { value: totalBossKills, target: APEX_PREDATOR_BOSS_KILLS };
 
-  progress.legacy_master = {
+  progress.legacy_complete = {
     value: legacyRows.filter((r) => r.completed).length,
     target: LEGACY_ACHIEVEMENT_TOTAL,
   };
 
-  progress.completionist = { value: earnedAchievementCount, target: totalAchievementCount };
+  progress.the_completionist = { value: earnedAchievementCount, target: totalAchievementCount };
 
   return progress;
 }
@@ -611,16 +628,16 @@ export function computeAccountBadgeBreakdown({
         return Number.isFinite(n) ? sum + n : sum;
       }, 0);
 
-  // Master Merchant (tycoon) - gold per character, highest first. Characters
-  // with no gold are left out rather than padding the list with "0g".
-  breakdown.tycoon = chars
+  // Master Merchant - gold per character, highest first. Characters with no
+  // gold are left out rather than padding the list with "0g".
+  breakdown.master_merchant = chars
     .map((c) => ({ name: c.name, copper: c.money_copper ?? 0 }))
     .filter((c) => c.copper > 0)
     .sort((a, b) => b.copper - a.copper)
     .map((c) => ({ label: c.name, value: `${Math.floor(c.copper / 10000).toLocaleString()}g` }));
 
-  // Blood of the Enemy (battle_scarred) - Honorable Kills per character.
-  breakdown.battle_scarred = chars
+  // Blood of the Enemy - Honorable Kills per character.
+  breakdown.blood_of_the_enemy = chars
     .map((c) => ({ name: c.name, kills: statSum(c.id, "Honorable Kills", "Total Honorable Kills") }))
     .filter((c) => c.kills > 0)
     .sort((a, b) => b.kills - a.kills)
@@ -641,8 +658,8 @@ export function computeAccountBadgeBreakdown({
     .sort((a, b) => b.kills - a.kills)
     .map((c) => ({ label: c.name, value: `${c.kills.toLocaleString()} kills` }));
 
-  // Time Lost in Azeroth (marathon) - hours played per character.
-  breakdown.marathon = chars
+  // Time Lost in Azeroth - hours played per character.
+  breakdown.time_lost_in_azeroth = chars
     .map((c) => ({ name: c.name, hours: c.time_played_hours ?? 0 }))
     .filter((c) => c.hours > 0)
     .sort((a, b) => b.hours - a.hours)
@@ -660,13 +677,12 @@ export function computeAccountBadgeBreakdown({
     value: maxedByProfession.get(prof) ?? "Not yet maxed",
   }));
 
-  // Full Roster (class_collector) - which character (if any) is level 60
-  // for each class.
+  // Full Roster - which character (if any) is level 60 for each class.
   const maxedByClass = new Map<string, string>();
   for (const c of chars) {
     if (c.level >= MAX_CHARACTER_LEVEL) maxedByClass.set(c.class, c.name);
   }
-  breakdown.class_collector = CLASSES.map((cls) => ({
+  breakdown.full_roster = CLASSES.map((cls) => ({
     label: cls,
     value: maxedByClass.get(cls) ?? "Not yet at level 60",
   }));

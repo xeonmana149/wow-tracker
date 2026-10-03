@@ -41,7 +41,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { TIER_COUNTERS, tierThresholds, PERSONALITY_BADGES, TIERED_ACHIEVEMENT_KINDS, type TieredAchievementKind } from "../lib/achievements";
-import { LEGACY_ACHIEVEMENT_TOTAL, MARATHON_HOURS, ALL_PROFESSIONS } from "../lib/accountAchievements";
+import { LEGACY_ACHIEVEMENT_TOTAL, TIME_LOST_IN_AZEROTH_HOURS, ALL_PROFESSIONS } from "../lib/accountAchievements";
 import { CLASSES, RACE_FACTION } from "../lib/options";
 
 const SYNC_URL = process.env.SYNC_URL ?? "http://localhost:3000/api/sync";
@@ -61,7 +61,7 @@ const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 
 // ---------------------------------------------------------------------------
 // Payload building - every number here is DERIVED from the real thresholds
-// (tierThresholds, LEGACY_ACHIEVEMENT_TOTAL, MARATHON_HOURS, etc.), never a
+// (tierThresholds, LEGACY_ACHIEVEMENT_TOTAL, TIME_LOST_IN_AZEROTH_HOURS, etc.), never a
 // second hardcoded copy, for the same reason scripts/test-achievements.ts
 // does it that way: it can't drift out of sync with what it's testing.
 // ---------------------------------------------------------------------------
@@ -178,7 +178,7 @@ async function syncOneCharacter(cls: string, race: string, index: number, legacy
       honor: 999999,
       deaths: 0,
       pvpKills: 0,
-      timePlayedSeconds: Math.ceil(MARATHON_HOURS * 1.2) * 3600,
+      timePlayedSeconds: Math.ceil(TIME_LOST_IN_AZEROTH_HOURS * 1.2) * 3600,
     },
     gear: {
       mainHand: {
@@ -257,17 +257,17 @@ async function run() {
 
   console.log("\n=== Account badges ===");
   const expectedAccountKinds = [
-    "class_collector",
+    "full_roster",
     "alliance_completionist",
     "horde_completionist",
     "diplomat",
     "master_of_all_trades",
-    "tycoon",
-    "battle_scarred",
+    "master_merchant",
+    "blood_of_the_enemy",
     "apex_predator",
-    "legacy_master",
-    "completionist",
-    "marathon",
+    "legacy_complete",
+    "the_completionist",
+    "time_lost_in_azeroth",
   ];
   for (const kind of expectedAccountKinds) {
     const ok = earnedAccountKinds.has(kind);

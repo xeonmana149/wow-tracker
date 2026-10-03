@@ -5,7 +5,7 @@
 // against a tiny in-memory fake Supabase client - no real database needed.
 // It derives every expectation from the SAME exported constants the real
 // code uses (TIERED_ACHIEVEMENT_KINDS, ACCOUNT_ACHIEVEMENT_BADGES,
-// BATTLE_SCARRED_HONORABLE_KILLS, etc.) rather than hardcoding a second copy
+// BLOOD_OF_THE_ENEMY_HONORABLE_KILLS, etc.) rather than hardcoding a second copy
 // of the numbers - so if a threshold or a kind ever changes, this test file
 // never needs editing to match, and it can never silently drift out of sync
 // with the thing it's testing (the exact kind of drift that caused the
@@ -56,11 +56,11 @@ import {
   ACCOUNT_ACHIEVEMENT_LOCAL_ICONS,
   MAX_CHARACTER_LEVEL,
   ALL_PROFESSIONS,
-  BATTLE_SCARRED_HONORABLE_KILLS,
-  TYCOON_GOLD,
+  BLOOD_OF_THE_ENEMY_HONORABLE_KILLS,
+  MASTER_MERCHANT_GOLD,
   PVP_DYNASTY_THRESHOLD,
   APEX_PREDATOR_BOSS_KILLS,
-  MARATHON_HOURS,
+  TIME_LOST_IN_AZEROTH_HOURS,
   LEGACY_ACHIEVEMENT_TOTAL,
   type AccountAchievementKind,
 } from "../lib/accountAchievements";
@@ -252,22 +252,22 @@ async function run() {
     return CHAR_FIELDS({ id, class: cls, race, level: MAX_CHARACTER_LEVEL });
   }
 
-  // --- class_collector (Full Roster) --------------------------------------
+  // --- full_roster (Full Roster) --------------------------------------
   {
     const allButOne = CLASSES.slice(1).map((c, i) => maxedChar(`cc${i}`, c, Object.keys(RACE_FACTION)[0]));
     const short = await awardedKinds({ characters: allButOne });
-    check("class_collector: one class short does NOT award", !short.has("class_collector"));
+    check("full_roster: one class short does NOT award", !short.has("full_roster"));
 
     const all = CLASSES.map((c, i) => maxedChar(`cc${i}`, c, Object.keys(RACE_FACTION)[0]));
     const full = await awardedKinds({ characters: all });
-    check("class_collector: every class at level cap DOES award", full.has("class_collector"));
+    check("full_roster: every class at level cap DOES award", full.has("full_roster"));
 
     // Regression guard for the exact "Big Family" loophole this replaced -
     // a pile of throwaway LOW-LEVEL alts covering every class must NOT
     // award, since none of them are actually maxed.
     const throwawayAlts = CLASSES.map((c, i) => CHAR_FIELDS({ id: `alt${i}`, class: c, level: 1 }));
     const gamed = await awardedKinds({ characters: throwawayAlts });
-    check("class_collector: a roster of level-1 alts (no real play) does NOT award", !gamed.has("class_collector"));
+    check("full_roster: a roster of level-1 alts (no real play) does NOT award", !gamed.has("full_roster"));
   }
 
   // --- alliance_completionist / horde_completionist / diplomat -----------
@@ -299,37 +299,37 @@ async function run() {
     check("master_of_all_trades: every profession maxed by someone DOES award", full.has("master_of_all_trades"));
   }
 
-  // --- tycoon (Master Merchant) --------------------------------------------
+  // --- master_merchant (Master Merchant) --------------------------------------------
   {
-    const below = await awardedKinds({ characters: [CHAR_FIELDS({ money_copper: (TYCOON_GOLD - 1) * 10000 })] });
-    check(`tycoon: ${TYCOON_GOLD - 1}g does NOT award`, !below.has("tycoon"));
-    const at = await awardedKinds({ characters: [CHAR_FIELDS({ money_copper: TYCOON_GOLD * 10000 })] });
-    check(`tycoon: exactly ${TYCOON_GOLD}g (combined) DOES award`, at.has("tycoon"));
+    const below = await awardedKinds({ characters: [CHAR_FIELDS({ money_copper: (MASTER_MERCHANT_GOLD - 1) * 10000 })] });
+    check(`master_merchant: ${MASTER_MERCHANT_GOLD - 1}g does NOT award`, !below.has("master_merchant"));
+    const at = await awardedKinds({ characters: [CHAR_FIELDS({ money_copper: MASTER_MERCHANT_GOLD * 10000 })] });
+    check(`master_merchant: exactly ${MASTER_MERCHANT_GOLD}g (combined) DOES award`, at.has("master_merchant"));
     // combined across characters, not any single one
     const combined = await awardedKinds({
       characters: [
-        CHAR_FIELDS({ id: "g1", money_copper: (TYCOON_GOLD / 2) * 10000 }),
-        CHAR_FIELDS({ id: "g2", money_copper: (TYCOON_GOLD / 2) * 10000 }),
+        CHAR_FIELDS({ id: "g1", money_copper: (MASTER_MERCHANT_GOLD / 2) * 10000 }),
+        CHAR_FIELDS({ id: "g2", money_copper: (MASTER_MERCHANT_GOLD / 2) * 10000 }),
       ],
     });
-    check("tycoon: combined gold across two characters DOES award", combined.has("tycoon"));
+    check("master_merchant: combined gold across two characters DOES award", combined.has("master_merchant"));
   }
 
-  // --- marathon (Time Lost in Azeroth) -------------------------------------
+  // --- time_lost_in_azeroth (Time Lost in Azeroth) -------------------------------------
   {
-    const below = await awardedKinds({ characters: [CHAR_FIELDS({ time_played_hours: MARATHON_HOURS - 1 })] });
-    check(`marathon: ${MARATHON_HOURS - 1}h does NOT award`, !below.has("marathon"));
-    const at = await awardedKinds({ characters: [CHAR_FIELDS({ time_played_hours: MARATHON_HOURS })] });
-    check(`marathon: exactly ${MARATHON_HOURS}h DOES award`, at.has("marathon"));
+    const below = await awardedKinds({ characters: [CHAR_FIELDS({ time_played_hours: TIME_LOST_IN_AZEROTH_HOURS - 1 })] });
+    check(`time_lost_in_azeroth: ${TIME_LOST_IN_AZEROTH_HOURS - 1}h does NOT award`, !below.has("time_lost_in_azeroth"));
+    const at = await awardedKinds({ characters: [CHAR_FIELDS({ time_played_hours: TIME_LOST_IN_AZEROTH_HOURS })] });
+    check(`time_lost_in_azeroth: exactly ${TIME_LOST_IN_AZEROTH_HOURS}h DOES award`, at.has("time_lost_in_azeroth"));
   }
 
-  // --- battle_scarred (Blood of the Enemy) ---------------------------------
+  // --- blood_of_the_enemy (Blood of the Enemy) ---------------------------------
   {
     const statsFor = (n: number) => [{ character_id: "c1", category: "Honorable Kills", name: "Total Honorable Kills", value: String(n) }];
-    const below = await awardedKinds({ characters: [CHAR_FIELDS()], statRows: statsFor(BATTLE_SCARRED_HONORABLE_KILLS - 1) });
-    check(`battle_scarred: ${BATTLE_SCARRED_HONORABLE_KILLS - 1} Honorable Kills does NOT award`, !below.has("battle_scarred"));
-    const at = await awardedKinds({ characters: [CHAR_FIELDS()], statRows: statsFor(BATTLE_SCARRED_HONORABLE_KILLS) });
-    check(`battle_scarred: exactly ${BATTLE_SCARRED_HONORABLE_KILLS} Honorable Kills DOES award`, at.has("battle_scarred"));
+    const below = await awardedKinds({ characters: [CHAR_FIELDS()], statRows: statsFor(BLOOD_OF_THE_ENEMY_HONORABLE_KILLS - 1) });
+    check(`blood_of_the_enemy: ${BLOOD_OF_THE_ENEMY_HONORABLE_KILLS - 1} Honorable Kills does NOT award`, !below.has("blood_of_the_enemy"));
+    const at = await awardedKinds({ characters: [CHAR_FIELDS()], statRows: statsFor(BLOOD_OF_THE_ENEMY_HONORABLE_KILLS) });
+    check(`blood_of_the_enemy: exactly ${BLOOD_OF_THE_ENEMY_HONORABLE_KILLS} Honorable Kills DOES award`, at.has("blood_of_the_enemy"));
   }
 
   // --- apex_predator ---------------------------------------------------------
@@ -367,7 +367,7 @@ async function run() {
     check(`pvp_dynasty: exactly ${PVP_DYNASTY_THRESHOLD} top-rank characters DOES award`, at.has("pvp_dynasty"));
   }
 
-  // --- legacy_master -----------------------------------------------------
+  // --- legacy_complete -----------------------------------------------------
   {
     const rowsOf = (n: number, completed: boolean) =>
       Array.from({ length: n }, (_, i) => ({ achievement_id: i, completed }));
@@ -379,7 +379,7 @@ async function run() {
       characters: [CHAR_FIELDS()],
       legacyRows: rowsOf(LEGACY_ACHIEVEMENT_TOTAL - 1, true),
     });
-    check("legacy_master: fully synced but under LEGACY_ACHIEVEMENT_TOTAL rows does NOT award", !notFullyScanned.has("legacy_master"));
+    check("legacy_complete: fully synced but under LEGACY_ACHIEVEMENT_TOTAL rows does NOT award", !notFullyScanned.has("legacy_complete"));
 
     // B: fully scanned, but not every row completed.
     const scannedNotComplete = await awardedKinds({
@@ -389,18 +389,18 @@ async function run() {
         { achievement_id: LEGACY_ACHIEVEMENT_TOTAL - 1, completed: false },
       ],
     });
-    check("legacy_master: fully scanned with one incomplete row does NOT award", !scannedNotComplete.has("legacy_master"));
+    check("legacy_complete: fully scanned with one incomplete row does NOT award", !scannedNotComplete.has("legacy_complete"));
 
     // C: no legacy rows synced at all.
     const noneSynced = await awardedKinds({ characters: [CHAR_FIELDS()] });
-    check("legacy_master: no legacy rows synced does NOT award", !noneSynced.has("legacy_master"));
+    check("legacy_complete: no legacy rows synced does NOT award", !noneSynced.has("legacy_complete"));
 
     // D: fully scanned AND every row completed.
     const fullyComplete = await awardedKinds({
       characters: [CHAR_FIELDS()],
       legacyRows: rowsOf(LEGACY_ACHIEVEMENT_TOTAL, true),
     });
-    check("legacy_master: every row synced and completed DOES award", fullyComplete.has("legacy_master"));
+    check("legacy_complete: every row synced and completed DOES award", fullyComplete.has("legacy_complete"));
   }
 
   // =========================================================================
