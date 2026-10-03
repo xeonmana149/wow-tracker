@@ -75,7 +75,7 @@ async function loadAllRecipes(supabase: SupabaseClient): Promise<ProfessionRow[]
   if (cachedRows && now - cachedAt < CACHE_TTL_MS) return cachedRows;
   const { data, error } = await supabase
     .from("character_professions")
-    .select("recipes, characters!inner(id, name, profiles(display_name))")
+    .select("recipes, characters!inner(id, name, profiles!user_id(display_name))")
     .not("recipes", "is", null);
   if (error || !data) return cachedRows ?? [];
   cachedRows = data as unknown as ProfessionRow[];

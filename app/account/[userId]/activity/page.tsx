@@ -15,20 +15,21 @@ export default async function AccountActivityPage({ params }: { params: Promise<
   const { userId } = await params;
 
   const { data: profileRow } = await supabaseAdmin.from("profiles").select("display_name").eq("id", userId).maybeSingle();
+  const accountName = profileRow?.display_name ?? "Unknown";
 
   return (
     <main className="mx-auto max-w-4xl p-4 text-white md:p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{profileRow?.display_name ?? "Account"}&apos;s Activity</h1>
-          <p className="mt-1 text-sm text-gray-400">Everything tracked on this account, newest first.</p>
+          <h1 className="text-2xl font-bold">Activity</h1>
+          <p className="mt-1 text-sm text-gray-400">Everything tracked across WoW Forever, newest first - or filter to just {accountName}.</p>
         </div>
         <Link href={`/account/${userId}`} className="text-xs text-amber-400 hover:underline">
           ← Back to Account
         </Link>
       </div>
 
-      <ActivityFeed userId={userId} />
+      <ActivityFeed accountUserId={userId} accountName={accountName} />
     </main>
   );
 }

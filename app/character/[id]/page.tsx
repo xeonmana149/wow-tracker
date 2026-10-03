@@ -42,7 +42,7 @@ export default async function CharacterPage({
 
   const { data: character } = await supabase
     .from("characters")
-    .select("*, profiles(display_name, legacy_points)")
+    .select("*, profiles!user_id(display_name, legacy_points)")
     .eq("id", id)
     .single();
 
