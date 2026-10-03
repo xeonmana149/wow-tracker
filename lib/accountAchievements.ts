@@ -58,53 +58,64 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
   AccountAchievementKind,
   { icon: string; label: string }
 > = {
+  // Display name "Full Roster" (2026-10-03, renamed from "Class Collector")
+  // - the `kind` key stays class_collector since that's what's actually
+  // stored in account_achievements rows; only the label shown on the site
+  // changes.
   class_collector: {
     icon: "achievement_general",
-    label: "Class Collector - a level-60 character of every class",
+    label: "Full Roster - A level-60 character of every class.",
   },
   alliance_completionist: {
     icon: "inv_bannerpvp_02",
-    label: "Alliance Completionist - a level-60 character of every Alliance race",
+    label: "Alliance Completionist - A level-60 character of every Alliance race.",
   },
   horde_completionist: {
     icon: "inv_bannerpvp_01",
-    label: "Horde Completionist - a level-60 character of every Horde race",
+    label: "Horde Completionist - A level-60 character of every Horde race.",
   },
   diplomat: {
     icon: "achievement_reputation_01",
-    label: "Diplomat - maxed a character of every race on both factions",
+    label: "Diplomat - A maxed character of every race, on both factions.",
   },
   master_of_all_trades: {
     icon: "trade_engineering",
-    label: "Master of All Trades - every profession maxed by someone on the account",
+    label: "Master of All Trades - Every profession maxed by someone on the account.",
   },
+  // Display name "Master Merchant" (2026-10-03, renamed from "Tycoon").
   tycoon: {
     icon: "inv_misc_coin_06",
-    label: "Tycoon - 10,000 combined gold across your characters",
+    label: "Master Merchant - 10,000 gold or more, combined across your characters.",
   },
+  // Display name "Blood of the Enemy" (2026-10-03, renamed from
+  // "Battle-Scarred").
   battle_scarred: {
     icon: "achievement_pvp_h_08",
-    label: "Battle-Scarred - 1,000+ combined Honorable Kills across your characters",
+    label: "Blood of the Enemy - 1,000 or more combined Honorable Kills across your characters.",
   },
   pvp_dynasty: {
     icon: "inv_jewelry_ring_03",
-    label: "PvP Dynasty - 2 or more characters at the top PvP rank",
+    label: "PvP Dynasty - Two or more characters at the top PvP rank.",
   },
   apex_predator: {
     icon: "inv_misc_head_dragon_01",
-    label: "Apex Predator - 1,000+ combined boss kills across your characters",
+    label: "Apex Predator - 1,000 or more combined boss kills across your characters.",
   },
+  // Display name "Legacy Complete" (2026-10-03, renamed from
+  // "Legacy Master").
   legacy_master: {
     icon: "inv_misc_rune_01",
-    label: "Legacy Master - every Legacy Challenge achievement completed",
+    label: "Legacy Complete - Every Legacy Challenge achievement completed.",
   },
   completionist: {
     icon: "inv_misc_trophy_01",
-    label: "The Completionist - every character achievement earned by someone on the account",
+    label: "The Completionist - Every character achievement earned by someone on the account.",
   },
+  // Display name "Time Lost in Azeroth" (2026-10-03, renamed from
+  // "The Marathon").
   marathon: {
     icon: "inv_misc_pocketwatch_01",
-    label: "The Marathon - 1,000+ hours played, combined across all characters",
+    label: "Time Lost in Azeroth - 1,000 or more hours played, combined across all characters.",
   },
 };
 
@@ -144,18 +155,18 @@ export function accountBadgeIconSrc(kind: AccountAchievementKind): string {
 }
 
 const ACCOUNT_ACHIEVEMENT_MESSAGE: Record<AccountAchievementKind, (name: string) => string> = {
-  class_collector: (name) => `${name} has a level-60 character of every class!`,
+  class_collector: (name) => `${name} has a level-60 character of every class - Full Roster!`,
   alliance_completionist: (name) => `${name} has maxed a character of every Alliance race!`,
   horde_completionist: (name) => `${name} has maxed a character of every Horde race!`,
-  diplomat: (name) => `${name} has maxed a character of every race on both factions!`,
+  diplomat: (name) => `${name} has maxed a character of every race, on both factions!`,
   master_of_all_trades: (name) => `${name}'s account has maxed every profession!`,
-  tycoon: (name) => `${name} has amassed 10,000 gold across their characters!`,
-  battle_scarred: (name) => `${name} has racked up 1,000+ combined Honorable Kills - Battle-Scarred!`,
-  pvp_dynasty: (name) => `${name} has 2+ characters at the top PvP rank!`,
-  apex_predator: (name) => `${name} has racked up 1,000+ combined boss kills - Apex Predator!`,
-  legacy_master: (name) => `${name} has completed every Legacy Challenge achievement - Legacy Master!`,
+  tycoon: (name) => `${name} has amassed 10,000 gold across their characters - Master Merchant!`,
+  battle_scarred: (name) => `${name} has racked up 1,000 or more combined Honorable Kills - Blood of the Enemy!`,
+  pvp_dynasty: (name) => `${name} has two or more characters at the top PvP rank!`,
+  apex_predator: (name) => `${name} has racked up 1,000 or more combined boss kills - Apex Predator!`,
+  legacy_master: (name) => `${name} has completed every Legacy Challenge achievement - Legacy Complete!`,
   completionist: (name) => `${name}'s account has earned every character achievement - The Completionist!`,
-  marathon: (name) => `${name} has played 1,000+ hours combined across their characters - The Marathon!`,
+  marathon: (name) => `${name} has played 1,000 or more hours, combined across their characters - Time Lost in Azeroth!`,
 };
 
 // Exported from here down (2026-10-03, "do that similar thing for all
@@ -185,7 +196,7 @@ export const APEX_PREDATOR_BOSS_KILLS = 1000;
 // Legacy Challenge achievement's state on each sync (not just completed
 // ones), so a fully-synced account should have exactly this many rows in
 // account_legacy_achievements. If Blizzard/the server ever adds more, bump
-// this - a stale-low number would let Legacy Master fire early.
+// this - a stale-low number would let Legacy Complete fire early.
 export const LEGACY_ACHIEVEMENT_TOTAL = 111;
 // Starting estimate, not tuned against real playtime data yet - easy to
 // retune later, this is just one number.
@@ -210,7 +221,7 @@ async function award(
 // sync - each award is itself idempotent (a unique user+kind constraint
 // plus ignoreDuplicates), and this only ever adds badges, never removes
 // one even if the account later dips below the bar again (spending gold
-// below 10,000 doesn't take Tycoon away).
+// below 10,000 doesn't take Master Merchant away).
 export async function checkAccountAchievements(
   supabase: SupabaseClient,
   userId: string
@@ -257,7 +268,7 @@ export async function checkAccountAchievements(
     await tryAward("tycoon");
   }
 
-  // The Marathon (2026-09-30) - combined played time across every
+  // Time Lost in Azeroth (2026-09-30) - combined played time across every
   // character on the account, no per-character minimum.
   const totalHoursPlayed = chars.reduce((sum, c) => sum + (c.time_played_hours ?? 0), 0);
   if (totalHoursPlayed >= MARATHON_HOURS) {
@@ -267,7 +278,7 @@ export async function checkAccountAchievements(
   const characterIds = chars.map((c) => c.id);
 
   // Fetched early (not just where buildAchievementItems needs it further
-  // down) so Battle-Scarred's Honorable Kills sum can reuse the exact same
+  // down) so Blood of the Enemy's Honorable Kills sum can reuse the exact same
   // rows instead of a second character_statistics query.
   const [{ data: achievementRows }, { data: statRows }] = await Promise.all([
     supabase.from("achievements").select("character_id, kind, tier, earned_at").in("character_id", characterIds),
@@ -277,7 +288,7 @@ export async function checkAccountAchievements(
       .in("character_id", characterIds),
   ]);
 
-  // Battle-Scarred (2026-10-03, replaced "Big Family" - see the
+  // Blood of the Enemy (2026-10-03, replaced "Big Family" - see the
   // AccountAchievementKind comment for why) - sums "Total Honorable Kills"
   // straight off the raw stat rows rather than going through
   // computeCounter(), since that sums per-character while this needs one
@@ -338,7 +349,7 @@ export async function checkAccountAchievements(
     await tryAward("pvp_dynasty");
   }
 
-  // Legacy Master (2026-09-30) - every Legacy Challenge achievement
+  // Legacy Complete (2026-09-30) - every Legacy Challenge achievement
   // completed. account_legacy_achievements gets a row for every known
   // achievement on each sync (completed or not - see importLogic.ts), so a
   // fully-synced, fully-completed account has exactly LEGACY_ACHIEVEMENT_
@@ -362,7 +373,7 @@ export async function checkAccountAchievements(
   // account overview does, so this stays a simpler pass over the same
   // buildAchievementItems() output every character page already uses.
   // (achievementRows/statRows themselves were already fetched above, for
-  // Battle-Scarred's Honorable Kills sum - reused here as-is.)
+  // Blood of the Enemy's Honorable Kills sum - reused here as-is.)
 
   const achByChar = new Map<string, AchievementRowDB[]>();
   for (const a of (achievementRows ?? []) as AchievementRowDB[]) {
