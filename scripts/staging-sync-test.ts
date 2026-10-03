@@ -265,6 +265,7 @@ async function run() {
     "tycoon",
     "battle_scarred",
     "apex_predator",
+    "legacy_master",
     "completionist",
     "marathon",
   ];
@@ -284,10 +285,6 @@ async function run() {
       "    way to fake that UI scan, so both stay untested here. Test for",
       "    real: open the Player vs. Player panel in-game on a Rank 14",
       "    character (or wait for one to reach it) and sync.",
-      "  - maxed_legacy: awarded from the Dashboard's \"save Legacy points\"",
-      "    form (app/Dashboard.tsx), not from a sync payload at all - test it",
-      "    by actually typing a maxed Legacy point value into that field on",
-      "    the test account and confirming the badge/activity event appear.",
       "",
       `Clean-up reminder: delete the throwaway account (or at least the`,
       `${createdNames.length} \"Synth ...\" characters) when you're done.`,

@@ -62,10 +62,10 @@ type StatRow = { character_id: string; category: string; name: string; value: st
 // Trades fraction wants the same maxed-skill-count the award check uses,
 // not just recipes (which only feeds Completionist/recipes achievements).
 type ProfessionRow = { character_id: string; profession: string; skill: number; recipes: unknown[] | null };
-// Still used for the separate Legacy Challenges summary (legacyEarned/
-// legacyPoints below) - unrelated to the now-removed "Legacy Complete"
-// account badge (see lib/accountAchievements.ts), which used to also read
-// these same rows.
+// Feeds both the separate Legacy Challenges summary (legacyEarned/
+// legacyPoints below) and computeAccountBadgeProgress's "Legacy Complete"
+// account badge fraction (see lib/accountAchievements.ts) - same rows, two
+// different uses, so only fetched once.
 type LegacyRow = { completed: boolean; ui_points: number | null };
 
 export type RecentAchievement = {
@@ -270,6 +270,7 @@ export async function loadAccountViewData(
       pvpTopRankCharacterCount,
       earnedAchievementCount,
       totalAchievementCount,
+      legacyRows: legacy,
     });
     accountBadgeBreakdown = computeAccountBadgeBreakdown({
       chars,

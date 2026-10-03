@@ -48,12 +48,15 @@ export type AccountAchievementKind =
   // cover the whole game. Would need new addon-side tracking (looping
   // GetFactionInfo, capturing names) before this can be built for real.
   //
-  // "legacy_master" ("Legacy Complete") removed (2026-10-03, Jordan's call) -
-  // existed from 2026-09-30 but never actually earned by anyone, so this is
-  // a clean removal with no earned rows to worry about. The
-  // account_achievements_kind_check constraint still allows the string (see
-  // sql/items-migration-30.sql's own comment on why old kinds are left in
-  // that list rather than torn out), so leaving it there is harmless.
+  // "legacy_master" ("Legacy Complete") - briefly removed on 2026-10-03
+  // after a mixed-up request (Jordan actually meant the separate
+  // per-character "maxed_legacy" achievement, which WAS a duplicate of
+  // this and stays removed - see lib/achievements.ts). This account badge
+  // itself is the real, intentional one: account_legacy_achievements is
+  // already a single account-wide table (the Legacy Challenges panel is
+  // the same 111-achievement list for every character), so this just
+  // checks that every row is both synced and completed.
+  | "legacy_master"
   | "completionist"
   | "marathon";
 
@@ -107,6 +110,10 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
     icon: "inv_misc_head_dragon_01",
     label: "Apex Predator - 1,000 or more combined boss kills across your characters.",
   },
+  legacy_master: {
+    icon: "achievement_dungeon_outland_dungeonmaster",
+    label: "Legacy Complete - Every Legacy Challenge completed.",
+  },
   completionist: {
     icon: "inv_misc_trophy_01",
     label: "The Completionist - Every character achievement earned by someone on the account.",
@@ -143,6 +150,13 @@ export const ACCOUNT_ACHIEVEMENT_LOCAL_ICONS: Partial<Record<AccountAchievementK
   battle_scarred: "blood-of-the-enemy",
   pvp_dynasty: "pvp-dynasty",
   apex_predator: "apex-predator",
+  // legacy_master intentionally has no entry here - unlike every other
+  // badge, there's no confirmed local art file for it on disk (it was
+  // removed before the 2026-10-03 "fill out every badge" pass), so it
+  // falls back to its CDN icon in ACCOUNT_ACHIEVEMENT_BADGES above rather
+  // than risk pointing at a /account-badge-icons/ file that doesn't exist
+  // (which would just 404 instead of falling back). Add an entry here once
+  // real art is uploaded for it.
   // Display name "The Completionist".
   completionist: "the-completionist",
   // Display name "Time Lost in Azeroth" - filename matches the rename.
@@ -174,6 +188,7 @@ const ACCOUNT_ACHIEVEMENT_MESSAGE: Record<AccountAchievementKind, (name: string)
   battle_scarred: (name) => `${name} has racked up 1,000 or more combined Honorable Kills - Blood of the Enemy!`,
   pvp_dynasty: (name) => `${name} has two or more characters at the top PvP rank!`,
   apex_predator: (name) => `${name} has racked up 1,000 or more combined boss kills - Apex Predator!`,
+  legacy_master: (name) => `${name}'s account has completed every Legacy Challenge!`,
   completionist: (name) => `${name}'s account has earned every character achievement - The Completionist!`,
   marathon: (name) => `${name} has played 1,000 or more hours, combined across their characters - Time Lost in Azeroth!`,
 };
@@ -364,8 +379,22 @@ export async function checkAccountAchievements(
     await tryAward("pvp_dynasty");
   }
 
-  // "Legacy Complete" (legacy_master) removed 2026-10-03 - see the
-  // AccountAchievementKind comment above.
+  // Legacy Complete (legacy_master) - account_legacy_achievements is a
+  // single account-wide table (same 111-achievement list regardless of
+  // which character the addon was scanning from), so this just checks
+  // that it's been fully synced (at least LEGACY_ACHIEVEMENT_TOTAL rows -
+  // a stale-low row count would let this fire early, before every category
+  // tab had ever been browsed in-game) AND every one of those rows is
+  // actually completed.
+  const { data: legacyRows } = await supabase
+    .from("account_legacy_achievements")
+    .select("completed")
+    .eq("user_id", userId);
+  const legacyFullyScanned = (legacyRows?.length ?? 0) >= LEGACY_ACHIEVEMENT_TOTAL;
+  const legacyPointRowsAllComplete = (legacyRows ?? []).every((r) => r.completed);
+  if (legacyFullyScanned && legacyPointRowsAllComplete) {
+    await tryAward("legacy_master");
+  }
 
   // The Completionist (2026-09-30) - every character achievement (the same
   // set the Account Progress bar on the overview page counts) earned by AT
@@ -423,9 +452,8 @@ export async function checkAccountAchievements(
 // actually being earned (or the reverse).
 //
 // Not every badge gets an entry - completionist DOES get a plain
-// completed/total too, but "legacy_master" is gone entirely (2026-10-03,
-// see the AccountAchievementKind comment), so there's no longer a Legacy
-// Challenges fraction computed here at all.
+// completed/total too, and so does legacy_master (completed Legacy
+// Challenge rows out of LEGACY_ACHIEVEMENT_TOTAL).
 export function computeAccountBadgeProgress({
   chars,
   professionRows,
@@ -433,6 +461,7 @@ export function computeAccountBadgeProgress({
   pvpTopRankCharacterCount,
   earnedAchievementCount,
   totalAchievementCount,
+  legacyRows,
 }: {
   chars: { level: number; class: string; race: string; money_copper: number | null; time_played_hours: number | null }[];
   professionRows: { profession: string; skill: number }[];
@@ -440,6 +469,7 @@ export function computeAccountBadgeProgress({
   pvpTopRankCharacterCount: number;
   earnedAchievementCount: number;
   totalAchievementCount: number;
+  legacyRows: { completed: boolean }[];
 }): Partial<Record<AccountAchievementKind, { value: number; target: number }>> {
   const progress: Partial<Record<AccountAchievementKind, { value: number; target: number }>> = {};
 
@@ -489,6 +519,11 @@ export function computeAccountBadgeProgress({
       return Number.isFinite(n) ? sum + n : sum;
     }, 0);
   progress.apex_predator = { value: totalBossKills, target: APEX_PREDATOR_BOSS_KILLS };
+
+  progress.legacy_master = {
+    value: legacyRows.filter((r) => r.completed).length,
+    target: LEGACY_ACHIEVEMENT_TOTAL,
+  };
 
   progress.completionist = { value: earnedAchievementCount, target: totalAchievementCount };
 

@@ -61,6 +61,7 @@ import {
   PVP_DYNASTY_THRESHOLD,
   APEX_PREDATOR_BOSS_KILLS,
   MARATHON_HOURS,
+  LEGACY_ACHIEVEMENT_TOTAL,
   type AccountAchievementKind,
 } from "../lib/accountAchievements";
 import { CLASSES, RACE_FACTION } from "../lib/options";
@@ -366,9 +367,41 @@ async function run() {
     check(`pvp_dynasty: exactly ${PVP_DYNASTY_THRESHOLD} top-rank characters DOES award`, at.has("pvp_dynasty"));
   }
 
-  // "legacy_master" (Legacy Complete) removed 2026-10-03 - its whole test
-  // block (scenarios A-D plus the progress-bar sanity check) is gone with
-  // it, since the kind no longer exists on AccountAchievementKind at all.
+  // --- legacy_master -----------------------------------------------------
+  {
+    const rowsOf = (n: number, completed: boolean) =>
+      Array.from({ length: n }, (_, i) => ({ achievement_id: i, completed }));
+
+    // A: not fully scanned yet (fewer rows than LEGACY_ACHIEVEMENT_TOTAL),
+    // every seen row completed - shouldn't fire early just because
+    // everything seen so far happens to be done.
+    const notFullyScanned = await awardedKinds({
+      characters: [CHAR_FIELDS()],
+      legacyRows: rowsOf(LEGACY_ACHIEVEMENT_TOTAL - 1, true),
+    });
+    check("legacy_master: fully synced but under LEGACY_ACHIEVEMENT_TOTAL rows does NOT award", !notFullyScanned.has("legacy_master"));
+
+    // B: fully scanned, but not every row completed.
+    const scannedNotComplete = await awardedKinds({
+      characters: [CHAR_FIELDS()],
+      legacyRows: [
+        ...rowsOf(LEGACY_ACHIEVEMENT_TOTAL - 1, true),
+        { achievement_id: LEGACY_ACHIEVEMENT_TOTAL - 1, completed: false },
+      ],
+    });
+    check("legacy_master: fully scanned with one incomplete row does NOT award", !scannedNotComplete.has("legacy_master"));
+
+    // C: no legacy rows synced at all.
+    const noneSynced = await awardedKinds({ characters: [CHAR_FIELDS()] });
+    check("legacy_master: no legacy rows synced does NOT award", !noneSynced.has("legacy_master"));
+
+    // D: fully scanned AND every row completed.
+    const fullyComplete = await awardedKinds({
+      characters: [CHAR_FIELDS()],
+      legacyRows: rowsOf(LEGACY_ACHIEVEMENT_TOTAL, true),
+    });
+    check("legacy_master: every row synced and completed DOES award", fullyComplete.has("legacy_master"));
+  }
 
   // =========================================================================
   // SECTION 3 - progress bars never show 100%+ for a badge that isn't
@@ -383,6 +416,7 @@ async function run() {
       pvpTopRankCharacterCount: 0,
       earnedAchievementCount: 0,
       totalAchievementCount: 10,
+      legacyRows: [{ completed: true }, { completed: false }],
     });
     for (const [kind, p] of Object.entries(progress)) {
       check(`progress.${kind}: value (${p!.value}) never exceeds target (${p!.target})`, p!.value <= p!.target);
