@@ -165,19 +165,12 @@ export const ACCOUNT_ACHIEVEMENT_LOCAL_ICONS: Partial<Record<AccountAchievementK
   horde_completionist: "horde-completionist",
   diplomat: "diplomat",
   master_of_all_trades: "master-of-all-trades",
-  // Filename stays "master-merchant-v2" (2026-10-03). The code and the file
-  // both checked out correct in isolation (right mapping, right coin-bag art
-  // confirmed in master-merchant.png), yet the page kept showing an old
-  // wrong picture - the classic signature of a cached image: browsers (and
-  // CDNs) cache a static asset by its URL, so overwriting a file's bytes
-  // without changing its filename can leave old cached copies being served
-  // indefinitely. Pointing at a brand-new filename forces a fresh fetch
-  // everywhere, since that exact URL was never cached before.
-  // ACTION NEEDED: upload the correct coin-bag art to
-  // /public/account-badge-icons/master-merchant-v2.png if you haven't
-  // already (the old master-merchant.png can stay or be deleted, it's just
-  // unused now).
-  master_merchant: "master-merchant-v2",
+  // Back to plain "master-merchant" (2026-10-03) - Jordan confirmed the
+  // actual master-merchant.png file already has the correct coin-bag art,
+  // so the "-v2" cache-busting rename wasn't wanted. If the wrong picture
+  // ever comes back after this, it's a browser/CDN cache serving stale bytes
+  // under this exact URL - a hard refresh, or redeploying, should clear it.
+  master_merchant: "master-merchant",
   blood_of_the_enemy: "blood-of-the-enemy",
   pvp_dynasty: "pvp-dynasty",
   apex_predator: "apex-predator",
