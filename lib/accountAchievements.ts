@@ -16,13 +16,28 @@ export type AccountAchievementKind =
   | "diplomat"
   | "master_of_all_trades"
   | "tycoon"
-  | "big_family"
+  // Replaced "big_family" (2026-10-03, "not hard to just make 10
+  // characters" - that one only checked chars.length >= 10, so it was
+  // free to cash in by rolling throwaway level-1 alts, no actual play
+  // required). This instead sums the same "Total Honorable Kills" stat
+  // the per-character honorable_kills achievement already tracks (see
+  // TIER_COUNTERS in achievements.ts) across every character on the
+  // account - real, hard-won PvP effort instead of a roster headcount.
+  | "battle_scarred"
   | "pvp_dynasty"
-  // One-Man Army (2026-09-27) - 3+ characters at the level cap on one
-  // account. Distinct from class_collector (every class, one each) and
-  // pvp_dynasty (top rank, not level) - this is just "you've maxed out a
-  // small army", no class/race/PvP requirement at all.
-  | "one_man_army"
+  // Replaced "one_man_army" (2026-10-03) - that one was just 3+ characters
+  // at the level cap, no boss-kill requirement despite the name's "army"
+  // framing suggesting one. This instead sums the "Boss Kills" category
+  // (every individual boss kill stat Blizzard tracks, same categoryOnly
+  // selector the per-character boss_kills tiered achievement already uses -
+  // see TIER_COUNTERS in achievements.ts) across every character on the
+  // account. Originally scoped to raid bosses only, but the addon's actual
+  // "Boss Kills" stat list (confirmed against a live scan) is an
+  // unfiltered mix of dungeon and raid bosses from this server's own
+  // (heavily customized, non-retail) instance roster, with no reliable way
+  // to tell which is which from the name alone - Jordan opted to count
+  // everything combined instead of guessing wrong on a per-boss list.
+  | "apex_predator"
   // 2026-09-30 batch, from the "unlocking icons from achievements"/account-
   // progression brainstorm - Jordan picked these three out of a longer
   // list. A fourth idea ("every faction in the game exalted by someone on
@@ -67,14 +82,17 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
     icon: "inv_misc_coin_06",
     label: "Tycoon - 10,000 combined gold across your characters",
   },
-  big_family: { icon: "inv_misc_bag_10", label: "Big Family - 10 or more characters" },
+  battle_scarred: {
+    icon: "achievement_pvp_h_08",
+    label: "Battle-Scarred - 1,000+ combined Honorable Kills across your characters",
+  },
   pvp_dynasty: {
     icon: "inv_jewelry_ring_03",
     label: "PvP Dynasty - 2 or more characters at the top PvP rank",
   },
-  one_man_army: {
-    icon: "achievement_bg_killxenemies_generalsroom",
-    label: "One-Man Army - 3 or more characters at the level cap",
+  apex_predator: {
+    icon: "inv_misc_head_dragon_01",
+    label: "Apex Predator - 1,000+ combined boss kills across your characters",
   },
   legacy_master: {
     icon: "inv_misc_rune_01",
@@ -132,9 +150,9 @@ const ACCOUNT_ACHIEVEMENT_MESSAGE: Record<AccountAchievementKind, (name: string)
   diplomat: (name) => `${name} has maxed a character of every race on both factions!`,
   master_of_all_trades: (name) => `${name}'s account has maxed every profession!`,
   tycoon: (name) => `${name} has amassed 10,000 gold across their characters!`,
-  big_family: (name) => `${name} is running a full roster - 10+ characters!`,
+  battle_scarred: (name) => `${name} has racked up 1,000+ combined Honorable Kills - Battle-Scarred!`,
   pvp_dynasty: (name) => `${name} has 2+ characters at the top PvP rank!`,
-  one_man_army: (name) => `${name} has 3+ characters at the level cap - One-Man Army!`,
+  apex_predator: (name) => `${name} has racked up 1,000+ combined boss kills - Apex Predator!`,
   legacy_master: (name) => `${name} has completed every Legacy Challenge achievement - Legacy Master!`,
   completionist: (name) => `${name}'s account has earned every character achievement - The Completionist!`,
   marathon: (name) => `${name} has played 1,000+ hours combined across their characters - The Marathon!`,
@@ -144,10 +162,17 @@ const MAX_CHARACTER_LEVEL = 60;
 const MAX_SKILL = 300;
 const SECONDARY_PROFESSIONS = ["First Aid", "Cooking", "Fishing"];
 const ALL_PROFESSIONS = [...PRIMARY_PROFESSIONS, ...SECONDARY_PROFESSIONS];
-const BIG_FAMILY_THRESHOLD = 10;
+// 1,000 combined Honorable Kills across every character on the account -
+// same "Honorable Kills"/"Total Honorable Kills" stat the per-character
+// honorable_kills achievement already sums (see TIER_COUNTERS in
+// achievements.ts), just totalled account-wide instead of per-character.
+const BATTLE_SCARRED_HONORABLE_KILLS = 1000;
 const TYCOON_GOLD = 10000;
 const PVP_DYNASTY_THRESHOLD = 2;
-const ONE_MAN_ARMY_THRESHOLD = 3;
+// 1,000 combined boss kills (dungeon + raid together - see the
+// AccountAchievementKind comment on apex_predator for why this isn't
+// split by instance type) across every character on the account.
+const APEX_PREDATOR_BOSS_KILLS = 1000;
 // Legacy Challenges total (2026-09-27, confirmed in achievementBoard.ts's
 // buildLegacyAchievementItems comments) - the addon reports every known
 // Legacy Challenge achievement's state on each sync (not just completed
@@ -210,10 +235,6 @@ export async function checkAccountAchievements(
     await tryAward("class_collector");
   }
 
-  if (maxedChars.length >= ONE_MAN_ARMY_THRESHOLD) {
-    await tryAward("one_man_army");
-  }
-
   const maxedRaces = new Set(maxedChars.map((c) => c.race));
   const allRaces = Object.keys(RACE_FACTION);
   const allianceRaces = allRaces.filter((r) => RACE_FACTION[r] === "Alliance");
@@ -229,10 +250,6 @@ export async function checkAccountAchievements(
     await tryAward("tycoon");
   }
 
-  if (chars.length >= BIG_FAMILY_THRESHOLD) {
-    await tryAward("big_family");
-  }
-
   // The Marathon (2026-09-30) - combined played time across every
   // character on the account, no per-character minimum.
   const totalHoursPlayed = chars.reduce((sum, c) => sum + (c.time_played_hours ?? 0), 0);
@@ -241,6 +258,48 @@ export async function checkAccountAchievements(
   }
 
   const characterIds = chars.map((c) => c.id);
+
+  // Fetched early (not just where buildAchievementItems needs it further
+  // down) so Battle-Scarred's Honorable Kills sum can reuse the exact same
+  // rows instead of a second character_statistics query.
+  const [{ data: achievementRows }, { data: statRows }] = await Promise.all([
+    supabase.from("achievements").select("character_id, kind, tier, earned_at").in("character_id", characterIds),
+    supabase
+      .from("character_statistics")
+      .select("character_id, category, name, value")
+      .in("character_id", characterIds),
+  ]);
+
+  // Battle-Scarred (2026-10-03, replaced "Big Family" - see the
+  // AccountAchievementKind comment for why) - sums "Total Honorable Kills"
+  // straight off the raw stat rows rather than going through
+  // computeCounter(), since that sums per-character while this needs one
+  // account-wide total.
+  const totalHonorableKills = (statRows ?? [])
+    .filter((s) => s.category === "Honorable Kills" && s.name === "Total Honorable Kills")
+    .reduce((sum, s) => {
+      const n = Number(s.value.replace(/,/g, ""));
+      return Number.isFinite(n) ? sum + n : sum;
+    }, 0);
+  if (totalHonorableKills >= BATTLE_SCARRED_HONORABLE_KILLS) {
+    await tryAward("battle_scarred");
+  }
+
+  // Apex Predator (2026-10-03, replaced "One-Man Army" - see the
+  // AccountAchievementKind comment for why) - sums every "Boss Kills"
+  // category row (categoryOnly, same selector the per-character boss_kills
+  // tiered achievement uses) across every character, dungeon and raid
+  // bosses combined.
+  const totalBossKills = (statRows ?? [])
+    .filter((s) => s.category === "Boss Kills")
+    .reduce((sum, s) => {
+      const n = Number(s.value.replace(/,/g, ""));
+      return Number.isFinite(n) ? sum + n : sum;
+    }, 0);
+  if (totalBossKills >= APEX_PREDATOR_BOSS_KILLS) {
+    await tryAward("apex_predator");
+  }
+
   // One shared fetch of character_professions - profession/skill feeds
   // Master of All Trades below, recipes feeds The Completionist's
   // buildAchievementItems() call further down, so there's no reason to
@@ -295,13 +354,8 @@ export async function checkAccountAchievements(
   // no need to track which character/tier "wins" a key the way the actual
   // account overview does, so this stays a simpler pass over the same
   // buildAchievementItems() output every character page already uses.
-  const [{ data: achievementRows }, { data: statRows }] = await Promise.all([
-    supabase.from("achievements").select("character_id, kind, tier, earned_at").in("character_id", characterIds),
-    supabase
-      .from("character_statistics")
-      .select("character_id, category, name, value")
-      .in("character_id", characterIds),
-  ]);
+  // (achievementRows/statRows themselves were already fetched above, for
+  // Battle-Scarred's Honorable Kills sum - reused here as-is.)
 
   const achByChar = new Map<string, AchievementRowDB[]>();
   for (const a of (achievementRows ?? []) as AchievementRowDB[]) {
