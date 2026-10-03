@@ -215,6 +215,29 @@ export const FAMILY_META: Record<AchievementFamily, { label: string; icon: strin
   legacy: { label: "Legacy Challenges", icon: "🏆" },
 };
 
+// Real WoW icon art for each family (2026-10-03, Jordan: "hate the AI
+// looking icons") - FAMILY_META.icon above is a plain emoji, which is what
+// was rendering on the Account Progress panel's category tiles and reading
+// as flat/generic ("AI looking") compared to the rest of the site's real
+// Blizzard icon art. Kept as a SEPARATE export rather than replacing
+// FAMILY_META.icon, because that field is also used as plain text in two
+// places a real <img> can't go: CharacterAchievementsPage's inline headers
+// (fine either way, but unchanged here to keep this a scoped fix) and
+// leaderboards-page.tsx's <optgroup label="...">, which can only take a
+// string. Rendered via wowIconUrl() same as every other real icon on the
+// site, with the emoji from FAMILY_META kept as the onError fallback (see
+// FamilyTileIcon) rather than assuming every name below is pixel-perfect.
+export const FAMILY_ICON_ART: Record<AchievementFamily, string> = {
+  combat: "ability_dualwield",
+  pvp: "achievement_pvp_a_01",
+  adventure: "inv_misc_map_01",
+  professions: "trade_blacksmithing",
+  wealth: "inv_misc_coin_02",
+  character: "achievement_level_60",
+  social: "achievement_general_stayclassy",
+  legacy: "inv_misc_trophy_03",
+};
+
 // Each threshold table is ordered Platinum-first so `.find()` picks the
 // highest tier the current value already qualifies for. These starting
 // numbers are estimates, not tuned against real group data yet - expect to

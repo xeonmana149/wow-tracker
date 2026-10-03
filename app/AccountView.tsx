@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ShowcaseBadge } from "./AchievementShowcase";
 import AccountBadgesGrid from "./AccountBadgesGrid";
+import FamilyTileIcon from "./FamilyTileIcon";
 import { FAMILY_META, type AchievementFamily } from "../lib/achievements";
 import { RACE_FACTION } from "../lib/options";
 import { ACCOUNT_ACHIEVEMENT_BADGES } from "../lib/accountAchievements";
@@ -156,7 +157,9 @@ export function AccountView({
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {categories.map(([family, { earned, total }]) => (
               <div key={family} className="rounded border border-neutral-700 bg-neutral-900 p-2 text-center">
-                <div className="text-lg">{FAMILY_META[family].icon}</div>
+                <div className="text-lg">
+                  <FamilyTileIcon family={family} />
+                </div>
                 <div className="text-xs text-gray-300">{FAMILY_META[family].label}</div>
                 <div className="text-xs text-gray-500">
                   {earned} / {total}
