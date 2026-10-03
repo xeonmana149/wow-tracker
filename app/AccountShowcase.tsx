@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ShowcaseBadge } from "./AchievementShowcase";
+import AccountBadgeTile from "./AccountBadgeTile";
 import { ACCOUNT_ACHIEVEMENT_BADGES, accountBadgeIconSrc } from "../lib/accountAchievements";
 import type { BadgeIconOverrides } from "../lib/badgeIconOverrides";
 import type { AccountViewData } from "../lib/accountView";
@@ -32,6 +33,13 @@ export default function AccountShowcase({
 }: Pick<AccountViewData, "favoriteCharacter" | "favoriteStatistic" | "favoriteAchievement" | "favoriteItem"> & {
   iconOverrides: BadgeIconOverrides;
 }) {
+  // Pin state for the favourite achievement card when it's an account badge
+  // (2026-10-03, "can we make hover work on this") - AccountBadgeTile is a
+  // controlled component (see AccountBadgesGrid.tsx), and there's only ever
+  // one of these shown here, so a plain local boolean does the same job
+  // AccountBadgesGrid's shared openKind does for a whole grid of them.
+  const [achievementPinned, setAchievementPinned] = useState(false);
+
   return (
     <div className="rounded-md border border-neutral-700 bg-neutral-800 p-4">
       <h2 className="text-lg">Showcase</h2>
@@ -75,9 +83,12 @@ export default function AccountShowcase({
 
         {/* Favourite achievement - either a character achievement (reuses
             ShowcaseBadge, same tile the character page's own trophy cabinet
-            uses) or an account badge (small static tile - no pin/breakdown
-            interactivity here, that belongs to the Account Badges grid
-            further down the page, not a one-off showcase pick). */}
+            uses - hover preview and click-through to the achievement already
+            built in) or an account badge (reuses AccountBadgeTile, same tile
+            the Account Badges grid uses further down the page, for the same
+            hover-to-preview/click-to-pin treatment - 2026-10-03, "can we make
+            hover work on this"). Always earned here, since the Edit Profile
+            picker only offers already-earned badges to choose from. */}
         <div className="rounded border border-neutral-700 bg-neutral-900 p-3">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-400/70">Favourite Achievement</p>
           {favoriteAchievement?.type === "character" ? (
@@ -85,17 +96,23 @@ export default function AccountShowcase({
               <ShowcaseBadge characterId={favoriteAchievement.characterId} item={favoriteAchievement.item} />
             </div>
           ) : favoriteAchievement?.type === "account" ? (
-            <div className="mt-1.5 flex items-center gap-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={accountBadgeIconSrc(favoriteAchievement.kind, iconOverrides)}
-                alt=""
-                className="h-10 w-10 rounded-sm border border-amber-900/70"
-              />
-              <span className="text-sm font-semibold text-white">
-                {ACCOUNT_ACHIEVEMENT_BADGES[favoriteAchievement.kind].label}
-              </span>
-            </div>
+            (() => {
+              const badge = ACCOUNT_ACHIEVEMENT_BADGES[favoriteAchievement.kind];
+              const [name, ...rest] = badge.label.split(" - ");
+              return (
+                <div className="mt-1.5 flex justify-center">
+                  <AccountBadgeTile
+                    icon={accountBadgeIconSrc(favoriteAchievement.kind, iconOverrides)}
+                    name={name}
+                    description={rest.join(" - ")}
+                    earned
+                    pinned={achievementPinned}
+                    onTogglePin={() => setAchievementPinned((p) => !p)}
+                    onRequestClose={() => setAchievementPinned(false)}
+                  />
+                </div>
+              );
+            })()
           ) : (
             <p className="mt-1.5 text-sm text-gray-500">Not set yet.</p>
           )}
@@ -114,55 +131,82 @@ export default function AccountShowcase({
 // Minimal version of GearCard's item tile - just the icon + name + tooltip
 // on hover, no slot glyph/paperdoll context, since there's only ever one
 // item here, not a full loadout.
+//
+// 2026-10-03 ("have the item actually linked to the item database so you can
+// hover and get the tooltip or click it and it takes you to the item page")
+// - the icon and name now link to /items?itemId=<id> (ItemSearch.tsx reads
+// that param and opens the item's full details immediately, see its own
+// comment), and the tooltip was moved OUT of the icon's own h-12 w-12 box:
+// it used to be nested inside that box, which also has overflow-hidden, so
+// the tooltip's bottom-full positioning (which pushes it above the box) was
+// being clipped away by its own parent - hover looked like it did nothing at
+// all, when really the tooltip was rendering, just invisibly. It's a sibling
+// now, same structure GearCard's own Tile uses.
 function FavoriteItemCard({ favoriteItem }: { favoriteItem: NonNullable<AccountViewData["favoriteItem"]> }) {
   const [imgFailed, setImgFailed] = useState(false);
-  const { entry, characterName } = favoriteItem;
+  const { entry, characterId, characterName } = favoriteItem;
   const color = entry.item_quality ? `#${entry.item_quality}` : "#ffffff";
+  const itemHref = entry.item_id != null ? `/items?itemId=${entry.item_id}` : null;
+
+  const icon = (
+    <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded border" style={{ borderColor: color }}>
+      {entry.item_icon && !imgFailed ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={entry.item_icon}
+          alt=""
+          draggable={false}
+          className="h-full w-full object-cover"
+          onError={() => setImgFailed(true)}
+        />
+      ) : (
+        <span className="flex h-full w-full items-center justify-center text-[9px] text-gray-400">
+          {entry.slot}
+        </span>
+      )}
+    </div>
+  );
 
   return (
     <div className="group relative mt-1.5 flex items-center gap-2">
-      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded border" style={{ borderColor: color }}>
-        {entry.item_icon && !imgFailed ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={entry.item_icon}
-            alt=""
-            draggable={false}
-            className="h-full w-full object-cover"
-            onError={() => setImgFailed(true)}
-          />
-        ) : (
-          <span className="flex h-full w-full items-center justify-center text-[9px] text-gray-400">
-            {entry.slot}
-          </span>
-        )}
-
-        {/* Tooltip, same visual treatment as GearCard's ItemTooltip */}
-        <div className="invisible absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-xs -translate-x-1/2 rounded-md p-3 text-left text-sm opacity-0 shadow-lg group-hover:visible group-hover:opacity-100">
-          <div
-            style={{ background: "linear-gradient(180deg, #0c0c14, #000005)", border: "1px solid #c8aa6e" }}
-            className="rounded-md p-3"
-          >
-            <div className="font-semibold" style={{ color }}>
-              {entry.item_name}
-            </div>
-            {(entry.tooltip ?? [])
-              .filter((line) => line !== entry.item_name)
-              .map((line, i) => (
-                <div key={i} className="text-gray-300">
-                  {line}
-                </div>
-              ))}
-          </div>
-        </div>
-      </div>
+      {itemHref ? <Link href={itemHref}>{icon}</Link> : icon}
       <div>
-        <div className="text-sm font-semibold" style={{ color }}>
-          {entry.item_name}
-        </div>
+        {itemHref ? (
+          <Link href={itemHref} className="text-sm font-semibold hover:underline" style={{ color }}>
+            {entry.item_name}
+          </Link>
+        ) : (
+          <div className="text-sm font-semibold" style={{ color }}>
+            {entry.item_name}
+          </div>
+        )}
         <p className="text-xs text-gray-400">
-          {characterName} · {entry.slot}
+          <Link href={`/character/${characterId}`} className="hover:text-amber-300 hover:underline">
+            {characterName}
+          </Link>{" "}
+          · {entry.slot}
         </p>
+      </div>
+
+      {/* Tooltip, same visual treatment as GearCard's ItemTooltip - a sibling
+          of the icon/name now, not nested inside the icon's overflow-hidden
+          box (see header comment above). */}
+      <div className="invisible absolute bottom-full left-0 z-50 mb-2 w-max max-w-xs opacity-0 shadow-lg group-hover:visible group-hover:opacity-100">
+        <div
+          style={{ background: "linear-gradient(180deg, #0c0c14, #000005)", border: "1px solid #c8aa6e" }}
+          className="rounded-md p-3 text-left text-sm"
+        >
+          <div className="font-semibold" style={{ color }}>
+            {entry.item_name}
+          </div>
+          {(entry.tooltip ?? [])
+            .filter((line) => line !== entry.item_name)
+            .map((line, i) => (
+              <div key={i} className="text-gray-300">
+                {line}
+              </div>
+            ))}
+        </div>
       </div>
     </div>
   );
