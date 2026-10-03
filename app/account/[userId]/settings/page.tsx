@@ -29,6 +29,7 @@ type ProfileSettings = {
   show_activity: boolean;
   notify_achievement_earned: boolean;
   notify_account_achievement_earned: boolean;
+  notify_legacy_completed: boolean;
 };
 
 export default function AccountSettingsPage() {
@@ -53,7 +54,7 @@ export default function AccountSettingsPage() {
           supabase
             .from("profiles")
             .select(
-              "default_character_id, profile_visibility, show_playtime, show_activity, notify_achievement_earned, notify_account_achievement_earned"
+              "default_character_id, profile_visibility, show_playtime, show_activity, notify_achievement_earned, notify_account_achievement_earned, notify_legacy_completed"
             )
             .eq("id", userId)
             .maybeSingle(),
@@ -71,6 +72,7 @@ export default function AccountSettingsPage() {
           show_activity: profileRow?.show_activity ?? true,
           notify_achievement_earned: profileRow?.notify_achievement_earned ?? true,
           notify_account_achievement_earned: profileRow?.notify_account_achievement_earned ?? true,
+          notify_legacy_completed: profileRow?.notify_legacy_completed ?? true,
         });
         setCharacters((characterRows ?? []) as CharacterRow[]);
       }
@@ -98,6 +100,7 @@ export default function AccountSettingsPage() {
           show_activity: settings.show_activity,
           notify_achievement_earned: settings.notify_achievement_earned,
           notify_account_achievement_earned: settings.notify_account_achievement_earned,
+          notify_legacy_completed: settings.notify_legacy_completed,
         })
         .eq("id", userId),
       ...characters.map((c) =>
@@ -284,6 +287,14 @@ export default function AccountSettingsPage() {
               onChange={(e) => setSettings({ ...settings, notify_account_achievement_earned: e.target.checked })}
             />
             Highlight account achievements earned
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={settings.notify_legacy_completed}
+              onChange={(e) => setSettings({ ...settings, notify_legacy_completed: e.target.checked })}
+            />
+            Highlight Legacy Challenges completed
           </label>
         </div>
       </section>

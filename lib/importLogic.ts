@@ -1065,6 +1065,30 @@ export async function applyImport(
   );
 
   if (realLegacyAchievements.length > 0) {
+    // Newly-completed detection (2026-10-03, "I want this" - logging Legacy
+    // Challenge completions to the Activity feed) - reads whatever's on file
+    // for THIS account's own completion state before the upsert below
+    // overwrites it, same "before"/"after" comparison shape as the level-up
+    // detection earlier in this function. Only an achievement that flips
+    // false/never-seen -> true this sync counts as "newly completed" - a
+    // sync that just re-reports an already-completed achievement (which
+    // happens on every sync, since the addon exports the full list each
+    // time) must not re-log it.
+    const { data: previousLegacyRows } = await supabase
+      .from("account_legacy_achievements")
+      .select("achievement_id, completed")
+      .eq("user_id", before.user_id)
+      .in(
+        "achievement_id",
+        realLegacyAchievements.map((a) => a.id)
+      );
+    const previouslyCompleted = new Set(
+      ((previousLegacyRows ?? []) as { achievement_id: number; completed: boolean }[])
+        .filter((r) => r.completed)
+        .map((r) => r.achievement_id)
+    );
+    const newlyCompleted = realLegacyAchievements.filter((a) => a.completed && !previouslyCompleted.has(a.id));
+
     const definitionRow = (a: NonNullable<ParsedExport["legacyAchievements"]>[number]) => ({
       achievement_id: a.id,
       category: a.category,
@@ -1112,6 +1136,23 @@ export async function applyImport(
       .from("account_legacy_achievements")
       .upsert(completionRows, { onConflict: "user_id,achievement_id" });
     if (completionError) throw new Error(completionError.message);
+
+    // Site-wide Activity Log only (2026-10-03) - NOT added to `events`/the
+    // old `activity_events` table: that table's `kind` column is a fixed set
+    // (see the ActivityEvent type above) that was never designed to include
+    // a Legacy Challenge kind, and this repo doesn't have that table's
+    // original CHECK constraint on hand to safely widen it. `activity_log`'s
+    // `kind` is plain text with no such constraint (sql/activity-log.sql),
+    // so new kinds can be added here freely. Legacy Challenges are
+    // account-wide, not per-character (same reasoning as the account
+    // achievements below), so these log with no character attached.
+    for (const achievement of newlyCompleted) {
+      void logActivity(supabase, {
+        userId: before.user_id,
+        kind: "legacy_completed",
+        label: `Completed Legacy Challenge: ${achievement.name}`,
+      });
+    }
   }
 
   // Account-wide achievements - re-checked on every sync since any of the

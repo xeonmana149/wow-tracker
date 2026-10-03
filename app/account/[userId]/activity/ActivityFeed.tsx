@@ -43,7 +43,7 @@ export default function ActivityFeed({ accountUserId, accountName }: { accountUs
   // their Settings yet, so this starts as a bit of visual interest rather
   // than silently doing nothing until someone opts in.
   const [highlightKinds, setHighlightKinds] = useState<Set<string>>(
-    new Set(["achievement_earned", "account_achievement_earned"])
+    new Set(["achievement_earned", "account_achievement_earned", "legacy_completed"])
   );
 
   useEffect(() => {
@@ -52,13 +52,14 @@ export default function ActivityFeed({ accountUserId, accountName }: { accountUs
       if (!userData.user) return;
       const { data: profileRow } = await supabase
         .from("profiles")
-        .select("notify_achievement_earned, notify_account_achievement_earned")
+        .select("notify_achievement_earned, notify_account_achievement_earned, notify_legacy_completed")
         .eq("id", userData.user.id)
         .maybeSingle();
       if (!profileRow) return;
       const next = new Set<string>();
       if (profileRow.notify_achievement_earned) next.add("achievement_earned");
       if (profileRow.notify_account_achievement_earned) next.add("account_achievement_earned");
+      if (profileRow.notify_legacy_completed) next.add("legacy_completed");
       setHighlightKinds(next);
     }
     loadPrefs();
