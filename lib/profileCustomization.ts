@@ -95,6 +95,11 @@ export const BANNER_STYLE_OPTIONS: BannerOption[] = [
   { key: "hyjal-roots", label: "Hyjal Roots", localSlug: "hyjal-roots" },
   { key: "distant-hyjal", label: "Distant Hyjal", localSlug: "distant-hyjal" },
   { key: "dun-morogh", label: "Dun Morogh", localSlug: "dun-morogh" },
+  // 2026-10-03 batch - art already dropped in /public/profile-banners/.
+  { key: "duskwood", label: "Duskwood", localSlug: "duskwood" },
+  { key: "hillsbrad-foothills", label: "Hillsbrad Foothills", localSlug: "hillsbrad-foothills" },
+  { key: "shimmering-flats", label: "Shimmering Flats", localSlug: "shimmering-flats" },
+  { key: "zephras-isle", label: "Zephras Isle", localSlug: "zephras-isle" },
 ];
 
 export function findBannerOption(key: string | null): BannerOption | undefined {
