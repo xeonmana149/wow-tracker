@@ -274,7 +274,11 @@ type ActivityEvent = {
     | "epic_gear"
     | "gold_milestone"
     | "pvp_rank_up"
-    | "achievement_earned";
+    | "achievement_earned"
+    // 2026-10-03 ("we should add it to the other activity feeds") - see
+    // sql/activity-events-legacy-completed.sql for widening
+    // activity_events.kind's CHECK constraint to allow this value too.
+    | "legacy_completed";
   message: string;
   // Which specific achievement this row is about, and its tier if tiered -
   // only set on "achievement_earned" rows (2026-09-25), so the Activity
@@ -1137,20 +1141,26 @@ export async function applyImport(
       .upsert(completionRows, { onConflict: "user_id,achievement_id" });
     if (completionError) throw new Error(completionError.message);
 
-    // Site-wide Activity Log only (2026-10-03) - NOT added to `events`/the
-    // old `activity_events` table: that table's `kind` column is a fixed set
-    // (see the ActivityEvent type above) that was never designed to include
-    // a Legacy Challenge kind, and this repo doesn't have that table's
-    // original CHECK constraint on hand to safely widen it. `activity_log`'s
-    // `kind` is plain text with no such constraint (sql/activity-log.sql),
-    // so new kinds can be added here freely. Legacy Challenges are
+    // Both activity feeds (2026-10-03, "we should add it to the other
+    // activity feeds") - pushed into the shared `events` array like every
+    // other kind above, instead of a standalone `logActivity`-only loop, so
+    // this flows through the SAME code at the bottom of this function that
+    // already inserts into the old `activity_events` table AND mirrors into
+    // the new `activity_log` table. That also means it's only logged ONCE to
+    // `activity_log` (via the mirror loop below) - not here too, which would
+    // have double-logged it there. See sql/activity-events-legacy-completed.sql
+    // for widening activity_events.kind's CHECK constraint to allow this
+    // value - this repo doesn't have that table's original constraint
+    // definition on hand, so that migration drops it rather than guessing at
+    // a replacement (see that file's own comment). Legacy Challenges are
     // account-wide, not per-character (same reasoning as the account
     // achievements below), so these log with no character attached.
     for (const achievement of newlyCompleted) {
-      void logActivity(supabase, {
-        userId: before.user_id,
+      events.push({
+        character_id: null,
+        user_id: before.user_id,
         kind: "legacy_completed",
-        label: `Completed Legacy Challenge: ${achievement.name}`,
+        message: `Completed Legacy Challenge: ${achievement.name}`,
       });
     }
   }
