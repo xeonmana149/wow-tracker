@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { AccountView } from "../AccountView";
@@ -38,6 +38,16 @@ export default function AccountOverviewPage() {
   // ones above so Cancel can discard changes without a refetch, and so the
   // header updates immediately on Save without waiting on a round trip.
   const [editingProfile, setEditingProfile] = useState(false);
+  // 2026-10-03 ("it works but it should pull you to the top of the edit
+  // section") - the panel itself renders near the TOP of the page
+  // (`belowHeader`, right under the header), but its "Edit"/"Edit Profile"
+  // entry points aren't all up there - the Showcase card's own Edit button
+  // (see AccountShowcase.tsx) sits further down the page, so opening the
+  // panel from there used to just change state with no visible effect if
+  // you were scrolled down: the panel appeared, just off-screen above you.
+  // This ref + the effect below scroll it into view every time it opens,
+  // regardless of which button triggered it.
+  const editPanelRef = useRef<HTMLDivElement | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
   const [draftDisplayName, setDraftDisplayName] = useState("");
@@ -96,6 +106,15 @@ export default function AccountOverviewPage() {
     load();
   }, []);
 
+  // Scroll the Edit Profile panel into view every time it opens - see the
+  // editPanelRef comment above for why this can't just happen inline in
+  // openEditProfile().
+  useEffect(() => {
+    if (editingProfile) {
+      editPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [editingProfile]);
+
   function openEditProfile() {
     if (!data) return;
     setDraftDisplayName(data.displayName);
@@ -122,6 +141,9 @@ export default function AccountOverviewPage() {
     setDraftItemSlot(data.favoriteItem?.entry.slot ?? null);
     setProfileSaveError(null);
     setEditingProfile(true);
+    // Scrolling happens in the effect below, not here - setEditingProfile
+    // is async, so the panel isn't in the DOM yet on this line; the effect
+    // fires after the render that actually mounts it.
     if (!pickerData && userId) {
       setLoadingPickerData(true);
       loadShowcasePickerData(supabase, userId)
@@ -223,7 +245,7 @@ export default function AccountOverviewPage() {
       }
       belowHeader={
         editingProfile && (
-          <div className="mt-4 rounded-md border border-neutral-700 bg-neutral-800 p-4">
+          <div ref={editPanelRef} className="mt-4 scroll-mt-4 rounded-md border border-neutral-700 bg-neutral-800 p-4">
             <h2 className="text-lg">Edit Profile</h2>
 
             <div className="mt-3">
