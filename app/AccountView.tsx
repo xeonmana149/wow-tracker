@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ShowcaseBadge } from "./AchievementShowcase";
 import AccountBadgesGrid from "./AccountBadgesGrid";
 import FamilyTileIcon from "./FamilyTileIcon";
+import AccountShowcase from "./AccountShowcase";
 import { FAMILY_META, type AchievementFamily } from "../lib/achievements";
 import { RACE_FACTION } from "../lib/options";
 import { ACCOUNT_ACHIEVEMENT_BADGES } from "../lib/accountAchievements";
@@ -45,6 +46,10 @@ export function AccountView({
     legacyEarned,
     legacyPoints,
     iconOverrides,
+    favoriteCharacter,
+    favoriteStatistic,
+    favoriteAchievement,
+    favoriteItem,
   } = data;
 
   const earnedCount = mergedItems.filter((i) => i.earned).length;
@@ -191,6 +196,16 @@ export function AccountView({
             </div>
           )}
         </div>
+      </div>
+
+      <div className="mt-4">
+        <AccountShowcase
+          favoriteCharacter={favoriteCharacter}
+          favoriteStatistic={favoriteStatistic}
+          favoriteAchievement={favoriteAchievement}
+          favoriteItem={favoriteItem}
+          iconOverrides={iconOverrides}
+        />
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">

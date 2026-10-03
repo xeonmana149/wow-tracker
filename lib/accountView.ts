@@ -10,6 +10,7 @@ import { FLAT_ACHIEVEMENT_NAME } from "./achievementCategories";
 import {
   computeAccountBadgeProgress,
   computeAccountBadgeBreakdown,
+  ACCOUNT_ACHIEVEMENT_BADGES,
   type AccountAchievementKind,
   type AccountBadgeBreakdownLine,
 } from "./accountAchievements";
@@ -58,6 +59,20 @@ type AchievementRowDB = {
   tier_platinum_at?: string | null;
 };
 type StatRow = { character_id: string; category: string; name: string; value: string };
+// Showcase feature (2026-10-03, "character showcase section, a favourite
+// statistic... favourite achievement... and an item showcase") - only the
+// fields FavoriteItemCard/AccountView actually need to display one picked
+// item, not GearCard's full equipped-gear shape.
+export type EquippedGearRow = {
+  character_id: string;
+  slot: string;
+  item_name: string | null;
+  item_link: string | null;
+  item_id: number | null;
+  item_quality: string | null;
+  item_icon: string | null;
+  tooltip: string[] | null;
+};
 // profession/skill added (2026-10-03) alongside the existing recipes field
 // - both now needed here since computeAccountBadgeProgress's Master of All
 // Trades fraction wants the same maxed-skill-count the award check uses,
@@ -156,6 +171,22 @@ export type AccountViewData = {
   // the same overrides the Dashboard's AccountBadges panel already did (see
   // accountBadgeIconSrc in lib/accountAchievements.ts).
   iconOverrides: BadgeIconOverrides;
+  // Showcase (2026-10-03) - four independently-optional picks, each null
+  // until the owner sets it from the Edit Profile panel (see
+  // sql/profile-showcase.sql for the backing profiles columns). Resolved
+  // here rather than just handing back the raw IDs/strings so every reader
+  // of AccountViewData (the owner's own page, and the public /account/
+  // [userId] page) gets the same already-looked-up display data instead of
+  // each re-implementing the lookup. A pick whose character/stat/item was
+  // since deleted or renamed quietly resolves to null rather than showing
+  // stale/broken data - same "fails soft" posture as the rest of this file.
+  favoriteCharacter: CharacterRow | null;
+  favoriteStatistic: { characterId: string; characterName: string; category: string; name: string; value: string } | null;
+  favoriteAchievement:
+    | { type: "character"; characterId: string; item: AchievementBoardItem }
+    | { type: "account"; kind: AccountAchievementKind }
+    | null;
+  favoriteItem: { characterId: string; characterName: string; entry: EquippedGearRow } | null;
 };
 
 // `client` is either the browser's RLS-scoped supabase client (viewing your
@@ -180,7 +211,9 @@ export async function loadAccountViewData(
   ] = await Promise.all([
     client
       .from("profiles")
-      .select("display_name, avatar_icon, banner_style, motto")
+      .select(
+        "display_name, avatar_icon, banner_style, motto, favorite_character_id, favorite_statistic_character_id, favorite_statistic_category, favorite_statistic_name, favorite_achievement_type, favorite_achievement_character_id, favorite_achievement_kind, favorite_item_character_id, favorite_item_slot"
+      )
       .eq("id", userId)
       .maybeSingle(),
     client
@@ -203,9 +236,13 @@ export async function loadAccountViewData(
   let recent: RecentAchievement[] = [];
   let accountBadgeProgress: ReturnType<typeof computeAccountBadgeProgress> = {};
   let accountBadgeBreakdown: ReturnType<typeof computeAccountBadgeBreakdown> = {};
+  let favoriteCharacter: CharacterRow | null = null;
+  let favoriteStatistic: AccountViewData["favoriteStatistic"] = null;
+  let favoriteAchievement: AccountViewData["favoriteAchievement"] = null;
+  let favoriteItem: AccountViewData["favoriteItem"] = null;
 
   if (characterIds.length > 0) {
-    const [{ data: achievementRows }, { data: statRows }, { data: professionRows }] = await Promise.all([
+    const [{ data: achievementRows }, { data: statRows }, { data: professionRows }, { data: gearRows }] = await Promise.all([
       client
         .from("achievements")
         .select("character_id, kind, tier, earned_at, tier_copper_at, tier_silver_at, tier_gold_at, tier_platinum_at")
@@ -217,6 +254,13 @@ export async function loadAccountViewData(
       client
         .from("character_professions")
         .select("character_id, profession, skill, recipes")
+        .in("character_id", characterIds),
+      // Only fetched for the showcase's possible favorite-item pick, not
+      // shown in bulk anywhere on the account page - same shape GearCard
+      // reads on a character page, trimmed to what FavoriteItemCard needs.
+      client
+        .from("equipped_gear")
+        .select("character_id, slot, item_name, item_link, item_id, item_quality, item_icon, tooltip")
         .in("character_id", characterIds),
     ]);
 
@@ -306,6 +350,65 @@ export async function loadAccountViewData(
         earnedAt: a.earned_at as string,
         label: labelFor(a.kind),
       }));
+
+    // Showcase resolution (2026-10-03) - each pick fails soft to null if
+    // whatever it points at (a character, a specific stat row, an earned
+    // achievement, an equipped item) no longer exists, rather than showing
+    // stale or broken data. profileRow's favorite_* columns are the raw
+    // picks saved from the Edit Profile panel (see sql/profile-showcase.sql).
+    const gRows = (gearRows ?? []) as EquippedGearRow[];
+
+    if (profileRow?.favorite_character_id) {
+      favoriteCharacter = chars.find((c) => c.id === profileRow.favorite_character_id) ?? null;
+    }
+
+    if (profileRow?.favorite_statistic_character_id && profileRow.favorite_statistic_category && profileRow.favorite_statistic_name) {
+      const statRow = stRows.find(
+        (s) =>
+          s.character_id === profileRow.favorite_statistic_character_id &&
+          s.category === profileRow.favorite_statistic_category &&
+          s.name === profileRow.favorite_statistic_name
+      );
+      if (statRow) {
+        favoriteStatistic = {
+          characterId: statRow.character_id,
+          characterName: charName.get(statRow.character_id) ?? "Unknown",
+          category: statRow.category,
+          name: statRow.name,
+          value: statRow.value,
+        };
+      }
+    }
+
+    if (profileRow?.favorite_achievement_type === "account" && profileRow.favorite_achievement_kind) {
+      favoriteAchievement = {
+        type: "account",
+        kind: profileRow.favorite_achievement_kind as AccountAchievementKind,
+      };
+    } else if (
+      profileRow?.favorite_achievement_type === "character" &&
+      profileRow.favorite_achievement_character_id &&
+      profileRow.favorite_achievement_kind
+    ) {
+      const owner = perCharacterItems.find((p) => p.characterId === profileRow.favorite_achievement_character_id);
+      const item = owner?.items.find((i) => i.key === profileRow.favorite_achievement_kind);
+      if (owner && item) {
+        favoriteAchievement = { type: "character", characterId: owner.characterId, item };
+      }
+    }
+
+    if (profileRow?.favorite_item_character_id && profileRow.favorite_item_slot) {
+      const entry = gRows.find(
+        (g) => g.character_id === profileRow.favorite_item_character_id && g.slot === profileRow.favorite_item_slot
+      );
+      if (entry && entry.item_name) {
+        favoriteItem = {
+          characterId: entry.character_id,
+          characterName: charName.get(entry.character_id) ?? "Unknown",
+          entry,
+        };
+      }
+    }
   }
 
   return {
@@ -334,5 +437,138 @@ export async function loadAccountViewData(
     legacyEarned: legacy.filter((r) => r.completed && (r.ui_points ?? 0) > 0).length,
     legacyPoints: legacy.filter((r) => r.completed).reduce((sum, r) => sum + (r.ui_points ?? 0), 0),
     iconOverrides,
+    favoriteCharacter,
+    favoriteStatistic,
+    favoriteAchievement,
+    favoriteItem,
   };
+}
+
+export type ShowcasePickerData = {
+  // Only earned character achievements, one list per character - the Edit
+  // Profile panel's "favourite achievement" picker only makes sense to
+  // offer things you've actually earned.
+  earnedAchievementsByCharacter: Record<string, { kind: string; label: string; tier: AchievementTier | null }[]>;
+  // Every raw stat per character, filled or not - unlike achievements,
+  // picking a statistic you haven't maxed is completely reasonable ("I'm
+  // proud of my Deaths: 412" is a valid favourite).
+  statsByCharacter: Record<string, { category: string; name: string; value: string }[]>;
+  // Only filled equipped-gear slots - nothing to showcase in an empty one.
+  gearByCharacter: Record<string, { slot: string; item_name: string }[]>;
+  // Every account badge, earned or not, so the picker can show locked ones
+  // greyed out rather than silently omitting them (same "see what you're
+  // working toward" idea as the badges grid itself).
+  accountBadges: { kind: AccountAchievementKind; label: string; earned: boolean }[];
+};
+
+// Separate, deliberately-lighter fetch just for populating the Edit Profile
+// panel's showcase pickers (2026-10-03) - only called when that panel
+// actually opens, not on every account page load, and only needs
+// earned/available OPTIONS to list, not the full merged/tiered rendering
+// loadAccountViewData already does for display. Always uses the browser's
+// own RLS-scoped client since only the signed-in owner ever sees this panel.
+export async function loadShowcasePickerData(client: SupabaseClient, userId: string): Promise<ShowcasePickerData> {
+  const { data: characterRows } = await client.from("characters").select("id").eq("user_id", userId);
+  const characterIds = (characterRows ?? []).map((c) => c.id as string);
+
+  const empty: ShowcasePickerData = {
+    earnedAchievementsByCharacter: {},
+    statsByCharacter: {},
+    gearByCharacter: {},
+    accountBadges: Object.entries(ACCOUNT_ACHIEVEMENT_BADGES).map(([kind, badge]) => ({
+      kind: kind as AccountAchievementKind,
+      label: badge.label,
+      earned: false,
+    })),
+  };
+  if (characterIds.length === 0) return empty;
+
+  const [{ data: achievementRows }, { data: statRows }, { data: professionRows }, { data: gearRows }, { data: accountRows }] =
+    await Promise.all([
+      client
+        .from("achievements")
+        .select("character_id, kind, tier, earned_at, tier_copper_at, tier_silver_at, tier_gold_at, tier_platinum_at")
+        .in("character_id", characterIds),
+      client.from("character_statistics").select("character_id, category, name, value").in("character_id", characterIds),
+      client.from("character_professions").select("character_id, profession, skill, recipes").in("character_id", characterIds),
+      client.from("equipped_gear").select("character_id, slot, item_name").in("character_id", characterIds),
+      client.from("account_achievements").select("kind").eq("user_id", userId),
+    ]);
+
+  const achRows = (achievementRows ?? []) as AchievementRowDB[];
+  const stRows = (statRows ?? []) as StatRow[];
+  const profRows = (professionRows ?? []) as ProfessionRow[];
+  const { data: characterLevels } = await client
+    .from("characters")
+    .select("id, level, time_played_hours, top_pvp_rank")
+    .eq("user_id", userId);
+  const levelById = new Map((characterLevels ?? []).map((c) => [c.id as string, c as { level: number; time_played_hours: number | null; top_pvp_rank: number | null }]));
+
+  const achByChar = new Map<string, AchievementRowDB[]>();
+  for (const a of achRows) {
+    const list = achByChar.get(a.character_id) ?? [];
+    list.push(a);
+    achByChar.set(a.character_id, list);
+  }
+  const statsByCharChar = new Map<string, StatRow[]>();
+  for (const s of stRows) {
+    const list = statsByCharChar.get(s.character_id) ?? [];
+    list.push(s);
+    statsByCharChar.set(s.character_id, list);
+  }
+  const recipesByChar = new Map<string, number>();
+  const cookingRecipesByChar = new Map<string, number>();
+  const highestProfessionSkillByChar = new Map<string, number>();
+  for (const p of profRows) {
+    const count = Array.isArray(p.recipes) ? p.recipes.length : 0;
+    recipesByChar.set(p.character_id, (recipesByChar.get(p.character_id) ?? 0) + count);
+    if (p.profession?.toLowerCase() === "cooking") {
+      cookingRecipesByChar.set(p.character_id, (cookingRecipesByChar.get(p.character_id) ?? 0) + count);
+    }
+    highestProfessionSkillByChar.set(p.character_id, Math.max(highestProfessionSkillByChar.get(p.character_id) ?? 0, p.skill ?? 0));
+  }
+
+  const earnedAchievementsByCharacter: ShowcasePickerData["earnedAchievementsByCharacter"] = {};
+  for (const characterId of characterIds) {
+    const level = levelById.get(characterId);
+    const items = buildAchievementItems({
+      achievementRows: achByChar.get(characterId) ?? [],
+      statRows: statsByCharChar.get(characterId) ?? [],
+      recipesCount: recipesByChar.get(characterId) ?? 0,
+      cookingRecipesCount: cookingRecipesByChar.get(characterId) ?? 0,
+      hoursPlayed: level?.time_played_hours ?? 0,
+      level: level?.level ?? 1,
+      highestProfessionSkill: highestProfessionSkillByChar.get(characterId) ?? 0,
+      topPvpRank: level?.top_pvp_rank ?? null,
+    });
+    earnedAchievementsByCharacter[characterId] = items
+      .filter((i) => i.earned)
+      .map((i) => ({ kind: i.key, label: i.name, tier: i.tier }));
+  }
+
+  const statsByCharacter: ShowcasePickerData["statsByCharacter"] = {};
+  for (const characterId of characterIds) {
+    statsByCharacter[characterId] = (statsByCharChar.get(characterId) ?? []).map((s) => ({
+      category: s.category,
+      name: s.name,
+      value: s.value,
+    }));
+  }
+
+  const gearByCharacter: ShowcasePickerData["gearByCharacter"] = {};
+  for (const row of (gearRows ?? []) as { character_id: string; slot: string; item_name: string | null }[]) {
+    if (!row.item_name) continue;
+    const list = gearByCharacter[row.character_id] ?? [];
+    list.push({ slot: row.slot, item_name: row.item_name });
+    gearByCharacter[row.character_id] = list;
+  }
+
+  const earnedAccountKinds = new Set(((accountRows ?? []) as { kind: AccountAchievementKind }[]).map((r) => r.kind));
+  const accountBadges = Object.entries(ACCOUNT_ACHIEVEMENT_BADGES).map(([kind, badge]) => ({
+    kind: kind as AccountAchievementKind,
+    label: badge.label,
+    earned: earnedAccountKinds.has(kind as AccountAchievementKind),
+  }));
+
+  return { earnedAchievementsByCharacter, statsByCharacter, gearByCharacter, accountBadges };
 }
