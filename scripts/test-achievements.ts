@@ -60,7 +60,6 @@ import {
   TYCOON_GOLD,
   PVP_DYNASTY_THRESHOLD,
   APEX_PREDATOR_BOSS_KILLS,
-  LEGACY_ACHIEVEMENT_TOTAL,
   MARATHON_HOURS,
   type AccountAchievementKind,
 } from "../lib/accountAchievements";
@@ -367,65 +366,13 @@ async function run() {
     check(`pvp_dynasty: exactly ${PVP_DYNASTY_THRESHOLD} top-rank characters DOES award`, at.has("pvp_dynasty"));
   }
 
-  // --- legacy_master (Legacy Complete) - the point-gating fix -------------
-  {
-    type LegacyTestRow = { completed: boolean; ui_points: number | null };
-    const char = [CHAR_FIELDS()];
-
-    // Scenario A: fully scanned (no nulls), one 0-point row left INCOMPLETE
-    // -> must still award, because that row gives no points.
-    const scenarioA: LegacyTestRow[] = [
-      ...Array.from({ length: LEGACY_ACHIEVEMENT_TOTAL - 1 }, (_, i) => ({ completed: true, ui_points: 10 })),
-      { completed: false, ui_points: 0 },
-    ];
-    const a = await awardedKinds({ characters: char, legacyRows: scenarioA });
-    check("legacy_master: a confirmed 0-point row left incomplete DOES still award", a.has("legacy_master"));
-
-    // Scenario B: one row never scanned (ui_points null), everything else
-    // complete -> must NOT award (closes the "never open that tab" loophole).
-    const scenarioB: LegacyTestRow[] = [
-      ...Array.from({ length: LEGACY_ACHIEVEMENT_TOTAL - 1 }, (_, i) => ({ completed: true, ui_points: 10 })),
-      { completed: false, ui_points: null },
-    ];
-    const b = await awardedKinds({ characters: char, legacyRows: scenarioB });
-    check("legacy_master: one never-scanned (ui_points: null) row does NOT award", !b.has("legacy_master"));
-
-    // Scenario C: fully scanned, every point-giving row completed -> awards.
-    const scenarioC: LegacyTestRow[] = Array.from({ length: LEGACY_ACHIEVEMENT_TOTAL }, () => ({ completed: true, ui_points: 10 }));
-    const c = await awardedKinds({ characters: char, legacyRows: scenarioC });
-    check("legacy_master: fully scanned + every point row completed DOES award", c.has("legacy_master"));
-
-    // Scenario D: fully scanned, but ONE point-giving row is incomplete ->
-    // must NOT award.
-    const scenarioD: LegacyTestRow[] = [
-      ...Array.from({ length: LEGACY_ACHIEVEMENT_TOTAL - 1 }, () => ({ completed: true, ui_points: 10 })),
-      { completed: false, ui_points: 10 },
-    ];
-    const d = await awardedKinds({ characters: char, legacyRows: scenarioD });
-    check("legacy_master: fully scanned but one point-giving row incomplete does NOT award", !d.has("legacy_master"));
-
-    // Progress bar sanity: scenario A (not yet "earned" in spirit, but code
-    // DOES award it - that's correct) should show point-rows value/target
-    // without throwing and with value<=target.
-    const progress = computeAccountBadgeProgress({
-      chars: char.map((c) => ({ level: c.level, class: c.class, race: c.race, money_copper: c.money_copper, time_played_hours: c.time_played_hours })),
-      professionRows: [],
-      statRows: [],
-      pvpTopRankCharacterCount: 0,
-      legacyRows: scenarioD,
-      earnedAchievementCount: 0,
-      totalAchievementCount: 0,
-    });
-    const lp = progress.legacy_master!;
-    check("legacy_master progress: value never exceeds target", lp.value <= lp.target, JSON.stringify(lp));
-  }
+  // "legacy_master" (Legacy Complete) removed 2026-10-03 - its whole test
+  // block (scenarios A-D plus the progress-bar sanity check) is gone with
+  // it, since the kind no longer exists on AccountAchievementKind at all.
 
   // =========================================================================
   // SECTION 3 - progress bars never show 100%+ for a badge that isn't
-  // actually awardable yet (the one documented exception is legacy_master,
-  // whose denominator only counts rows revealed so far - see the comment in
-  // computeAccountBadgeProgress - so it's checked separately above instead
-  // of lumped in with this generic sweep).
+  // actually awardable yet.
   // =========================================================================
   {
     const chars = [CHAR_FIELDS({ level: 30 })]; // deliberately short of everything
@@ -434,12 +381,10 @@ async function run() {
       professionRows: [],
       statRows: [],
       pvpTopRankCharacterCount: 0,
-      legacyRows: [],
       earnedAchievementCount: 0,
       totalAchievementCount: 10,
     });
     for (const [kind, p] of Object.entries(progress)) {
-      if (kind === "legacy_master") continue; // documented exception, see above
       check(`progress.${kind}: value (${p!.value}) never exceeds target (${p!.target})`, p!.value <= p!.target);
     }
   }

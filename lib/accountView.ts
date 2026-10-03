@@ -7,7 +7,12 @@ import {
   type TieredAchievementKind,
 } from "./achievements";
 import { FLAT_ACHIEVEMENT_NAME } from "./achievementCategories";
-import { computeAccountBadgeProgress, type AccountAchievementKind } from "./accountAchievements";
+import {
+  computeAccountBadgeProgress,
+  computeAccountBadgeBreakdown,
+  type AccountAchievementKind,
+  type AccountBadgeBreakdownLine,
+} from "./accountAchievements";
 
 // Shared account-overview data loading (2026-09-30, split out of
 // app/account/page.tsx when "how do we see other players account pages?"
@@ -35,15 +40,32 @@ export type CharacterRow = {
   character_type: string;
   time_played_hours: number | null;
   money_copper: number | null;
+  // PvP rank (2026-10-03) - see lib/importLogic.ts's ParsedExport.pvpRank
+  // comment. Null until the player's opened the in-game PvP panel at least
+  // once.
+  top_pvp_rank: number | null;
 };
 
-type AchievementRowDB = { character_id: string; kind: string; tier: AchievementTier | null; earned_at: string | null };
+type AchievementRowDB = {
+  character_id: string;
+  kind: string;
+  tier: AchievementTier | null;
+  earned_at: string | null;
+  tier_copper_at?: string | null;
+  tier_silver_at?: string | null;
+  tier_gold_at?: string | null;
+  tier_platinum_at?: string | null;
+};
 type StatRow = { character_id: string; category: string; name: string; value: string };
 // profession/skill added (2026-10-03) alongside the existing recipes field
 // - both now needed here since computeAccountBadgeProgress's Master of All
 // Trades fraction wants the same maxed-skill-count the award check uses,
 // not just recipes (which only feeds Completionist/recipes achievements).
 type ProfessionRow = { character_id: string; profession: string; skill: number; recipes: unknown[] | null };
+// Still used for the separate Legacy Challenges summary (legacyEarned/
+// legacyPoints below) - unrelated to the now-removed "Legacy Complete"
+// account badge (see lib/accountAchievements.ts), which used to also read
+// these same rows.
 type LegacyRow = { completed: boolean; ui_points: number | null };
 
 export type RecentAchievement = {
@@ -120,6 +142,12 @@ export type AccountViewData = {
   // for which ones and why. Absent entries (not every badge has one) mean
   // AccountBadgeTile falls back to its plain earned/not-earned display.
   accountBadgeProgress: Partial<Record<AccountAchievementKind, { value: number; target: number }>>;
+  // Per-character/class/race/profession breakdown of what's feeding a
+  // badge's progress (2026-10-03) - see computeAccountBadgeBreakdown in
+  // accountAchievements.ts for which badges get one. Absent entries mean
+  // AccountBadgeTile just shows the plain progress bar with no expandable
+  // detail.
+  accountBadgeBreakdown: Partial<Record<AccountAchievementKind, AccountBadgeBreakdownLine[]>>;
   legacyEarned: number;
   legacyPoints: number;
 };
@@ -146,7 +174,7 @@ export async function loadAccountViewData(
         .maybeSingle(),
       client
         .from("characters")
-        .select("id, name, level, class, race, character_type, time_played_hours, money_copper")
+        .select("id, name, level, class, race, character_type, time_played_hours, money_copper, top_pvp_rank")
         .eq("user_id", userId),
       client.from("account_achievements").select("kind").eq("user_id", userId),
       client.from("account_legacy_achievements").select("completed, ui_points").eq("user_id", userId),
@@ -160,10 +188,14 @@ export async function loadAccountViewData(
   let itemOwner = new Map<string, string>();
   let recent: RecentAchievement[] = [];
   let accountBadgeProgress: ReturnType<typeof computeAccountBadgeProgress> = {};
+  let accountBadgeBreakdown: ReturnType<typeof computeAccountBadgeBreakdown> = {};
 
   if (characterIds.length > 0) {
     const [{ data: achievementRows }, { data: statRows }, { data: professionRows }] = await Promise.all([
-      client.from("achievements").select("character_id, kind, tier, earned_at").in("character_id", characterIds),
+      client
+        .from("achievements")
+        .select("character_id, kind, tier, earned_at, tier_copper_at, tier_silver_at, tier_gold_at, tier_platinum_at")
+        .in("character_id", characterIds),
       client
         .from("character_statistics")
         .select("character_id, category, name, value")
@@ -191,9 +223,18 @@ export async function loadAccountViewData(
       statsByChar.set(s.character_id, list);
     }
     const recipesByChar = new Map<string, number>();
+    const cookingRecipesByChar = new Map<string, number>();
+    const highestProfessionSkillByChar = new Map<string, number>();
     for (const p of profRows) {
       const count = Array.isArray(p.recipes) ? p.recipes.length : 0;
       recipesByChar.set(p.character_id, (recipesByChar.get(p.character_id) ?? 0) + count);
+      if (p.profession?.toLowerCase() === "cooking") {
+        cookingRecipesByChar.set(p.character_id, (cookingRecipesByChar.get(p.character_id) ?? 0) + count);
+      }
+      highestProfessionSkillByChar.set(
+        p.character_id,
+        Math.max(highestProfessionSkillByChar.get(p.character_id) ?? 0, p.skill ?? 0)
+      );
     }
 
     const perCharacterItems = chars.map((c) => ({
@@ -202,7 +243,11 @@ export async function loadAccountViewData(
         achievementRows: achByChar.get(c.id) ?? [],
         statRows: statsByChar.get(c.id) ?? [],
         recipesCount: recipesByChar.get(c.id) ?? 0,
+        cookingRecipesCount: cookingRecipesByChar.get(c.id) ?? 0,
         hoursPlayed: c.time_played_hours ?? 0,
+        level: c.level,
+        highestProfessionSkill: highestProfessionSkillByChar.get(c.id) ?? 0,
+        topPvpRank: c.top_pvp_rank,
       }),
     }));
     const merged = mergeAccountItems(perCharacterItems);
@@ -223,9 +268,14 @@ export async function loadAccountViewData(
       professionRows: profRows,
       statRows: stRows,
       pvpTopRankCharacterCount,
-      legacyRows: legacy,
       earnedAchievementCount,
       totalAchievementCount,
+    });
+    accountBadgeBreakdown = computeAccountBadgeBreakdown({
+      chars,
+      professionRows: profRows,
+      statRows: stRows,
+      achievementRows: achRows,
     });
 
     const charName = new Map(chars.map((c) => [c.id, c.name]));
@@ -260,6 +310,7 @@ export async function loadAccountViewData(
     recent,
     accountBadges: ((accountAchievementRows ?? []) as { kind: AccountAchievementKind }[]).map((r) => r.kind),
     accountBadgeProgress,
+    accountBadgeBreakdown,
     // Only count achievements that actually earn Legacy Points - matching
     // the same "don't include any that don't give legacy points" fix made
     // to AccountLegacyPage.tsx's own completed count (2026-09-30). Without

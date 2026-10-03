@@ -6,6 +6,10 @@ import {
   tierFamily,
   tierThresholds,
   computeCounter,
+  PERSONALITY_BADGES,
+  MAX_CHARACTER_LEVEL,
+  MAX_PROFESSION_SKILL,
+  TOP_PVP_RANK_CAP,
   type AchievementTier,
   type TieredAchievementKind,
   type AchievementFamily,
@@ -73,17 +77,58 @@ export type AchievementBoardItem = {
   // always equal the achievement's fixed value once earned, no separate
   // "is this even eligible" question to answer).
   legacyPointValue: number | null;
+  // Per-tier earned date (2026-10-03, "each tier should track its own
+  // date") - Copper/Silver/Gold/Platinum each get their OWN timestamp from
+  // the moment that tier was first reached, instead of all sharing
+  // `earned_at` (which keeps its old "most recent tier-up" meaning, still
+  // used for sorting elsewhere). Only tiered items populate this; flat
+  // items and Legacy Challenges (no per-tier date data at all) get null.
+  tierDates: Partial<Record<AchievementTier, string>> | null;
 };
+
+const PERSONALITY_BADGE_BY_KIND = new Map(PERSONALITY_BADGES.map((b) => [b.kind, b]));
+
+function sumStat(statRows: { category: string; name: string; value: string }[], category: string, name: string): number {
+  return statRows
+    .filter((s) => s.category === category && s.name === name)
+    .reduce((sum, s) => {
+      const n = Number(s.value.replace(/,/g, ""));
+      return Number.isFinite(n) ? sum + n : sum;
+    }, 0);
+}
 
 export function buildAchievementItems({
   achievementRows,
   statRows,
   recipesCount,
+  cookingRecipesCount,
   hoursPlayed,
+  level,
+  highestProfessionSkill,
+  topPvpRank,
 }: {
-  achievementRows: { kind: string; tier: AchievementTier | null; earned_at?: string | null }[];
+  achievementRows: {
+    kind: string;
+    tier: AchievementTier | null;
+    earned_at?: string | null;
+    tier_copper_at?: string | null;
+    tier_silver_at?: string | null;
+    tier_gold_at?: string | null;
+    tier_platinum_at?: string | null;
+  }[];
   statRows: { category: string; name: string; value: string }[];
   recipesCount: number;
+  // Recipes known in the Cooking profession ONLY (2026-10-03 fix) - "Master
+  // Chef" is awarded off this exact number (see importLogic.ts's
+  // cookingRecipes calculation), but this display function used to fall
+  // through to the generic computeCounter(kind, statRows) path for it,
+  // which always returns 0 since TIER_COUNTERS.master_chef is deliberately
+  // empty (master_chef is profession-derived, not stat-derived - see that
+  // comment in achievements.ts). That meant a character who'd genuinely
+  // earned Platinum Master Chef still showed a permanently-stuck "0 / 15"
+  // progress bar. Optional/defaults to 0 so a caller that hasn't been
+  // updated yet just shows 0, same as before this fix.
+  cookingRecipesCount?: number;
   // "addicted"'s live value (2026-09-27 fix) - not sourced from statRows
   // like every other tiered kind (TIER_COUNTERS.addicted is intentionally
   // empty - see achievements.ts), so computeCounter() always returned 0 for
@@ -91,6 +136,16 @@ export function buildAchievementItems({
   // its progress bar. Optional/defaults to 0 so callers that haven't been
   // updated yet don't break, just show 0 same as before.
   hoursPlayed?: number;
+  // The following three (2026-10-03, "max level should have a progress bar
+  // ... master crafter should list the highest levelled profession ...
+  // shouldn't this achievement list current rank out of the 14?") give a
+  // hand-picked set of flat/one-off achievements a real live value/target
+  // too, instead of just a plain earned/not-earned line. All optional so a
+  // caller that hasn't been updated yet just shows no progress bar, same as
+  // before this fix.
+  level?: number;
+  highestProfessionSkill?: number;
+  topPvpRank?: number | null;
 }): AchievementBoardItem[] {
   const byKind = new Map(achievementRows.map((a) => [a.kind, a]));
   const items: AchievementBoardItem[] = [];
@@ -99,9 +154,21 @@ export function buildAchievementItems({
     const row = byKind.get(kind);
     const tier = (row?.tier as AchievementTier | null | undefined) ?? null;
     const value =
-      kind === "recipes" ? recipesCount : kind === "addicted" ? hoursPlayed ?? 0 : computeCounter(kind, statRows);
+      kind === "recipes"
+        ? recipesCount
+        : kind === "master_chef"
+        ? cookingRecipesCount ?? 0
+        : kind === "addicted"
+        ? hoursPlayed ?? 0
+        : computeCounter(kind, statRows);
     const thresholds = tierThresholds(kind);
     const nextThreshold = thresholds.find((t) => t.value > value)?.value ?? null;
+
+    const tierDates: Partial<Record<AchievementTier, string>> = {};
+    if (row?.tier_copper_at) tierDates.Copper = row.tier_copper_at;
+    if (row?.tier_silver_at) tierDates.Silver = row.tier_silver_at;
+    if (row?.tier_gold_at) tierDates.Gold = row.tier_gold_at;
+    if (row?.tier_platinum_at) tierDates.Platinum = row.tier_platinum_at;
 
     items.push({
       key: kind,
@@ -121,12 +188,33 @@ export function buildAchievementItems({
       legacyCategory: null,
       criteria: null,
       legacyPointValue: null,
+      tierDates: Object.keys(tierDates).length > 0 ? tierDates : null,
     });
   }
 
   for (const kind of Object.keys(ACHIEVEMENT_BADGES) as AchievementKind[]) {
     const row = byKind.get(kind);
     const badge = ACHIEVEMENT_BADGES[kind];
+
+    // A handful of flat (one-off) achievements now carry a real live
+    // value/target too - see the buildAchievementItems doc comment above.
+    let value: number | null = null;
+    let nextThreshold: number | null = null;
+    const personality = PERSONALITY_BADGE_BY_KIND.get(kind);
+    if (personality) {
+      value = sumStat(statRows, personality.category, personality.name);
+      nextThreshold = personality.threshold;
+    } else if (kind === "max_level" && typeof level === "number") {
+      value = level;
+      nextThreshold = MAX_CHARACTER_LEVEL;
+    } else if (kind === "maxed_profession" && typeof highestProfessionSkill === "number") {
+      value = highestProfessionSkill;
+      nextThreshold = MAX_PROFESSION_SKILL;
+    } else if (kind === "top_pvp_rank" && typeof topPvpRank === "number") {
+      value = topPvpRank;
+      nextThreshold = TOP_PVP_RANK_CAP;
+    }
+
     items.push({
       key: kind,
       tiered: false,
@@ -138,13 +226,14 @@ export function buildAchievementItems({
       earned: !!row,
       tier: null,
       points: row ? FLAT_ACHIEVEMENT_POINTS : 0,
-      value: null,
-      nextThreshold: null,
+      value,
+      nextThreshold,
       thresholds: null,
       earnedAt: row?.earned_at ?? null,
       legacyCategory: null,
       criteria: null,
       legacyPointValue: null,
+      tierDates: null,
     });
   }
 
@@ -251,6 +340,10 @@ export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): Achie
         // the description line above already says everything there is.
         criteria: null,
         legacyPointValue: pointValue,
+        // Legacy Challenges have no completion-timestamp data at all (see
+        // the LegacyAchievementRow comment above) - no data source for
+        // per-tier dates, so this is always null for every legacy item.
+        tierDates: null,
       };
     }
 
@@ -277,6 +370,7 @@ export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): Achie
       legacyCategory: row.category,
       criteria,
       legacyPointValue: pointValue,
+      tierDates: null,
     };
   });
 }
@@ -339,24 +433,8 @@ export function pickShowcaseItems(
 // Anything not explicitly mapped falls back to "Adventure" rather than an
 // awkward extra "Other" bucket - every raw category seen so far that isn't a
 // class, a profession, a PvP rank, Dungeons or Raids (Adventure, Explorer,
-// Eastern Kingdoms, Kalimdor) is exploration/world content anyway, so that's
-// the natural catch-all.
-//
-// "Season Journey" (2026-09-30, Jordan's request: "field of honor legacy
-// challenges should be moved to the pvp category") - every achievement seen
-// under this raw category so far is a "Field of Honor: Week N" PvP season
-// achievement (confirmed via /wft achievementsprobe), so it's grouped with
-// "Ranks" under Player vs. Player rather than falling into the Adventure
-// catch-all.
-//
-// "Reputations" (2026-09-30, same request extended: "master of alterac
-// valley, master of araathi basin, master of warsong and master of
-// darkspear islands should also be moved to pvp") - all 4 achievements
-// Blizzard files under this raw category are the battleground-faction
-// reputation ones (Master of Alterac Valley/Arathi Basin/Warsong Gulch/
-// Darkspear Islands - confirmed via achievementsprobe, "Reputations" has
-// exactly 4 entries and they're all these), so this whole category moves to
-// Player vs. Player too rather than the Adventure catch-all.
+// Eastern Kingdoms, Kalimdor, Reputations, Season Journey) is
+// exploration/world content anyway, so that's the natural catch-all.
 const LEGACY_CATEGORY_GROUPS: Record<string, string> = {
   Druid: "Classes",
   Hunter: "Classes",
@@ -374,8 +452,6 @@ const LEGACY_CATEGORY_GROUPS: Record<string, string> = {
   Leatherworking: "Tradeskills",
   Tailoring: "Tradeskills",
   Ranks: "Player vs. Player",
-  "Season Journey": "Player vs. Player",
-  Reputations: "Player vs. Player",
   Dungeons: "Dungeons",
   Raids: "Raids",
 };
@@ -456,23 +532,12 @@ function sortLegacyItems(items: AchievementBoardItem[]): AchievementBoardItem[] 
 // "Rank 3", ... shown lowest-first, "Rank 3" at the top going down - same
 // direction as every other ladder (Novice before Master), just called out
 // as its own function since the previous attempt (descending) was wrong.
-// 2026-09-30, Jordan's request: after "Season Journey" (Field of Honor) got
-// moved into this same Player vs. Player group, sorting everything purely by
-// the number in its name interleaved "Rank 7" right next to "Field of Honor:
-// Week 7" - two unrelated ladders that happen to share a number. Ranks are
-// now always listed first (lowest to highest, unchanged), with every Field
-// of Honor week clustered together afterward, also lowest to highest -
-// "reorganise and put the field of honor challenges on the bottom in order".
 function sortPvpRankItems(items: AchievementBoardItem[]): AchievementBoardItem[] {
   const numberOf = (name: string): number | null => {
     const match = name.match(/(\d+)/);
     return match ? parseInt(match[1], 10) : null;
   };
-  const bucketOf = (name: string): number => (name.startsWith("Field of Honor") ? 1 : 0);
   return [...items].sort((a, b) => {
-    const bucketA = bucketOf(a.name);
-    const bucketB = bucketOf(b.name);
-    if (bucketA !== bucketB) return bucketA - bucketB;
     const numA = numberOf(a.name);
     const numB = numberOf(b.name);
     if (numA !== null && numB !== null && numA !== numB) return numA - numB;

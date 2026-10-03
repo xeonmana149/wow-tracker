@@ -238,7 +238,6 @@ async function run() {
 
   const { data: achievementRows } = await admin.from("achievements").select("character_id, kind, tier").in("character_id", characterIds);
   const { data: accountRows } = await admin.from("account_achievements").select("kind").eq("user_id", userId);
-  const { data: legacyRows } = await admin.from("account_legacy_achievements").select("completed, ui_points").eq("user_id", userId);
 
   const earnedTieredAnywhere = new Set((achievementRows ?? []).filter((r) => r.tier === "Platinum").map((r) => r.kind));
   const earnedFlatAnywhere = new Set((achievementRows ?? []).filter((r) => r.tier === null).map((r) => r.kind));
@@ -266,7 +265,6 @@ async function run() {
     "tycoon",
     "battle_scarred",
     "apex_predator",
-    "legacy_master",
     "completionist",
     "marathon",
   ];
@@ -275,21 +273,17 @@ async function run() {
     console.log(`${ok ? "PASS" : "FAIL"}  ${kind}`);
   }
 
-  const legacyFullyScanned = (legacyRows ?? []).length >= LEGACY_ACHIEVEMENT_TOTAL && (legacyRows ?? []).every((r) => r.ui_points !== null);
-  console.log(`${legacyFullyScanned ? "PASS" : "FAIL"}  legacy_master DB state (fully scanned, ${legacyRows?.length ?? 0}/${LEGACY_ACHIEVEMENT_TOTAL} rows)`);
-
   console.log(
     [
       "",
       "NOT exercised by this run, needs a different kind of check:",
-      "  - pvp_dynasty / top_pvp_rank: grepping this codebase, nothing ever",
-      "    calls awardAchievement(..., \"top_pvp_rank\") anywhere - it's only",
-      "    ever READ (by pvp_dynasty's count), never awarded. Worth checking",
-      "    directly: is top_pvp_rank meant to be set by hand (e.g. an admin",
-      "    tool not in this file set), or is a real detection path missing?",
-      "    If nothing awards it, NO ONE can ever earn PvP Dynasty as it",
-      "    stands today, launch or not - probably worth settling before",
-      "    launch rather than after.",
+      "  - top_pvp_rank / pvp_dynasty: now awarded for real (2026-10-03) via",
+      "    the addon's scanPvpRankFromUI() + importLogic.ts's TOP_PVP_RANK_CAP",
+      "    check, but that requires the addon to have actually scanned the",
+      "    in-game PvP rank panel at least once - this synthetic run has no",
+      "    way to fake that UI scan, so both stay untested here. Test for",
+      "    real: open the Player vs. Player panel in-game on a Rank 14",
+      "    character (or wait for one to reach it) and sync.",
       "  - maxed_legacy: awarded from the Dashboard's \"save Legacy points\"",
       "    form (app/Dashboard.tsx), not from a sync payload at all - test it",
       "    by actually typing a maxed Legacy point value into that field on",

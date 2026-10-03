@@ -10,6 +10,8 @@ import {
   TIERED_ACHIEVEMENT_KINDS,
   PERSONALITY_BADGES,
   LEVEL_MILESTONES,
+  MAX_CHARACTER_LEVEL,
+  TOP_PVP_RANK_CAP,
   type AchievementKind,
   type TieredAchievementKind,
   type AchievementTier,
@@ -173,6 +175,27 @@ export type ParsedExport = {
     // exports from an older addon version.
     uiPoints?: number;
   }[];
+  // PvP rank (2026-10-03, addon 1.9.0+) - scraped off the real in-game
+  // "Player vs. Player" panel's widget tree via the addon's
+  // scanPvpRankFromUI(), since neither this server's classic rank API
+  // (UnitPVPRank/GetPVPRankInfo - confirmed missing entirely via
+  // /wft pvpdump) nor GetPVPLifetimeStats()/GetPVPThisWeekStats() (confirmed
+  // to return nil even for a character with real PvP activity) give us
+  // anything usable. `rank` is the plain numeric rank badge the panel shows
+  // (0 = "Civilian" on this server, confirmed up to a cap of 14 via the
+  // panel's own "...up to a maximum of 24750 for Rank 14" text) - this is
+  // what top_pvp_rank is awarded from, not rankName, since the rank TITLES
+  // are this server's own naming and not worth hand-mapping when the panel
+  // already hands us the number directly. Like legacyAchievements.uiPoints,
+  // this is opportunistic: undefined until the player has actually opened
+  // that panel at least once (this session or a past one - the addon caches
+  // its highest-ever-seen reading in WFTSyncDB).
+  pvpRank?: {
+    rank: number;
+    rankName?: string;
+    points?: number;
+    pointsMax?: number;
+  };
 };
 
 // Addon gear key -> the site's Equipped Gear slot name. "shirt" and
@@ -268,9 +291,11 @@ const NOTABLE_GEAR_COLORS = new Set([EPIC_COLOR, LEGENDARY_COLOR]);
 // Gold amounts (in real gold, not copper) worth calling out per character.
 const GOLD_MILESTONES = [100, 500, 1000, 5000];
 
-// The level cap on this server - crossing it is what the "max level"
-// achievement means.
-const MAX_CHARACTER_LEVEL = 60;
+// MAX_CHARACTER_LEVEL and TOP_PVP_RANK_CAP now live in ./achievements
+// (2026-10-03) - centralized so this file, accountAchievements.ts and
+// achievementBoard.ts's display logic can't drift from each other the way
+// the DB check constraints kept drifting from the code earlier this
+// session. See lib/achievements.ts's comment above those exports.
 
 // The professions this server treats as secondary (see the earlier
 // correction: no Archaeology on this server, just these three) - used for
@@ -391,10 +416,36 @@ export async function applyImport(
   if (typeof parsed.basic?.timePlayedSeconds === "number" && parsed.basic.timePlayedSeconds > 0) {
     charUpdate.time_played_hours = Math.floor(parsed.basic.timePlayedSeconds / 3600);
   }
+  // PvP rank (2026-10-03) - see the ParsedExport.pvpRank comment above.
+  // Persisted for display the same way deaths/pvp_kills are - the addon
+  // already only ever reports its highest-ever-seen rank, so a plain
+  // overwrite is safe here too.
+  if (typeof parsed.pvpRank?.rank === "number") charUpdate.top_pvp_rank = parsed.pvpRank.rank;
 
   if (Object.keys(charUpdate).length > 0) {
     const { error } = await supabase.from("characters").update(charUpdate).eq("id", characterId);
     if (error) throw new Error(error.message);
+  }
+
+  // Top PvP Rank achievement (2026-10-03) - a one-off badge, same shape as
+  // max_level/legendary_item, awarded once the addon's scanned rank (see
+  // scanPvpRankFromUI in the addon) reaches the cap the panel itself
+  // reports (14 - confirmed via its own "...up to a maximum of 24750 for
+  // Rank 14" text). awardAchievement's own (character_id, kind) conflict
+  // handling means this is safe to call on every sync once the cap is hit,
+  // not just the sync that first crosses it.
+  if (typeof parsed.pvpRank?.rank === "number" && parsed.pvpRank.rank >= TOP_PVP_RANK_CAP) {
+    const earned = await awardAchievement(supabase, characterId, "top_pvp_rank");
+    if (earned) {
+      events.push({
+        character_id: characterId,
+        user_id: before.user_id,
+        kind: "achievement_earned",
+        achievement_kind: "top_pvp_rank",
+        achievement_tier: null,
+        message: ACHIEVEMENT_MESSAGE.top_pvp_rank(before.name),
+      });
+    }
   }
 
   if (typeof parsed.basic?.level === "number" && parsed.basic.level > before.level) {

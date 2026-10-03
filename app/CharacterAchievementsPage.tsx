@@ -61,12 +61,15 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
         await Promise.all([
           supabase
             .from("characters")
-            .select("name, user_id, showcase_kinds, time_played_hours")
+            .select("name, user_id, showcase_kinds, time_played_hours, level, top_pvp_rank")
             .eq("id", characterId)
             .single(),
-          supabase.from("achievements").select("kind, tier, earned_at").eq("character_id", characterId),
+          supabase
+            .from("achievements")
+            .select("kind, tier, earned_at, tier_copper_at, tier_silver_at, tier_gold_at, tier_platinum_at")
+            .eq("character_id", characterId),
           supabase.from("character_statistics").select("category, name, value").eq("character_id", characterId),
-          supabase.from("character_professions").select("recipes").eq("character_id", characterId),
+          supabase.from("character_professions").select("profession, skill, recipes").eq("character_id", characterId),
           supabase.auth.getUser(),
         ]);
 
@@ -74,10 +77,16 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
       setIsOwner(!!character?.user_id && userData.user?.id === character.user_id);
       setPinned((character?.showcase_kinds as string[] | null) ?? []);
 
-      const recipesCount = (professionRows ?? []).reduce(
-        (sum: number, p: { recipes: unknown[] | null }) => sum + (Array.isArray(p.recipes) ? p.recipes.length : 0),
+      const profs = (professionRows ?? []) as { profession: string; skill: number; recipes: unknown[] | null }[];
+      const recipesCount = profs.reduce((sum, p) => sum + (Array.isArray(p.recipes) ? p.recipes.length : 0), 0);
+      // Master Chef fix (2026-10-03) - see achievementBoard.ts's
+      // cookingRecipesCount comment for why this needs to be split out from
+      // the all-professions total above.
+      const cookingRecipesCount = profs.reduce(
+        (sum, p) => sum + (p.profession?.toLowerCase() === "cooking" && Array.isArray(p.recipes) ? p.recipes.length : 0),
         0
       );
+      const highestProfessionSkill = profs.reduce((max, p) => Math.max(max, p.skill ?? 0), 0);
 
       setItems(
         buildAchievementItems({
@@ -85,11 +94,19 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
             kind: string;
             tier: AchievementTier | null;
             earned_at: string | null;
+            tier_copper_at: string | null;
+            tier_silver_at: string | null;
+            tier_gold_at: string | null;
+            tier_platinum_at: string | null;
           }[],
           statRows: (statRows ?? []) as { category: string; name: string; value: string }[],
           recipesCount,
+          cookingRecipesCount,
           // 2026-09-27 fix - see achievementBoard.ts's hoursPlayed comment.
           hoursPlayed: (character?.time_played_hours as number | null) ?? 0,
+          level: (character?.level as number | null) ?? undefined,
+          highestProfessionSkill,
+          topPvpRank: (character?.top_pvp_rank as number | null) ?? null,
         })
       );
       setLoading(false);

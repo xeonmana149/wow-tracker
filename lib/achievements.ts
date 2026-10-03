@@ -121,6 +121,40 @@ export type GoldTier = AchievementTier;
 // own local copy, from before this was exported - fine to leave as is,
 // but a new consumer should import this one instead of relearning it).
 export const TIER_RANK: Record<AchievementTier, number> = { Copper: 0, Silver: 1, Gold: 2, Platinum: 3 };
+// Reverse of TIER_RANK - rank 0 -> "Copper", etc. Used anywhere code needs
+// to walk every tier BETWEEN two ranks (e.g. awardTier stamping a date on
+// each tier newly crossed in one sync), not just name one.
+export const TIER_BY_RANK: AchievementTier[] = ["Copper", "Silver", "Gold", "Platinum"];
+
+// Which achievements.<column> holds each tier's own "first reached" date
+// (2026-10-03, "each tier should track its own date for each achievement" -
+// previously the single earned_at column got overwritten on every tier
+// upgrade, so a Platinum-tier badge could only ever show its MOST RECENT
+// tier-up date, with Copper/Silver/Gold's real dates silently lost). See
+// awardTier below for where these actually get written, and
+// sql/items-migration-32.sql for where the columns themselves come from.
+export const TIER_DATE_COLUMN: Record<AchievementTier, string> = {
+  Copper: "tier_copper_at",
+  Silver: "tier_silver_at",
+  Gold: "tier_gold_at",
+  Platinum: "tier_platinum_at",
+};
+
+// Shared thresholds referenced by both the award logic (importLogic.ts,
+// accountAchievements.ts) and the display logic (achievementBoard.ts) for
+// achievements that aren't tiered but still have one meaningful "progress
+// so far" number worth a bar - MAX_CHARACTER_LEVEL for max_level,
+// MAX_PROFESSION_SKILL for maxed_profession, TOP_PVP_RANK_CAP for
+// top_pvp_rank. Centralized here (rather than each file keeping its own
+// copy, which is exactly how the achievements_kind_check /
+// account_achievements_kind_check constraints kept drifting from the code
+// earlier this session) since this file is already a dependency of all
+// three without creating a circular import.
+export const MAX_CHARACTER_LEVEL = 60;
+export const MAX_PROFESSION_SKILL = 300;
+// The top PvP rank on this server - confirmed via the in-game Player vs.
+// Player panel's own text ("...up to a maximum of 24750 for Rank 14").
+export const TOP_PVP_RANK_CAP = 14;
 
 // Non-stacking points toward the leaderboards "Overall" score - reaching
 // Platinum is worth 50 points total, not 5+15+30+50. Easy to retune later,
@@ -715,18 +749,42 @@ export async function awardTier(
 
   const { data: existing } = await supabase
     .from("achievements")
-    .select("tier")
+    .select("tier, tier_copper_at, tier_silver_at, tier_gold_at, tier_platinum_at")
     .eq("character_id", characterId)
     .eq("kind", kind)
     .maybeSingle();
 
   const existingRank = existing?.tier ? TIER_RANK[existing.tier as AchievementTier] : -1;
-  if (TIER_RANK[reached.tier] <= existingRank) return null;
+  const reachedRank = TIER_RANK[reached.tier];
+  if (reachedRank <= existingRank) return null;
+
+  const now = new Date().toISOString();
+  const existingTierDates: Record<AchievementTier, string | null> = {
+    Copper: existing?.tier_copper_at ?? null,
+    Silver: existing?.tier_silver_at ?? null,
+    Gold: existing?.tier_gold_at ?? null,
+    Platinum: existing?.tier_platinum_at ?? null,
+  };
+  // Stamp every tier newly crossed THIS call, not just the one landed on -
+  // a sync that jumps straight from Copper to Platinum in one go (e.g.
+  // importing a backlog of stats at once, or a stat that just crossed
+  // several thresholds between syncs) still gets a real date recorded for
+  // Silver and Gold too, rather than leaving them permanently blank just
+  // because nothing paused on them individually. Each column is written
+  // once (the `!existingTierDates[...]` guard) and never touched again on
+  // a later sync - see the TIER_DATE_COLUMN comment above.
+  const tierDateUpdate: Record<string, string> = {};
+  for (let rank = existingRank + 1; rank <= reachedRank; rank++) {
+    const tierName = TIER_BY_RANK[rank];
+    if (!existingTierDates[tierName]) {
+      tierDateUpdate[TIER_DATE_COLUMN[tierName]] = now;
+    }
+  }
 
   const { error } = await supabase
     .from("achievements")
     .upsert(
-      { character_id: characterId, kind, tier: reached.tier, earned_at: new Date().toISOString() },
+      { character_id: characterId, kind, tier: reached.tier, earned_at: now, ...tierDateUpdate },
       { onConflict: "character_id,kind" }
     );
   if (error) return null;

@@ -29,6 +29,7 @@ export default function AccountBadgeTile({
   description,
   earned,
   progress,
+  breakdown,
 }: {
   icon: string; // resolved image URL (e.g. from wowIconUrl() or a local /account-badge-icons/ path)
   name: string;
@@ -41,8 +42,23 @@ export default function AccountBadgeTile({
   // badges get one. Undefined for a badge with no single meaningful
   // fraction, which just falls back to the plain "Not yet earned" line.
   progress?: { value: number; target: number };
+  // Per-character/class/race breakdown of what's feeding this badge's
+  // progress (2026-10-03, "if clicked on it shows the info of just where
+  // the stats are coming from... Master Merchant could have a breakdown of
+  // where each amount of gold is coming from each character") - see
+  // computeAccountBadgeBreakdown in lib/accountAchievements.ts. Undefined
+  // for a badge with no natural breakdown, in which case clicking the tile
+  // does nothing extra.
+  breakdown?: { label: string; value: string }[];
 }) {
   const [hover, setHover] = useState(false);
+  // Click pins the tooltip open with the breakdown showing, independent of
+  // hover - lets someone actually read a longer breakdown list (e.g. every
+  // profession's maxing character) without the tooltip disappearing the
+  // moment the mouse drifts off the tile, and gives touch devices (no
+  // hover at all) a way to open it in the first place.
+  const [pinned, setPinned] = useState(false);
+  const open = hover || pinned;
   const size = 56; // matches the h-14 w-14 tile AccountView used before this
   const innerSize = Math.round(size * ACCOUNT_BADGE_FRAME_HOLE_RATIO);
   const inset = Math.round((size - innerSize) / 2);
@@ -61,8 +77,13 @@ export default function AccountBadgeTile({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <span
-        className={`relative inline-block shrink-0 ${earned ? "" : "opacity-40 grayscale"}`}
+      <button
+        type="button"
+        onClick={() => setPinned((p) => !p)}
+        title={breakdown ? "Click for a breakdown" : undefined}
+        className={`relative inline-block shrink-0 ${earned ? "" : "opacity-40 grayscale"} ${
+          breakdown ? "cursor-pointer" : "cursor-default"
+        }`}
         style={{ width: size, height: size }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -81,13 +102,17 @@ export default function AccountBadgeTile({
           draggable={false}
           className="pointer-events-none absolute inset-0 h-full w-full"
         />
-      </span>
+      </button>
       <span className="line-clamp-2 rounded bg-neutral-950/70 px-1 py-0.5 text-[10px] font-semibold leading-tight text-white">
         {name}
       </span>
 
-      {hover && (
-        <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-64 -translate-x-1/2 rounded-lg border border-amber-700/70 bg-neutral-950 p-2.5 text-left shadow-lg shadow-black/60">
+      {open && (
+        <div
+          className={`absolute bottom-full left-1/2 z-30 mb-2 w-64 -translate-x-1/2 rounded-lg border border-amber-700/70 bg-neutral-950 p-2.5 text-left shadow-lg shadow-black/60 ${
+            pinned ? "" : "pointer-events-none"
+          }`}
+        >
           <span
             className={`relative mx-auto mb-2 block ${earned ? "" : "opacity-40 grayscale"}`}
             style={{ width: previewSize, height: previewSize }}
@@ -131,6 +156,28 @@ export default function AccountBadgeTile({
             ) : (
               <div className="mt-1.5 text-[11px] text-gray-500">Not yet earned</div>
             ))}
+
+          {/* Per-character/class/race breakdown (2026-10-03) - click the
+              tile to pin this open and actually read it; a quick hover
+              alone shows it too, but pinning is what lets the mouse move
+              away without the tooltip vanishing mid-read. */}
+          {breakdown && breakdown.length > 0 && (
+            <div className="mt-2 border-t border-neutral-800 pt-2">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                {pinned ? "Breakdown" : "Click for a breakdown"}
+              </div>
+              {pinned && (
+                <ul className="mt-1 max-h-40 space-y-0.5 overflow-y-auto pr-1 text-[11px]">
+                  {breakdown.map((line, i) => (
+                    <li key={i} className="flex items-center justify-between gap-2 text-gray-300">
+                      <span className="truncate">{line.label}</span>
+                      <span className="shrink-0 text-gray-500">{line.value}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           <span className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-amber-700/70 bg-neutral-950" />
         </div>
       )}

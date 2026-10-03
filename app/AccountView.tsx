@@ -44,6 +44,7 @@ export function AccountView({
     recent,
     accountBadges,
     accountBadgeProgress,
+    accountBadgeBreakdown,
     legacyEarned,
     legacyPoints,
   } = data;
@@ -309,6 +310,13 @@ export function AccountView({
                   // founding_member-style one-offs if those existed here),
                   // in which case AccountBadgeTile just doesn't show one.
                   progress={accountBadgeProgress[kind]}
+                  // Per-character/class/race breakdown of what's feeding
+                  // this badge's progress (2026-10-03, "shows the info of
+                  // just where the stats are coming from") - click the tile
+                  // to pin it open. Undefined for a badge with no natural
+                  // breakdown (e.g. The Completionist, which would mean
+                  // listing 100+ achievement kinds).
+                  breakdown={accountBadgeBreakdown[kind]}
                 />
               );
             })}

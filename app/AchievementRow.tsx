@@ -6,6 +6,15 @@ import { iconUrlForFileId } from "../lib/icons";
 import type { AchievementBoardItem } from "./achievementBoard";
 import MilestoneBar from "./MilestoneBar";
 import BadgePlaceholder from "./BadgePlaceholder";
+import { TIER_BY_RANK } from "../lib/achievements";
+
+// Plain "Jan 3, 2026" formatting, same shape lib/accountView.ts's
+// formatDate uses elsewhere on the site - kept as its own tiny copy here
+// rather than importing that module, since this is a "use client" leaf
+// component and accountView.ts pulls in a fair bit else besides.
+function formatEarnedDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
 
 // Pulled out of CharacterAchievementsPage.tsx (2026-09-27) so the exact
 // same achievement card - border, tier frame, milestone bar, collapsible
@@ -217,6 +226,21 @@ export default function AchievementRow({
                 </span>
               )}
             </div>
+            {/* Each tier's OWN earned date (2026-10-03, "each tier should
+                track its own date") - only the tiers actually reached so
+                far show up here, in Copper-first order regardless of the
+                order they were earned in (can't happen anyway, but keeps
+                this predictable). */}
+            {item.tierDates && (
+              <div className="mt-0.5 text-[11px] text-gray-600">
+                {TIER_BY_RANK.filter((t) => item.tierDates?.[t]).map((t, i, arr) => (
+                  <span key={t}>
+                    {t} {formatEarnedDate(item.tierDates![t] as string)}
+                    {i < arr.length - 1 ? " · " : ""}
+                  </span>
+                ))}
+              </div>
+            )}
 
             {item.criteria && item.criteria.length > 0 && (
               <div className="mt-1.5">
@@ -247,7 +271,34 @@ export default function AchievementRow({
             )}
           </>
         ) : (
-          <div className="mt-1 text-[11px] text-gray-500">{item.earned ? "Earned" : "Not yet earned"}</div>
+          <>
+            {/* A handful of flat (one-off) achievements now carry a real
+                live value/target too (2026-10-03 - max_level, maxed_profession,
+                top_pvp_rank, and the personality badges) - see
+                achievementBoard.ts's buildAchievementItems for which ones
+                and why. Reuses the exact same MilestoneBar as a tiered item,
+                just with no threshold dots (there's no Copper/Silver/Gold
+                ladder, only one target). Everything else (character_created,
+                legendary_item, founding_member, renaissance, maxed_legacy,
+                the level milestones) has no natural "progress" number and
+                keeps the plain earned/not-earned line. */}
+            {item.value !== null && (
+              <>
+                <MilestoneBar value={item.value} maxValue={item.nextThreshold ?? item.value} thresholds={[]} className="w-full max-w-sm" />
+                <div className="mt-1 text-[11px] text-gray-500">
+                  {item.value.toLocaleString()}
+                  {item.nextThreshold !== null ? ` / ${item.nextThreshold.toLocaleString()}` : ""}
+                </div>
+              </>
+            )}
+            <div className="mt-1 text-[11px] text-gray-500">
+              {item.earned
+                ? item.earnedAt
+                  ? `Earned ${formatEarnedDate(item.earnedAt)}`
+                  : "Earned"
+                : "Not yet earned"}
+            </div>
+          </>
         )}
       </div>
 

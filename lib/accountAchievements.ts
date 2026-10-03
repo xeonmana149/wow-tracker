@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { CLASSES, RACE_FACTION } from "./options";
 import { PRIMARY_PROFESSIONS, wowIconUrl } from "./icons";
 import { buildAchievementItems } from "../app/achievementBoard";
-import type { AchievementTier } from "./achievements";
+import { MAX_CHARACTER_LEVEL, MAX_PROFESSION_SKILL, type AchievementTier } from "./achievements";
 
 type AchievementRowDB = { character_id: string; kind: string; tier: AchievementTier | null; earned_at: string | null };
 
@@ -47,7 +47,13 @@ export type AccountAchievementKind =
   // there's no way to know if two characters' exalted factions overlap or
   // cover the whole game. Would need new addon-side tracking (looping
   // GetFactionInfo, capturing names) before this can be built for real.
-  | "legacy_master"
+  //
+  // "legacy_master" ("Legacy Complete") removed (2026-10-03, Jordan's call) -
+  // existed from 2026-09-30 but never actually earned by anyone, so this is
+  // a clean removal with no earned rows to worry about. The
+  // account_achievements_kind_check constraint still allows the string (see
+  // sql/items-migration-30.sql's own comment on why old kinds are left in
+  // that list rather than torn out), so leaving it there is harmless.
   | "completionist"
   | "marathon";
 
@@ -101,12 +107,6 @@ export const ACCOUNT_ACHIEVEMENT_BADGES: Record<
     icon: "inv_misc_head_dragon_01",
     label: "Apex Predator - 1,000 or more combined boss kills across your characters.",
   },
-  // Display name "Legacy Complete" (2026-10-03, renamed from
-  // "Legacy Master").
-  legacy_master: {
-    icon: "inv_misc_rune_01",
-    label: "Legacy Complete - Every Legacy Challenge achievement completed.",
-  },
   completionist: {
     icon: "inv_misc_trophy_01",
     label: "The Completionist - Every character achievement earned by someone on the account.",
@@ -143,8 +143,6 @@ export const ACCOUNT_ACHIEVEMENT_LOCAL_ICONS: Partial<Record<AccountAchievementK
   battle_scarred: "blood-of-the-enemy",
   pvp_dynasty: "pvp-dynasty",
   apex_predator: "apex-predator",
-  // Display name "Legacy Complete" - filename matches the rename.
-  legacy_master: "legacy-complete",
   // Display name "The Completionist".
   completionist: "the-completionist",
   // Display name "Time Lost in Azeroth" - filename matches the rename.
@@ -176,7 +174,6 @@ const ACCOUNT_ACHIEVEMENT_MESSAGE: Record<AccountAchievementKind, (name: string)
   battle_scarred: (name) => `${name} has racked up 1,000 or more combined Honorable Kills - Blood of the Enemy!`,
   pvp_dynasty: (name) => `${name} has two or more characters at the top PvP rank!`,
   apex_predator: (name) => `${name} has racked up 1,000 or more combined boss kills - Apex Predator!`,
-  legacy_master: (name) => `${name} has completed every Legacy Challenge achievement - Legacy Complete!`,
   completionist: (name) => `${name}'s account has earned every character achievement - The Completionist!`,
   marathon: (name) => `${name} has played 1,000 or more hours, combined across their characters - Time Lost in Azeroth!`,
 };
@@ -188,8 +185,14 @@ const ACCOUNT_ACHIEVEMENT_MESSAGE: Record<AccountAchievementKind, (name: string)
 // earned yet (or vice versa). Single source of truth, same reasoning as
 // TIER_COUNTERS being shared between the sync route and the leaderboards
 // page.
-export const MAX_CHARACTER_LEVEL = 60;
-const MAX_SKILL = 300;
+// MAX_CHARACTER_LEVEL/MAX_SKILL now come from ./achievements (2026-10-03,
+// centralized so this stays in lockstep with achievementBoard.ts's display
+// logic and importLogic.ts's award logic - see that file's comment). Kept
+// re-exported under its original name below so scripts/test-achievements.ts
+// and anything else importing MAX_CHARACTER_LEVEL from here specifically
+// doesn't need updating.
+export { MAX_CHARACTER_LEVEL };
+const MAX_SKILL = MAX_PROFESSION_SKILL;
 const SECONDARY_PROFESSIONS = ["First Aid", "Cooking", "Fishing"];
 export const ALL_PROFESSIONS = [...PRIMARY_PROFESSIONS, ...SECONDARY_PROFESSIONS];
 // 1,000 combined Honorable Kills across every character on the account -
@@ -361,38 +364,8 @@ export async function checkAccountAchievements(
     await tryAward("pvp_dynasty");
   }
 
-  // Legacy Complete (2026-09-30, narrowed 2026-10-03 - "only account for
-  // challenges that give legacy points") - every Legacy Challenge
-  // achievement that actually awards Legacy Points, completed.
-  // account_legacy_achievements gets a row for every known achievement on
-  // each sync (completed or not - see importLogic.ts), so a fully-synced
-  // account has exactly LEGACY_ACHIEVEMENT_TOTAL rows. ui_points is scraped
-  // from the in-game UI and is null until that achievement's been scanned
-  // at least once, 0 if scanned and confirmed worth nothing, or >0 if it
-  // gives points (see achievementBoard.ts's LegacyAchievementRow comment).
-  // Two conditions, both required:
-  //  - every row has been scanned at least once (ui_points !== null) - an
-  //    account that's never opened a category keeps those rows at
-  //    ui_points: null forever, which must NOT silently count as "doesn't
-  //    give points" - otherwise never scanning a tab would be a free pass
-  //    around whatever that tab's achievements require.
-  //  - every row confirmed to give points (ui_points > 0) is completed -
-  //    rows confirmed worth 0 points don't block it, which is the actual
-  //    "only" change being made here; completed-but-0-point rows and
-  //    incomplete-but-0-point rows are equally fine.
-  const { data: legacyRows } = await supabase
-    .from("account_legacy_achievements")
-    .select("completed, ui_points")
-    .eq("user_id", userId);
-  const legacy = (legacyRows ?? []) as { completed: boolean; ui_points: number | null }[];
-  const legacyFullyScanned =
-    legacy.length >= LEGACY_ACHIEVEMENT_TOTAL && legacy.every((r) => r.ui_points !== null);
-  const legacyPointRowsAllComplete = legacy
-    .filter((r) => (r.ui_points ?? 0) > 0)
-    .every((r) => r.completed);
-  if (legacyFullyScanned && legacyPointRowsAllComplete) {
-    await tryAward("legacy_master");
-  }
+  // "Legacy Complete" (legacy_master) removed 2026-10-03 - see the
+  // AccountAchievementKind comment above.
 
   // The Completionist (2026-09-30) - every character achievement (the same
   // set the Account Progress bar on the overview page counts) earned by AT
@@ -449,22 +422,15 @@ export async function checkAccountAchievements(
 // awards against, so a badge can never show "complete" progress without
 // actually being earned (or the reverse).
 //
-// Not every badge gets an entry - "big_family"'s replacement aside, a few
-// genuinely don't reduce to one meaningful fraction:
-//  - legacy_master's fraction is point-giving-rows-completed / point-
-//    giving-rows-known-so-far, which deliberately leaves out the "every row
-//    has to be scanned at least once" half of the real gate (see
-//    checkAccountAchievements) - a live, growing denominator is a
-//    reasonable approximation of progress, not worth a second caveat
-//    metric, and it can never show "complete" while un-scanned categories
-//    remain since those just aren't counted in the denominator yet either.
-//  - completionist DOES get a plain completed/total too.
+// Not every badge gets an entry - completionist DOES get a plain
+// completed/total too, but "legacy_master" is gone entirely (2026-10-03,
+// see the AccountAchievementKind comment), so there's no longer a Legacy
+// Challenges fraction computed here at all.
 export function computeAccountBadgeProgress({
   chars,
   professionRows,
   statRows,
   pvpTopRankCharacterCount,
-  legacyRows,
   earnedAchievementCount,
   totalAchievementCount,
 }: {
@@ -472,12 +438,6 @@ export function computeAccountBadgeProgress({
   professionRows: { profession: string; skill: number }[];
   statRows: { category: string; name: string; value: string }[];
   pvpTopRankCharacterCount: number;
-  // Raw rows, not a precomputed count (2026-10-03, "only account for
-  // challenges that give legacy points") - the fraction needs to filter to
-  // point-giving rows itself (ui_points > 0), same rows/condition
-  // checkAccountAchievements gates the actual award on, so this can't drift
-  // from what "Legacy Complete" really requires.
-  legacyRows: { completed: boolean; ui_points: number | null }[];
   earnedAchievementCount: number;
   totalAchievementCount: number;
 }): Partial<Record<AccountAchievementKind, { value: number; target: number }>> {
@@ -530,20 +490,135 @@ export function computeAccountBadgeProgress({
     }, 0);
   progress.apex_predator = { value: totalBossKills, target: APEX_PREDATOR_BOSS_KILLS };
 
-  // Target is a live count of rows confirmed to give points so far (grows
-  // as more categories get scanned/revealed), not the flat
-  // LEGACY_ACHIEVEMENT_TOTAL - that constant still gates the actual award
-  // (see checkAccountAchievements) to make sure every category's been
-  // scanned at least once, but it's not the right denominator for "how many
-  // of the ones that matter have you finished" once you know some rows are
-  // worth 0 points.
-  const legacyPointRows = legacyRows.filter((r) => (r.ui_points ?? 0) > 0);
-  progress.legacy_master = {
-    value: legacyPointRows.filter((r) => r.completed).length,
-    target: legacyPointRows.length,
-  };
-
   progress.completionist = { value: earnedAchievementCount, target: totalAchievementCount };
 
   return progress;
+}
+
+// Account badge breakdowns (2026-10-03, "if clicked on it shows the info of
+// just where the stats are coming from ... Master Merchant could have a
+// breakdown of where each amount of gold is coming from each character") -
+// one line per character (or per class/race/profession, for the "which
+// character covers this slot" badges) showing exactly what's feeding a
+// badge's progress. Pure/no DB access, same reasoning as
+// computeAccountBadgeProgress above - callers pass in data they already
+// fetched. Not every badge gets one: "completionist" would mean listing
+// 100+ achievement kinds, which is better served by the per-character
+// achievements pages themselves than a cramped popup list, so it's left
+// out on purpose.
+export type AccountBadgeBreakdownLine = { label: string; value: string };
+
+export function computeAccountBadgeBreakdown({
+  chars,
+  professionRows,
+  statRows,
+  achievementRows,
+}: {
+  chars: {
+    id: string;
+    name: string;
+    level: number;
+    class: string;
+    race: string;
+    money_copper: number | null;
+    time_played_hours: number | null;
+  }[];
+  professionRows: { character_id: string; profession: string; skill: number }[];
+  statRows: { character_id: string; category: string; name: string; value: string }[];
+  achievementRows: { character_id: string; kind: string }[];
+}): Partial<Record<AccountAchievementKind, AccountBadgeBreakdownLine[]>> {
+  const breakdown: Partial<Record<AccountAchievementKind, AccountBadgeBreakdownLine[]>> = {};
+  const charName = new Map(chars.map((c) => [c.id, c.name]));
+
+  const statSum = (characterId: string, category: string, name: string) =>
+    statRows
+      .filter((s) => s.character_id === characterId && s.category === category && s.name === name)
+      .reduce((sum, s) => {
+        const n = Number(s.value.replace(/,/g, ""));
+        return Number.isFinite(n) ? sum + n : sum;
+      }, 0);
+
+  // Master Merchant (tycoon) - gold per character, highest first. Characters
+  // with no gold are left out rather than padding the list with "0g".
+  breakdown.tycoon = chars
+    .map((c) => ({ name: c.name, copper: c.money_copper ?? 0 }))
+    .filter((c) => c.copper > 0)
+    .sort((a, b) => b.copper - a.copper)
+    .map((c) => ({ label: c.name, value: `${Math.floor(c.copper / 10000).toLocaleString()}g` }));
+
+  // Blood of the Enemy (battle_scarred) - Honorable Kills per character.
+  breakdown.battle_scarred = chars
+    .map((c) => ({ name: c.name, kills: statSum(c.id, "Honorable Kills", "Total Honorable Kills") }))
+    .filter((c) => c.kills > 0)
+    .sort((a, b) => b.kills - a.kills)
+    .map((c) => ({ label: c.name, value: `${c.kills.toLocaleString()} kills` }));
+
+  // Apex Predator - combined "Boss Kills" category per character.
+  breakdown.apex_predator = chars
+    .map((c) => ({
+      name: c.name,
+      kills: statRows
+        .filter((s) => s.character_id === c.id && s.category === "Boss Kills")
+        .reduce((sum, s) => {
+          const n = Number(s.value.replace(/,/g, ""));
+          return Number.isFinite(n) ? sum + n : sum;
+        }, 0),
+    }))
+    .filter((c) => c.kills > 0)
+    .sort((a, b) => b.kills - a.kills)
+    .map((c) => ({ label: c.name, value: `${c.kills.toLocaleString()} kills` }));
+
+  // Time Lost in Azeroth (marathon) - hours played per character.
+  breakdown.marathon = chars
+    .map((c) => ({ name: c.name, hours: c.time_played_hours ?? 0 }))
+    .filter((c) => c.hours > 0)
+    .sort((a, b) => b.hours - a.hours)
+    .map((c) => ({ label: c.name, value: `${Math.round(c.hours).toLocaleString()} hrs` }));
+
+  // Master of All Trades - which character (if any) maxed each profession.
+  const maxedByProfession = new Map<string, string>();
+  for (const p of professionRows) {
+    if (p.skill >= MAX_SKILL) {
+      maxedByProfession.set(p.profession, charName.get(p.character_id) ?? "Unknown");
+    }
+  }
+  breakdown.master_of_all_trades = ALL_PROFESSIONS.map((prof) => ({
+    label: prof,
+    value: maxedByProfession.get(prof) ?? "Not yet maxed",
+  }));
+
+  // Full Roster (class_collector) - which character (if any) is level 60
+  // for each class.
+  const maxedByClass = new Map<string, string>();
+  for (const c of chars) {
+    if (c.level >= MAX_CHARACTER_LEVEL) maxedByClass.set(c.class, c.name);
+  }
+  breakdown.class_collector = CLASSES.map((cls) => ({
+    label: cls,
+    value: maxedByClass.get(cls) ?? "Not yet at level 60",
+  }));
+
+  // Alliance/Horde Completionist + Diplomat - which character (if any) is
+  // level 60 for each race. Diplomat needs both factions, so it just gets
+  // every race in one combined list.
+  const maxedByRace = new Map<string, string>();
+  for (const c of chars) {
+    if (c.level >= MAX_CHARACTER_LEVEL) maxedByRace.set(c.race, c.name);
+  }
+  const allRaces = Object.keys(RACE_FACTION);
+  const raceLine = (race: string) => ({ label: race, value: maxedByRace.get(race) ?? "Not yet at level 60" });
+  breakdown.alliance_completionist = allRaces.filter((r) => RACE_FACTION[r] === "Alliance").map(raceLine);
+  breakdown.horde_completionist = allRaces.filter((r) => RACE_FACTION[r] === "Horde").map(raceLine);
+  breakdown.diplomat = allRaces.map(raceLine);
+
+  // PvP Dynasty - which characters currently hold the top PvP rank.
+  const topRankChars = achievementRows
+    .filter((a) => a.kind === "top_pvp_rank")
+    .map((a) => charName.get(a.character_id) ?? "Unknown");
+  breakdown.pvp_dynasty =
+    topRankChars.length > 0
+      ? topRankChars.map((name) => ({ label: name, value: "Top rank reached" }))
+      : [{ label: "No characters yet", value: "—" }];
+
+  return breakdown;
 }
