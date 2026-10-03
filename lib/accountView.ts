@@ -187,6 +187,18 @@ export type AccountViewData = {
     | { type: "account"; kind: AccountAchievementKind }
     | null;
   favoriteItem: { characterId: string; characterName: string; entry: EquippedGearRow } | null;
+  // Main Character Achievements (2026-10-03, "for character achievements
+  // tab it should only track the character set as main") - the account's
+  // overall achievement counts/cards used to be the ACCOUNT-WIDE merged
+  // view (mergedItems above - highest tier reached by ANY character). That
+  // stays available for anything that still wants it, but the Account
+  // Overview/Continue Your Journey/Featured Achievements sections now show
+  // ONE character's own achievements - whichever character has
+  // character_type "Main" - not the merged best-of-roster view. null when
+  // no character is currently marked Main (characters.character_type is set
+  // from the addon export/Edit Character, not something this page can set).
+  mainCharacter: CharacterRow | null;
+  mainCharacterItems: AchievementBoardItem[];
 };
 
 // `client` is either the browser's RLS-scoped supabase client (viewing your
@@ -240,6 +252,8 @@ export async function loadAccountViewData(
   let favoriteStatistic: AccountViewData["favoriteStatistic"] = null;
   let favoriteAchievement: AccountViewData["favoriteAchievement"] = null;
   let favoriteItem: AccountViewData["favoriteItem"] = null;
+  const mainCharacter = chars.find((c) => c.character_type === "Main") ?? null;
+  let mainCharacterItems: AchievementBoardItem[] = [];
 
   if (characterIds.length > 0) {
     const [{ data: achievementRows }, { data: statRows }, { data: professionRows }, { data: gearRows }] = await Promise.all([
@@ -311,6 +325,9 @@ export async function loadAccountViewData(
     const merged = mergeAccountItems(perCharacterItems);
     mergedItems = merged.items;
     itemOwner = merged.ownerByKey;
+    mainCharacterItems = mainCharacter
+      ? perCharacterItems.find((p) => p.characterId === mainCharacter.id)?.items ?? []
+      : [];
 
     // Same totalAchievementCount quirk checkAccountAchievements has -
     // every character's buildAchievementItems() call returns the same-
@@ -441,6 +458,8 @@ export async function loadAccountViewData(
     favoriteStatistic,
     favoriteAchievement,
     favoriteItem,
+    mainCharacter,
+    mainCharacterItems,
   };
 }
 

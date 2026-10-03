@@ -30,8 +30,16 @@ export default function AccountShowcase({
   favoriteAchievement,
   favoriteItem,
   iconOverrides,
+  onEdit,
 }: Pick<AccountViewData, "favoriteCharacter" | "favoriteStatistic" | "favoriteAchievement" | "favoriteItem"> & {
   iconOverrides: BadgeIconOverrides;
+  // 2026-10-03 ("Showcase should have an edit button in top right corner") -
+  // only app/account/page.tsx (your OWN account) passes this, wired to open
+  // its existing Edit Profile panel at the Showcase section - picking what
+  // shows here is still owner-only, handled entirely over there, same as
+  // before. The public /account/[userId] page never passes it, so a visitor
+  // viewing someone else's account sees no button at all.
+  onEdit?: () => void;
 }) {
   // Pin state for the favourite achievement card when it's an account badge
   // (2026-10-03, "can we make hover work on this") - AccountBadgeTile is a
@@ -42,8 +50,21 @@ export default function AccountShowcase({
 
   return (
     <div className="rounded-md border border-neutral-700 bg-neutral-800 p-4">
-      <h2 className="text-lg">Showcase</h2>
-      <p className="mt-1 text-xs text-gray-500">Hand-picked by the account owner, from Edit Profile.</p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-lg">Showcase</h2>
+          <p className="mt-1 text-xs text-gray-500">Hand-picked by the account owner, from Edit Profile.</p>
+        </div>
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="shrink-0 rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            Edit
+          </button>
+        )}
+      </div>
 
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {/* Favourite character */}

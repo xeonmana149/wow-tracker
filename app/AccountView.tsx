@@ -49,10 +49,16 @@ export function AccountView({
   data,
   headerActions,
   belowHeader,
+  onEditShowcase,
 }: {
   data: AccountViewData;
   headerActions?: ReactNode;
   belowHeader?: ReactNode;
+  // 2026-10-03 ("Showcase should have an edit button in top right corner") -
+  // only passed by app/account/page.tsx (your own account), see
+  // AccountShowcase.tsx's own comment on the `onEdit` prop this threads
+  // through to.
+  onEditShowcase?: () => void;
 }) {
   const {
     displayName,
@@ -61,8 +67,6 @@ export function AccountView({
     bannerStyle,
     motto,
     characters,
-    mergedItems,
-    itemOwner,
     recent,
     accountBadges,
     accountBadgeProgress,
@@ -74,10 +78,21 @@ export function AccountView({
     favoriteStatistic,
     favoriteAchievement,
     favoriteItem,
+    mainCharacter,
+    mainCharacterItems,
   } = data;
 
-  const earnedCount = mergedItems.filter((i) => i.earned).length;
-  const totalCount = mergedItems.length;
+  // Main Character Achievements (2026-10-03, "for character achievements tab
+  // it should only track the character set as main") - every achievement
+  // count/card on this page that used to read the account-wide MERGED view
+  // (mergedItems - highest tier reached by any character) now reads
+  // mainCharacterItems instead - one character's own achievements, whichever
+  // one is flagged character_type "Main". `mergedItems`/`itemOwner` are kept
+  // around (still returned by lib/accountView.ts) for anything else that
+  // might want the old account-wide view later - this page just doesn't use
+  // them for the "Character Achievements" sections anymore.
+  const earnedCount = mainCharacterItems.filter((i) => i.earned).length;
+  const totalCount = mainCharacterItems.length;
   const achievementPct = totalCount > 0 ? Math.round((earnedCount / totalCount) * 100) : 0;
   const achievementsRemaining = totalCount - earnedCount;
 
@@ -105,20 +120,29 @@ export function AccountView({
     }))
     .sort((a, b) => b.hours - a.hours);
 
-  // "Continue Your Journey" - the single closest unearned character
-  // achievement (same proximity-to-completion sort the old Featured
-  // Achievements panel used for its "closeUnearned" half), the closest
-  // unearned account achievement (from accountBadgeProgress, filtered down
-  // to badges not already in `accountBadges`), and a Legacy Challenges
-  // nudge. All three fall back to a "you're done" state rather than ever
-  // showing stale/hardcoded example content.
-  const closestUnearnedAchievement = mergedItems
+  // "Continue Your Journey" - the single closest unearned Main-character
+  // achievement, the closest unearned account achievement (from
+  // accountBadgeProgress, filtered down to badges not already in
+  // `accountBadges`), and a Legacy Challenges nudge. All three fall back to
+  // a "you're done" state rather than ever showing stale/hardcoded example
+  // content.
+  const closestUnearnedAchievement = mainCharacterItems
     .filter((i) => !i.earned && i.tiered && i.value !== null && i.nextThreshold)
     .sort((a, b) => (b.value as number) / (b.nextThreshold as number) - (a.value as number) / (a.nextThreshold as number))[0];
 
+  // Excludes badges that just mirror a fraction ALREADY shown in its own
+  // dedicated card elsewhere on this page ("the_completionist" is literally
+  // earnedAchievementCount/totalAchievementCount - the same ratio the
+  // Character Achievements card already shows; "legacy_complete" is the same
+  // 65-point Legacy Challenges total the Legacy card already shows) -
+  // 2026-10-03, "the completionist doesn't make sense for being the closest
+  // to done does it?" - showing one of these as the "next account
+  // achievement to chase" was just restating a number already on the page,
+  // not a genuinely different thing to go work on.
+  const ACCOUNT_BADGE_GOAL_EXCLUDE = new Set<AccountAchievementKind>(["the_completionist", "legacy_complete"]);
   const closestAccountBadge = (() => {
     const entries = (Object.keys(accountBadgeProgress) as AccountAchievementKind[])
-      .filter((kind) => !accountBadges.includes(kind))
+      .filter((kind) => !accountBadges.includes(kind) && !ACCOUNT_BADGE_GOAL_EXCLUDE.has(kind))
       .map((kind) => ({ kind, ...(accountBadgeProgress[kind] as { value: number; target: number }) }))
       .filter((e) => e.target > 0);
     entries.sort((a, b) => b.value / b.target - a.value / a.target);
@@ -199,20 +223,32 @@ export function AccountView({
             </a>
           </div>
 
-          {/* Character Achievements */}
+          {/* Main Character Achievements (2026-10-03, "for character
+              achievements tab it should only track the character set as
+              main") - was the account-wide merged count, now mirrors
+              mainCharacterItems exactly like Featured Achievements below. No
+              Main character set at all shows a prompt instead of a 0/0. */}
           <div className="rounded border border-neutral-700 bg-neutral-900 p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-400/70">Character Achievements</p>
-            <p className="mt-1 text-xl font-bold text-white">
-              {earnedCount} / {totalCount}
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-400/70">
+              Main Character Achievements
             </p>
-            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-neutral-700">
-              <div className="h-full rounded-full bg-yellow-500" style={{ width: `${achievementPct}%` }} />
-            </div>
-            <p className="mt-1 text-xs text-gray-500">{achievementPct}%</p>
-            {achievementsRemaining > 0 && (
-              <a href="#featured-achievements" className="mt-1 inline-block text-xs text-amber-400 hover:underline">
-                {achievementsRemaining} remaining →
-              </a>
+            {mainCharacter ? (
+              <>
+                <p className="mt-1 text-xl font-bold text-white">
+                  {earnedCount} / {totalCount}
+                </p>
+                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-neutral-700">
+                  <div className="h-full rounded-full bg-yellow-500" style={{ width: `${achievementPct}%` }} />
+                </div>
+                <p className="mt-1 text-xs text-gray-500">{achievementPct}%</p>
+                {achievementsRemaining > 0 && (
+                  <a href="#featured-achievements" className="mt-1 inline-block text-xs text-amber-400 hover:underline">
+                    {achievementsRemaining} remaining →
+                  </a>
+                )}
+              </>
+            ) : (
+              <p className="mt-1 text-xs text-gray-500">No Main character set yet.</p>
             )}
           </div>
 
@@ -295,18 +331,24 @@ export function AccountView({
         <p className="mt-1 text-sm text-gray-400">Closest milestones across your account.</p>
 
         <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
-          {/* Character Achievements goal */}
+          {/* Main Character Achievements goal - owner is always
+              mainCharacter now (not itemOwner, which maps the account-wide
+              MERGED view's owners - not what this card tracks anymore). */}
           <div className="rounded border border-neutral-700 bg-neutral-900 p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-400/70">Character Achievements</p>
-            {achievementsRemaining > 0 ? (
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-400/70">
+              Main Character Achievements
+            </p>
+            {!mainCharacter ? (
+              <p className="mt-1 text-sm text-gray-400">Set a Main character to track this.</p>
+            ) : achievementsRemaining > 0 ? (
               <>
                 <p className="mt-1 text-sm font-semibold text-white">{achievementsRemaining} remaining</p>
                 <p className="mt-0.5 text-xs text-gray-400">
-                  You&apos;ve discovered {earnedCount} of {totalCount} character achievements.
+                  {mainCharacter.name} has discovered {earnedCount} of {totalCount} character achievements.
                 </p>
                 {closestUnearnedAchievement && (
                   <Link
-                    href={`/character/${itemOwner.get(closestUnearnedAchievement.key) ?? characters[0]?.id ?? ""}/achievements#${closestUnearnedAchievement.key}`}
+                    href={`/character/${mainCharacter.id}/achievements#${closestUnearnedAchievement.key}`}
                     className="mt-2 flex items-center gap-2 rounded border border-neutral-700 bg-neutral-950/60 p-2 hover:border-amber-500/60"
                   >
                     <span className="relative h-9 w-9 shrink-0 overflow-hidden rounded-sm">
@@ -337,7 +379,7 @@ export function AccountView({
                 )}
               </>
             ) : (
-              <p className="mt-1 text-sm text-gray-400">Every character achievement has been earned by someone!</p>
+              <p className="mt-1 text-sm text-gray-400">{mainCharacter.name} has earned every character achievement!</p>
             )}
           </div>
 
@@ -416,6 +458,7 @@ export function AccountView({
           favoriteAchievement={favoriteAchievement}
           favoriteItem={favoriteItem}
           iconOverrides={iconOverrides}
+          onEdit={onEditShowcase}
         />
       </div>
 
@@ -476,41 +519,58 @@ export function AccountView({
         {/* Right column */}
         <div className="flex flex-col gap-4">
           <div id="featured-achievements" className="scroll-mt-4 rounded-md border border-neutral-700 bg-neutral-800 p-4">
-            <h2 className="text-lg">Featured Character Achievements</h2>
-            <p className="mt-1 text-xs text-gray-500">
-              Automatically picked - top achievements, plus what&apos;s closest to unlocking. Manually choosing which
-              ones show here is a planned follow-up (needs a new column to store the pick).
-            </p>
-            {(() => {
-              const earned = mergedItems
-                .filter((i) => i.earned)
-                .sort((a, b) => {
-                  if (b.points !== a.points) return b.points - a.points;
-                  const ta = a.earnedAt ? new Date(a.earnedAt).getTime() : 0;
-                  const tb = b.earnedAt ? new Date(b.earnedAt).getTime() : 0;
-                  return tb - ta;
-                });
-              const closeUnearned = mergedItems
-                .filter((i) => !i.earned && i.tiered && i.value !== null && i.nextThreshold)
-                .sort(
-                  (a, b) => (b.value as number) / (b.nextThreshold as number) - (a.value as number) / (a.nextThreshold as number)
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h2 className="text-lg">Featured Main Character Achievements</h2>
+                <p className="mt-1 text-xs text-gray-500">
+                  {mainCharacter ? mainCharacter.name : "No Main character set"} - top achievements, plus
+                  what&apos;s closest to unlocking. Manually choosing which ones show here is a planned follow-up
+                  (needs a new column to store the pick).
+                </p>
+              </div>
+              {/* 2026-10-03, "Clicking this achievements button should take
+                  you to your main character achievements" - straight to the
+                  real achievement browser/pinning page for whichever
+                  character is Main, same page AchievementShowcase's own
+                  "View Achievements" button already links to. */}
+              {mainCharacter && (
+                <Link
+                  href={`/character/${mainCharacter.id}/achievements`}
+                  className="shrink-0 rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white"
+                >
+                  Edit
+                </Link>
+              )}
+            </div>
+            {!mainCharacter ? (
+              <p className="mt-2 text-sm text-gray-500">Set a Main character to feature their achievements here.</p>
+            ) : (
+              (() => {
+                const earned = mainCharacterItems
+                  .filter((i) => i.earned)
+                  .sort((a, b) => {
+                    if (b.points !== a.points) return b.points - a.points;
+                    const ta = a.earnedAt ? new Date(a.earnedAt).getTime() : 0;
+                    const tb = b.earnedAt ? new Date(b.earnedAt).getTime() : 0;
+                    return tb - ta;
+                  });
+                const closeUnearned = mainCharacterItems
+                  .filter((i) => !i.earned && i.tiered && i.value !== null && i.nextThreshold)
+                  .sort(
+                    (a, b) => (b.value as number) / (b.nextThreshold as number) - (a.value as number) / (a.nextThreshold as number)
+                  );
+                const featured = [...earned, ...closeUnearned].slice(0, 6);
+                return featured.length === 0 ? (
+                  <p className="mt-2 text-sm text-gray-500">Nothing earned yet.</p>
+                ) : (
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    {featured.map((item) => (
+                      <ShowcaseBadge key={item.key} characterId={mainCharacter.id} item={item} dimmed={!item.earned} />
+                    ))}
+                  </div>
                 );
-              const featured = [...earned, ...closeUnearned].slice(0, 6);
-              return featured.length === 0 ? (
-                <p className="mt-2 text-sm text-gray-500">Nothing earned yet.</p>
-              ) : (
-                <div className="mt-3 flex flex-wrap gap-3">
-                  {featured.map((item) => (
-                    <ShowcaseBadge
-                      key={item.key}
-                      characterId={itemOwner.get(item.key) ?? characters[0]?.id ?? ""}
-                      item={item}
-                      dimmed={!item.earned}
-                    />
-                  ))}
-                </div>
-              );
-            })()}
+              })()
+            )}
           </div>
 
           {/* Account-wide badges - a genuinely separate system from the

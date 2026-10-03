@@ -199,6 +199,13 @@ export default function AccountOverviewPage() {
   return (
     <AccountView
       data={data}
+      // 2026-10-03 ("Showcase should have an edit button in top right
+      // corner") - same openEditProfile() the header's own "Edit Profile"
+      // button uses; the panel it opens already has the Showcase picker
+      // section built into it (see the "Showcase" div further down this
+      // file), so there's no separate flow to build here, just another way
+      // in.
+      onEditShowcase={openEditProfile}
       headerActions={
         <button type="button" onClick={openEditProfile} className="rounded bg-blue-600 px-3 py-1.5 text-sm font-semibold">
           Edit Profile
