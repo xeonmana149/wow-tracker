@@ -37,13 +37,14 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
   // is a cross-cutting filter ("show me every non-tiered achievement")
   // rather than another entry in the family list.
   const [family, setFamily] = useState<AchievementFamily | "all" | "oneOff">("all");
-  // Default changed from "category" to "highestTier" (2026-10-03, "ordered
-  // by highest tier so platinums onwards and then the one off achievements
-  // without tiers start afterwards") - see the highestTier case below for
-  // how that ordering is actually built. Still just the first entry
-  // selected in the dropdown, so anyone can switch back to grouping by
-  // category same as before.
-  const [sort, setSort] = useState<SortMode>("highestTier");
+  // Stays defaulted to "category" (2026-10-03 clarification: the "order by
+  // highest tier, one-offs after" request was about the compact badge
+  // strip on CharacterCard.tsx/CharacterRow.tsx - see
+  // sortedAchievementsForDisplay in CharacterCard.tsx - not this page's own
+  // default). "Highest tier" is still a selectable option in the dropdown
+  // below, with its ranking fixed the same way (every tiered achievement
+  // outranks every one-off, not just interleaved by earned status).
+  const [sort, setSort] = useState<SortMode>("category");
 
   // Showcase pinning - which earned achievements show up in the compact
   // strip on the character page (AchievementShowcase.tsx / pickShowcaseItems

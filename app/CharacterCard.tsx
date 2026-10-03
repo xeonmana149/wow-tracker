@@ -5,7 +5,7 @@ import Link from "next/link";
 import { RACE_FACTION } from "../lib/options";
 import { PRIMARY_PROFESSIONS, PROFESSION_ICONS, RACE_ICONS, classIcon } from "../lib/icons";
 import { characterBars } from "../lib/progress";
-import type { AchievementKind, GoldTier, TieredAchievementKind } from "../lib/achievements";
+import { TIER_RANK, type AchievementKind, type GoldTier, type TieredAchievementKind } from "../lib/achievements";
 import { localBadgeIconSrc } from "../lib/badgeFrames";
 import GameIcon from "./GameIcon";
 import TierFramedIcon from "./TierFramedIcon";
@@ -95,6 +95,23 @@ type CardAchievement = {
   kind: AchievementKind | TieredAchievementKind;
   tier?: GoldTier | null;
 };
+
+// Highest tier first (Platinum, Gold, Silver, Copper), then every one-off
+// achievement afterwards, in whatever order they came in (2026-10-03,
+// "ordered by highest tier... and then the one off achievements without
+// tiers start afterwards" - for the badge STRIP on a character row/card,
+// not the full achievements page, which keeps its own separate sort
+// control). Shared by CharacterCard.tsx's own badge strip and
+// CharacterRow.tsx's (which imports this rather than keeping a second copy
+// of the same sort). Array.prototype.sort is stable, so one-offs (rank -1)
+// keep their original relative order among themselves.
+export function sortedAchievementsForDisplay(list: CardAchievement[]): CardAchievement[] {
+  return [...list].sort((a, b) => {
+    const rankA = a.tier ? TIER_RANK[a.tier] : -1;
+    const rankB = b.tier ? TIER_RANK[b.tier] : -1;
+    return rankB - rankA;
+  });
+}
 
 export type CardCharacter = {
   id: string;
@@ -312,7 +329,7 @@ export default function CharacterCard({
               // taller than its neighbors (the "Other Characters" column,
               // the page content below) instead of staying contained.
               <div className="mt-1.5 flex max-h-28 flex-wrap items-center gap-2 overflow-y-auto">
-                {(c.achievements ?? []).map((a) => {
+                {sortedAchievementsForDisplay(c.achievements ?? []).map((a) => {
                   if (a.kind === "gold" && a.tier) {
                     const localIcon = TIERED_LOCAL_ICONS.gold;
                     if (!localIcon) return null;

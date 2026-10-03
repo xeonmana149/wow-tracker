@@ -13,6 +13,7 @@ import {
   FLAT_LOCAL_ICONS,
   GOLD_TIER_LABEL,
   characterTypeStyle,
+  sortedAchievementsForDisplay,
   type AchievementKind,
   type CardCharacter,
 } from "./CharacterCard";
@@ -145,7 +146,7 @@ export default function CharacterRow({ c }: { c: CardCharacter }) {
             // sits to the row's right (2026-10-03, "character achievements
             // endlessly scroll over all the other text").
             <span className="flex min-w-0 shrink items-center gap-1 overflow-x-auto">
-              {(c.achievements ?? []).map((a) => {
+              {sortedAchievementsForDisplay(c.achievements ?? []).map((a) => {
                 if (a.kind === "gold" && a.tier) {
                   const localIcon = TIERED_LOCAL_ICONS.gold;
                   if (!localIcon) return null;

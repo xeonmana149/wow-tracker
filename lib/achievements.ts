@@ -115,7 +115,12 @@ export type AchievementTier = "Copper" | "Silver" | "Gold" | "Platinum";
 // same type, just also exported under its original name.
 export type GoldTier = AchievementTier;
 
-const TIER_RANK: Record<AchievementTier, number> = { Copper: 0, Silver: 1, Gold: 2, Platinum: 3 };
+// Exported (2026-10-03) so CharacterCard.tsx/CharacterRow.tsx can sort a
+// character's earned-badge strip by tier without keeping their own second
+// copy of this mapping (CharacterAchievementsPage.tsx already does keep its
+// own local copy, from before this was exported - fine to leave as is,
+// but a new consumer should import this one instead of relearning it).
+export const TIER_RANK: Record<AchievementTier, number> = { Copper: 0, Silver: 1, Gold: 2, Platinum: 3 };
 
 // Non-stacking points toward the leaderboards "Overall" score - reaching
 // Platinum is worth 50 points total, not 5+15+30+50. Easy to retune later,
