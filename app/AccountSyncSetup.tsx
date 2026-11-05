@@ -8,10 +8,11 @@ import { supabase } from "../lib/supabase";
 // folder deeper (e.g. app/dashboard/AccountSyncSetup.tsx) needs
 // "../../lib/supabase" instead, same rule as your other components.
 
-// Same fixed port the companion app's setup server listens on
-// (SETUP_PORT in sync.js) - it never changes, so it's safe to hardcode
-// here rather than needing the two to agree on it some other way.
-const SYNC_APP_PORT = 47891;
+// Custom URL scheme the tray app (v2.2.6+) registers with Windows. This
+// replaced http://127.0.0.1:47891/setup (2026-11-05) - that was the old
+// plain-Node sync.js's local setup page, and the Electron tray app has no
+// HTTP server, so the old link just failed to load.
+const SYNC_APP_PROTOCOL = "wowforever";
 
 export default function AccountSyncSetup({ openSignal }: { openSignal?: number } = {}) {
   const [userId, setUserId] = useState<string | null>(null);
@@ -80,19 +81,12 @@ export default function AccountSyncSetup({ openSignal }: { openSignal?: number }
     }
   }
 
-  // Opens the companion app's own setup page directly, with the token
-  // already in the URL - the app fills its token field from that and skips
-  // the whole copy/switch/paste dance. This only works when the app is
-  // already running on THIS computer (it's a plain link to localhost, not
-  // a request this page makes, so there's nothing to catch or retry if
-  // it isn't - the browser just fails to load that tab, same as typing a
-  // dead address). Doesn't help for a friend syncing from a second PC or
-  // for the app's very first-ever run before it's installed - Copy is the
-  // fallback for those.
-  function openSyncApp() {
-    if (!token) return;
-    window.open(`http://127.0.0.1:${SYNC_APP_PORT}/setup?prefillToken=${token}`, "_blank");
-  }
+  // "Open Sync App" (below) hands the token to the companion app through
+  // its wowforever:// link - Windows launches the app if it isn't running,
+  // the app saves the token and opens its Settings window. Only works once
+  // the app (v2.2.6+) is installed on THIS computer; if it isn't, the
+  // browser just does nothing, so Copy stays as the fallback for a second
+  // PC or a first-time install. A plain <a href> rather than JS navigation.
 
   // No standalone header/box of its own anymore - the Dashboard's own
   // "Set Up Auto-Sync" button is the only way in, so there's nothing to
@@ -109,9 +103,9 @@ export default function AccountSyncSetup({ openSignal }: { openSignal?: number }
       </div>
 
       <p className="mt-2 text-sm text-gray-400">
-        One token for your whole account. If the companion app is already running on this
-        computer, "Open Sync App" jumps straight to its setup page with the token already filled
-        in - tick your characters there and hit Save. Set it up once and it keeps every character
+        One token for your whole account. If the companion app is installed on this computer,
+        &quot;Open Sync App&quot; opens its Settings with the token already filled in - tick your
+        characters there and hit Save. Set it up once and it keeps every character
         you play in sync, creating a new character on this site automatically the first time it
         sees one it doesn&apos;t recognize yet. Treat it like a password.
       </p>
@@ -121,9 +115,12 @@ export default function AccountSyncSetup({ openSignal }: { openSignal?: number }
           <p className="text-xs text-gray-500">Your account sync token:</p>
           <div className="mt-1 flex flex-wrap items-center gap-3">
             <code className="break-all text-sm text-amber-300">{token}</code>
-            <button onClick={openSyncApp} className="rounded bg-red-700 px-3 py-1 text-xs">
+            <a
+              href={`${SYNC_APP_PROTOCOL}://setup?token=${encodeURIComponent(token)}`}
+              className="rounded bg-red-700 px-3 py-1 text-xs"
+            >
               Open Sync App
-            </button>
+            </a>
             <button
               onClick={copyToken}
               className="rounded bg-neutral-700 px-3 py-1 text-xs font-semibold text-white hover:bg-neutral-600"
@@ -132,8 +129,8 @@ export default function AccountSyncSetup({ openSignal }: { openSignal?: number }
             </button>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            "Open Sync App" only works if the companion app is already running on this computer.
-            Setting it up for the first time, or on a different PC? Use Copy and paste it in there
+            &quot;Open Sync App&quot; needs the companion app (v2.2.6 or newer) installed on this
+            computer. Nothing happens? Use Copy and paste the token into the app&apos;s Settings
             instead.
           </p>
         </div>

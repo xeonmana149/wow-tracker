@@ -9,7 +9,7 @@
 // treated as "different, so out of date" by whoever's checking.
 export const LATEST_VERSIONS = {
   addon: "1.9.1",
-  tray: "2.2.4",
+  tray: "2.2.7",
 };
 
 // Wherever people should go to grab the update. Both now point at GitHub
