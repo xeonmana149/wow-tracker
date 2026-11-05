@@ -84,6 +84,9 @@ export type AchievementBoardItem = {
   // used for sorting elsewhere). Only tiered items populate this; flat
   // items and Legacy Challenges (no per-tier date data at all) get null.
   tierDates: Partial<Record<AchievementTier, string>> | null;
+  // Already earned when the character first synced (2026-11-05) - the game
+  // never says when, so it's shown as "before tracking" with no date.
+  beforeTracking?: boolean;
 };
 
 const PERSONALITY_BADGE_BY_KIND = new Map(PERSONALITY_BADGES.map((b) => [b.kind, b]));
@@ -111,6 +114,7 @@ export function buildAchievementItems({
     kind: string;
     tier: AchievementTier | null;
     earned_at?: string | null;
+    backfilled?: boolean | null;
     tier_copper_at?: string | null;
     tier_silver_at?: string | null;
     tier_gold_at?: string | null;
@@ -184,11 +188,12 @@ export function buildAchievementItems({
       value,
       nextThreshold,
       thresholds,
-      earnedAt: row?.earned_at ?? null,
+      earnedAt: row?.backfilled ? null : row?.earned_at ?? null,
       legacyCategory: null,
       criteria: null,
       legacyPointValue: null,
-      tierDates: Object.keys(tierDates).length > 0 ? tierDates : null,
+      tierDates: !row?.backfilled && Object.keys(tierDates).length > 0 ? tierDates : null,
+      beforeTracking: !!row?.backfilled,
     });
   }
 
@@ -229,11 +234,12 @@ export function buildAchievementItems({
       value,
       nextThreshold,
       thresholds: null,
-      earnedAt: row?.earned_at ?? null,
+      earnedAt: row?.backfilled ? null : row?.earned_at ?? null,
       legacyCategory: null,
       criteria: null,
       legacyPointValue: null,
       tierDates: null,
+      beforeTracking: !!row?.backfilled,
     });
   }
 
@@ -263,6 +269,8 @@ export type LegacyAchievementRow = {
   name: string;
   description: string | null;
   completed: boolean;
+  // The day the game says it was completed (addon 1.9.2+), null if unknown
+  completed_at: string | null;
   criteria: { text: string; completed: boolean }[] | null;
   icon: number | null;
   // Blizzard's own GetAchievementInfo points value - CONFIRMED WRONG/
@@ -334,7 +342,7 @@ export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): Achie
         value: null,
         nextThreshold: null,
         thresholds: null,
-        earnedAt: null,
+        earnedAt: row.completed ? row.completed_at ?? null : null,
         legacyCategory: row.category,
         // 0-1 criteria means there's nothing worth collapsing/expanding -
         // the description line above already says everything there is.
@@ -366,7 +374,7 @@ export function buildLegacyAchievementItems(rows: LegacyAchievementRow[]): Achie
       value: done,
       nextThreshold,
       thresholds,
-      earnedAt: null,
+      earnedAt: fullyDone ? row.completed_at ?? null : null,
       legacyCategory: row.category,
       criteria,
       legacyPointValue: pointValue,

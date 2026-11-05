@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { iconUrl } from "../lib/icons";
+import { iconUrl, wowIconUrl } from "../lib/icons";
 
 // Tooltip sizing/positioning constants - mirrors the approach in
 // ActivityAchievementIcon.tsx (2026-09-25): a fixed-position portal
@@ -63,22 +63,23 @@ export default function GameIcon({
   // that's wanted, so callers opt in per-icon (flat achievement badges do).
   preview?: boolean;
 }) {
-  const [failed, setFailed] = useState(false);
+  // Which candidate URL is being tried. A named icon tries the bundled copy
+  // first, then Wowhead's icon CDN - game data now updates live (see
+  // lib/server-data.ts), so a newly added talent/racial/perk icon may not be
+  // bundled under /talent-icons/ yet.
   const [pos, setPos] = useState<TooltipPos | null>(null);
   const anchorRef = useRef<HTMLSpanElement>(null);
   const shape = round ? "rounded-full" : "rounded";
-  const resolvedSrc = src ?? (name ? iconUrl(name) : null);
+  const candidates = src ? [src] : name ? [iconUrl(name), wowIconUrl(name)] : [];
+  const candidateKey = candidates.join("|");
+  // Tied to the URLs it counts for, so a new icon (src/name changed) always
+  // starts again from its first candidate.
+  const [tries, setTries] = useState({ key: candidateKey, n: 0 });
+  const attempt = tries.key === candidateKey ? tries.n : 0;
+  const resolvedSrc = candidates[attempt] ?? null;
+  const failed = !resolvedSrc;
   const previewSize = 160;
 
-  // Without this, once one icon 404s (setting failed=true), this component
-  // instance would show the fallback tile forever - even after `src`/`name`
-  // later changes to a working icon (e.g. after saving a new icon override) -
-  // because React re-uses the same component instance and `failed` never
-  // had a reason to reset. Resetting it whenever the resolved URL changes
-  // means a new icon always gets its own fresh attempt to load.
-  useEffect(() => {
-    setFailed(false);
-  }, [resolvedSrc]);
 
   function showTooltip() {
     if (!anchorRef.current) return;
@@ -117,7 +118,7 @@ export default function GameIcon({
           src={resolvedSrc}
           alt={label}
           draggable={false}
-          onError={() => setFailed(true)}
+          onError={() => setTries({ key: candidateKey, n: attempt + 1 })}
           className={`h-full w-full border border-amber-900/70 object-cover ${shape}`}
         />
       )}

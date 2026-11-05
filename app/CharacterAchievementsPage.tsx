@@ -66,7 +66,7 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
             .single(),
           supabase
             .from("achievements")
-            .select("kind, tier, earned_at, tier_copper_at, tier_silver_at, tier_gold_at, tier_platinum_at")
+            .select("kind, tier, earned_at, backfilled, tier_copper_at, tier_silver_at, tier_gold_at, tier_platinum_at")
             .eq("character_id", characterId),
           supabase.from("character_statistics").select("category, name, value").eq("character_id", characterId),
           supabase.from("character_professions").select("profession, skill, recipes").eq("character_id", characterId),
@@ -94,6 +94,7 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
             kind: string;
             tier: AchievementTier | null;
             earned_at: string | null;
+            backfilled: boolean | null;
             tier_copper_at: string | null;
             tier_silver_at: string | null;
             tier_gold_at: string | null;

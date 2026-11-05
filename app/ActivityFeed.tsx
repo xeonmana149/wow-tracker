@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { classIcon } from "../lib/icons";
+import { classIcon, iconUrlForFileId } from "../lib/icons";
 import GameIcon from "./GameIcon";
 import ActivityAchievementIcon from "./ActivityAchievementIcon";
 import type { AchievementTier } from "../lib/achievements";
@@ -15,7 +15,8 @@ type ActivityKind =
   | "gold_milestone"
   | "legacy_point"
   | "pvp_rank_up"
-  | "achievement_earned";
+  | "achievement_earned"
+  | "legacy_completed";
 
 type Event = {
   id: string;
@@ -40,7 +41,26 @@ const KIND_ICON: Record<ActivityKind, string> = {
   legacy_point: "🏆",
   pvp_rank_up: "⚔",
   achievement_earned: "🏅",
+  legacy_completed: "🏆",
 };
+
+const LEGACY_PREFIX = "Completed Legacy Challenge: ";
+
+// Challenge name -> icon file ID, loaded once for every feed on the page.
+// Legacy rows only carry the challenge's name in their message, so the
+// icon is looked up by that name.
+let legacyIconsPromise: Promise<Map<string, number>> | null = null;
+function loadLegacyIcons() {
+  legacyIconsPromise ??= (async () => {
+    const { data } = await supabase.from("legacy_achievement_definitions").select("name, icon");
+    return new Map(
+      (data ?? [])
+        .filter((d): d is { name: string; icon: number } => d.icon != null)
+        .map((d) => [d.name, d.icon])
+    );
+  })();
+  return legacyIconsPromise;
+}
 
 // How many events the sidebar keeps in view at once. New ones push onto
 // the top of the list; anything past this count falls off the bottom,
@@ -64,7 +84,11 @@ function timeAgo(iso: string) {
 // (with the same hover-to-enlarge preview used everywhere else the badge
 // system renders), falling back to the class icon or generic kind emoji
 // for everything else, same as before.
-function EventIcon({ e }: { e: Event }) {
+function EventIcon({ e, legacyIcons }: { e: Event; legacyIcons: Map<string, number> }) {
+  if (e.kind === "legacy_completed") {
+    const src = iconUrlForFileId(legacyIcons.get(e.message.replace(LEGACY_PREFIX, "")));
+    if (src) return <GameIcon src={src} label={e.message} size={28} round />;
+  }
   if (e.kind === "achievement_earned" && e.achievement_kind) {
     return (
       <ActivityAchievementIcon
@@ -96,6 +120,17 @@ export default function ActivityFeed({
 } = {}) {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [legacyIcons, setLegacyIcons] = useState<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    loadLegacyIcons().then((icons) => {
+      if (!cancelled) setLegacyIcons(icons);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Kept in a ref (rather than an effect dependency) so the subscription
   // below doesn't need to tear down and reconnect just because the parent
@@ -174,7 +209,7 @@ export default function ActivityFeed({
               key={e.id}
               className="flex items-center gap-3 rounded bg-neutral-800 px-3 py-2"
             >
-              <EventIcon e={e} />
+              <EventIcon e={e} legacyIcons={legacyIcons} />
               <span className="min-w-0 flex-1 text-sm text-white">{e.message}</span>
               <span className="shrink-0 text-xs text-gray-500">{timeAgo(e.created_at)}</span>
             </li>

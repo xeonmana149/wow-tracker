@@ -67,6 +67,7 @@ type AchievementRowDB = {
   kind: string;
   tier: AchievementTier | null;
   earned_at: string | null;
+  backfilled?: boolean | null;
   tier_copper_at?: string | null;
   tier_silver_at?: string | null;
   tier_gold_at?: string | null;
@@ -290,7 +291,7 @@ export async function loadAccountViewData(
     const [{ data: achievementRows }, { data: statRows }, { data: professionRows }, { data: gearRows }] = await Promise.all([
       client
         .from("achievements")
-        .select("character_id, kind, tier, earned_at, tier_copper_at, tier_silver_at, tier_gold_at, tier_platinum_at")
+        .select("character_id, kind, tier, earned_at, backfilled, tier_copper_at, tier_silver_at, tier_gold_at, tier_platinum_at")
         .in("character_id", characterIds),
       client
         .from("character_statistics")
@@ -387,7 +388,8 @@ export async function loadAccountViewData(
 
     const charName = new Map(chars.map((c) => [c.id, c.name]));
     recent = achRows
-      .filter((a) => !!a.earned_at)
+      // Badges caught up on a first sync have no real date, so they are not "recent"
+      .filter((a) => !!a.earned_at && !a.backfilled)
       .sort((a, b) => new Date(b.earned_at as string).getTime() - new Date(a.earned_at as string).getTime())
       .slice(0, 8)
       .map((a) => ({
@@ -537,7 +539,7 @@ export async function loadShowcasePickerData(client: SupabaseClient, userId: str
     await Promise.all([
       client
         .from("achievements")
-        .select("character_id, kind, tier, earned_at, tier_copper_at, tier_silver_at, tier_gold_at, tier_platinum_at")
+        .select("character_id, kind, tier, earned_at, backfilled, tier_copper_at, tier_silver_at, tier_gold_at, tier_platinum_at")
         .in("character_id", characterIds),
       client.from("character_statistics").select("character_id, category, name, value").in("character_id", characterIds),
       client.from("character_professions").select("character_id, profession, skill, recipes").in("character_id", characterIds),

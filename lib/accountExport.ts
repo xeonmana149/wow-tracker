@@ -40,6 +40,7 @@ export const EXPORT_VERSION = 1;
 const CHARACTER_CHILD_TABLES = [
   "character_professions",
   "character_statistics",
+  "character_reputations",
   "character_stats",
   "character_talents",
   "character_wishlist",
@@ -56,6 +57,8 @@ export type AccountExport = {
   characters: Record<string, unknown>[];
   character_professions: Record<string, unknown>[];
   character_statistics: Record<string, unknown>[];
+  // Added 2026-11-05 - optional so backups made before then still load
+  character_reputations?: Record<string, unknown>[];
   character_stats: Record<string, unknown>[];
   character_talents: Record<string, unknown>[];
   character_wishlist: Record<string, unknown>[];
@@ -99,6 +102,7 @@ export async function exportAccountData(client: SupabaseClient, userId: string):
     characters: (characters ?? []) as Record<string, unknown>[],
     character_professions: byTable.character_professions,
     character_statistics: byTable.character_statistics,
+    character_reputations: byTable.character_reputations,
     character_stats: byTable.character_stats,
     character_talents: byTable.character_talents,
     character_wishlist: byTable.character_wishlist,

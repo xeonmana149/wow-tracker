@@ -77,7 +77,7 @@ export default function AccountLegacyPage() {
           .select("achievement_id, category, name, description, icon, points, ui_points"),
         supabase
           .from("account_legacy_achievements")
-          .select("achievement_id, completed, criteria")
+          .select("achievement_id, completed, completed_at, criteria")
           .eq("user_id", userData.user.id),
       ]);
 
@@ -97,6 +97,7 @@ export default function AccountLegacyPage() {
             name: def.name,
             description: def.description,
             completed: c.completed,
+            completed_at: c.completed_at ?? null,
             criteria: c.criteria,
             icon: def.icon,
             points: def.points,

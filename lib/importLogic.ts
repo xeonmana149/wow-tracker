@@ -161,6 +161,10 @@ export type ParsedExport = {
     category: string;
     name: string;
     completed: boolean;
+    // The day the game says it was completed, "YYYY-MM-DD" (addon 1.9.2+) -
+    // used to date the completion and its activity entry properly, even
+    // for challenges finished before the addon was installed.
+    completedDate?: string;
     description?: string;
     criteria?: { text: string; completed: boolean }[];
     // The achievement's own Blizzard icon fileID (addon 1.8.6+) - fed
@@ -202,6 +206,29 @@ export type ParsedExport = {
     rankName?: string;
     points?: number;
     pointsMax?: number;
+  };
+  // Reputation pane (addon 1.9.2+) - every faction with its standing
+  // (1 Hated ... 8 Exalted) and progress within that standing
+  reputations?: {
+    id?: number;
+    name: string;
+    header?: string;
+    standing: number;
+    standingLabel?: string;
+    value?: number;
+    max?: number;
+  }[];
+  // Honor and lifetime kill counts (addon 1.9.2+). Any of these can be
+  // missing when this client doesn't answer the API.
+  pvp?: {
+    honor?: number;
+    honorMax?: number;
+    honorLevel?: number;
+    lifetimeHonorableKills?: number;
+    lifetimeDishonorableKills?: number;
+    highestRank?: number;
+    todayHonorableKills?: number;
+    todayDishonorableKills?: number;
   };
 };
 
@@ -288,7 +315,20 @@ type ActivityEvent = {
   // reports as plain strings with no achievement kind to attach.
   achievement_kind?: TieredAchievementKind | AchievementKind;
   achievement_tier?: AchievementTier | null;
+  // When it actually happened, if that's known and isn't "now" - e.g. a
+  // Legacy Challenge completed before the addon was installed. Left
+  // undefined (-> the database's now()) for everything noticed live.
+  created_at?: string;
 };
+
+// "YYYY-MM-DD" from the addon -> a timestamp (midday UTC, so the day doesn't
+// shift in any timezone). Null for anything missing, malformed or in the future.
+function gameDateToTimestamp(date: string | undefined): string | null {
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const ts = new Date(`${date}T12:00:00Z`);
+  if (Number.isNaN(ts.getTime()) || ts.getTime() > Date.now() + 36 * 60 * 60 * 1000) return null;
+  return ts.toISOString();
+}
 
 // Epic and Legendary item-link quality colors (RRGGBB, as extractItemColor
 // in the addon returns them).
@@ -340,6 +380,21 @@ export async function applyImport(
   }
 
   const events: ActivityEvent[] = [];
+
+  // First sync (2026-11-05, "backport activity and milestones at the right
+  // time"): a character that has never synced before has no stats on file.
+  // Everything it already has - levels, maxed professions, epics, gold,
+  // statistics-based tiers - happened at some unknown time before tracking
+  // started; the game doesn't record when. So instead of awarding all of it
+  // "now" and flooding the activity feed with a burst of fake same-minute
+  // events, its badges are marked backfilled ("before tracking") and the
+  // feed gets one summary line (see the end of this function). Legacy
+  // Challenges are the exception - the game DOES date those.
+  const { count: priorStatCount } = await supabase
+    .from("character_stats")
+    .select("stat", { count: "exact", head: true })
+    .eq("character_id", characterId);
+  const isFirstSync = (priorStatCount ?? 0) === 0;
 
   // Founding Member - checked on every sync rather than just at creation,
   // so it still gets awarded retroactively to characters created before
@@ -394,7 +449,7 @@ export async function applyImport(
   }
 
   // 1. Character-level fields.
-  const charUpdate: Record<string, number | string> = {};
+  const charUpdate: Record<string, number | string | object> = {};
   if (typeof parsed.basic?.level === "number") charUpdate.level = parsed.basic.level;
   if (typeof parsed.basic?.money === "number") charUpdate.money_copper = parsed.basic.money;
   if (parsed.basic?.guild) charUpdate.guild = parsed.basic.guild;
@@ -432,6 +487,7 @@ export async function applyImport(
   // already only ever reports its highest-ever-seen rank, so a plain
   // overwrite is safe here too.
   if (typeof parsed.pvpRank?.rank === "number") charUpdate.top_pvp_rank = parsed.pvpRank.rank;
+  if (parsed.pvp && typeof parsed.pvp === "object") charUpdate.pvp = parsed.pvp;
 
   if (Object.keys(charUpdate).length > 0) {
     const { error } = await supabase.from("characters").update(charUpdate).eq("id", characterId);
@@ -459,7 +515,14 @@ export async function applyImport(
     }
   }
 
-  if (typeof parsed.basic?.level === "number" && parsed.basic.level > before.level) {
+  // On a first sync the sync route has usually just created the character
+  // AT the exported level, so before.level === the new level and nothing
+  // would ever count as "crossed" - every milestone already reached is
+  // awarded instead (as backfilled, see isFirstSync above).
+  if (
+    typeof parsed.basic?.level === "number" &&
+    (parsed.basic.level > before.level || isFirstSync)
+  ) {
     events.push({
       character_id: characterId,
       user_id: before.user_id,
@@ -491,7 +554,7 @@ export async function applyImport(
     // (e.g. a rested-XP dungeon run taking someone from 8 to 24) still
     // correctly awards every one crossed, not just the highest.
     for (const milestone of LEVEL_MILESTONES) {
-      if (before.level < milestone.level && parsed.basic.level >= milestone.level) {
+      if ((before.level < milestone.level || isFirstSync) && parsed.basic.level >= milestone.level) {
         const milestoneEarned = await awardAchievement(supabase, characterId, milestone.kind);
         if (milestoneEarned) {
           events.push({
@@ -938,6 +1001,40 @@ export async function applyImport(
     }
   }
 
+  // Reputations (addon 1.9.2+) - the export is the whole pane, so it
+  // replaces what's on file: upsert every faction, then drop any that
+  // are no longer listed.
+  if (Array.isArray(parsed.reputations) && parsed.reputations.length > 0) {
+    const now = new Date().toISOString();
+    const byName = new Map<string, NonNullable<ParsedExport["reputations"]>[number]>();
+    for (const rep of parsed.reputations) {
+      if (rep?.name && typeof rep.standing === "number") byName.set(rep.name, rep);
+    }
+    const reputationRows = [...byName.values()].map((rep) => ({
+      character_id: characterId,
+      user_id: before.user_id,
+      faction_id: typeof rep.id === "number" ? rep.id : null,
+      name: rep.name,
+      header: rep.header ?? null,
+      standing: rep.standing,
+      standing_label: rep.standingLabel ?? null,
+      value: Math.max(0, Math.round(rep.value ?? 0)),
+      max: Math.max(0, Math.round(rep.max ?? 0)),
+      updated_at: now,
+    }));
+    if (reputationRows.length > 0) {
+      const { error } = await supabase
+        .from("character_reputations")
+        .upsert(reputationRows, { onConflict: "character_id,name" });
+      if (error) throw new Error(error.message);
+      await supabase
+        .from("character_reputations")
+        .delete()
+        .eq("character_id", characterId)
+        .lt("updated_at", now);
+    }
+  }
+
   // 6. Statistics pane data - whatever the addon reports this sync fully
   //    replaces what's on file for those stat IDs, one upsert per exported
   //    stat, keyed on (character_id, stat_id).
@@ -1080,17 +1177,19 @@ export async function applyImport(
     // time) must not re-log it.
     const { data: previousLegacyRows } = await supabase
       .from("account_legacy_achievements")
-      .select("achievement_id, completed")
+      .select("achievement_id, completed, completed_at")
       .eq("user_id", before.user_id)
       .in(
         "achievement_id",
         realLegacyAchievements.map((a) => a.id)
       );
-    const previouslyCompleted = new Set(
-      ((previousLegacyRows ?? []) as { achievement_id: number; completed: boolean }[])
-        .filter((r) => r.completed)
-        .map((r) => r.achievement_id)
-    );
+    const previousRows = (previousLegacyRows ?? []) as {
+      achievement_id: number;
+      completed: boolean;
+      completed_at: string | null;
+    }[];
+    const previouslyCompleted = new Set(previousRows.filter((r) => r.completed).map((r) => r.achievement_id));
+    const previouslyDated = new Set(previousRows.filter((r) => r.completed_at).map((r) => r.achievement_id));
     const newlyCompleted = realLegacyAchievements.filter((a) => a.completed && !previouslyCompleted.has(a.id));
 
     // icon joins ui_points as a "don't overwrite a known value with a blank
@@ -1150,17 +1249,58 @@ export async function applyImport(
     // shared-reference migration), so writing a completion row for a fake ID
     // that was never allowed to get a definition would just fail the sync
     // with a foreign-key error instead of silently succeeding.
-    const completionRows = realLegacyAchievements.map((a) => ({
+    // completed_at (2026-11-05) is only written when the addon actually
+    // reports a date (1.9.2+), in a separate upsert, so an older addon's
+    // sync never blanks out a date a newer one already recorded.
+    const completionRow = (a: NonNullable<ParsedExport["legacyAchievements"]>[number]) => ({
       user_id: before.user_id,
       achievement_id: a.id,
       completed: a.completed,
       criteria: a.criteria && a.criteria.length > 0 ? a.criteria : null,
       updated_at: new Date().toISOString(),
-    }));
-    const { error: completionError } = await supabase
-      .from("account_legacy_achievements")
-      .upsert(completionRows, { onConflict: "user_id,achievement_id" });
-    if (completionError) throw new Error(completionError.message);
+    });
+    const dated = realLegacyAchievements.filter((a) => a.completed && gameDateToTimestamp(a.completedDate));
+    const undated = realLegacyAchievements.filter((a) => !dated.includes(a));
+    for (const [group, withDate] of [
+      [dated, true],
+      [undated, false],
+    ] as const) {
+      if (group.length === 0) continue;
+      const rows = group.map((a) => ({
+        ...completionRow(a),
+        ...(withDate ? { completed_at: gameDateToTimestamp(a.completedDate) } : {}),
+      }));
+      const { error: completionError } = await supabase
+        .from("account_legacy_achievements")
+        .upsert(rows, { onConflict: "user_id,achievement_id" });
+      if (completionError) throw new Error(completionError.message);
+    }
+
+    // Challenges logged to the activity feed BEFORE the addon sent dates
+    // were stamped with whatever sync first noticed them - move those
+    // entries back to the day they really happened, the first time a date
+    // turns up for them. Best-effort, never blocks the sync.
+    for (const a of dated) {
+      if (!previouslyCompleted.has(a.id) || previouslyDated.has(a.id)) continue;
+      const when = gameDateToTimestamp(a.completedDate)!;
+      const label = `Completed Legacy Challenge: ${a.name}`;
+      try {
+        await supabase
+          .from("activity_log")
+          .update({ created_at: when })
+          .eq("user_id", before.user_id)
+          .eq("kind", "legacy_completed")
+          .eq("label", label);
+        await supabase
+          .from("activity_events")
+          .update({ created_at: when })
+          .eq("user_id", before.user_id)
+          .eq("kind", "legacy_completed")
+          .eq("message", label);
+      } catch {
+        // ignored on purpose
+      }
+    }
 
     // Both activity feeds (2026-10-03, "we should add it to the other
     // activity feeds") - pushed into the shared `events` array like every
@@ -1182,6 +1322,8 @@ export async function applyImport(
         user_id: before.user_id,
         kind: "legacy_completed",
         message: `Completed Legacy Challenge: ${achievement.name}`,
+        // The real day it was done, when the addon reports it (1.9.2+)
+        created_at: gameDateToTimestamp(achievement.completedDate) ?? undefined,
       });
     }
   }
@@ -1207,9 +1349,60 @@ export async function applyImport(
     // ignored on purpose - never blocks the sync itself
   }
 
+  // First sync wrap-up (see isFirstSync at the top): everything this
+  // character earned in this sync was really earned at some unknown time
+  // before tracking started. Its badges are flagged backfilled (shown as
+  // "before tracking", left out of "recent" lists) except the two whose
+  // dates ARE real (created / founding member), and the per-character
+  // events are swapped for one summary line. Account-wide events stay -
+  // Legacy Challenges carry their real dates.
+  if (isFirstSync) {
+    try {
+      await supabase
+        .from("achievements")
+        .update({
+          backfilled: true,
+          tier_copper_at: null,
+          tier_silver_at: null,
+          tier_gold_at: null,
+          tier_platinum_at: null,
+        })
+        .eq("character_id", characterId)
+        .not("kind", "in", "(character_created,founding_member)");
+    } catch {
+      // ignored on purpose
+    }
+
+    const caughtUp = events.filter(
+      (e) =>
+        e.character_id === characterId &&
+        e.achievement_kind !== "character_created" &&
+        e.achievement_kind !== "founding_member"
+    );
+    if (caughtUp.length > 0 || typeof parsed.basic?.level === "number") {
+      const kept = events.filter((e) => !caughtUp.includes(e));
+      const level = typeof parsed.basic?.level === "number" ? parsed.basic.level : before.level;
+      const badges = caughtUp.filter((e) => e.kind === "achievement_earned").length;
+      events.length = 0;
+      events.push(...kept, {
+        character_id: characterId,
+        user_id: before.user_id,
+        kind: "level_up",
+        message:
+          `${before.name} started syncing at level ${level}` +
+          (badges > 0 ? ` - ${badges} earlier badge${badges === 1 ? "" : "s"} caught up` : ""),
+      });
+    }
+  }
+
   // Best-effort - a failure to log an activity event should never break
   // the sync itself, so this is never allowed to throw.
   if (events.length > 0) {
+    // Every row gets an explicit created_at (a real past date where known,
+    // otherwise now) - a bulk insert where only some rows set it would send
+    // null for the rest.
+    const syncedAt = new Date().toISOString();
+    for (const e of events) e.created_at = e.created_at ?? syncedAt;
     try {
       await supabase.from("activity_events").insert(events);
     } catch {
@@ -1242,6 +1435,7 @@ export async function applyImport(
         characterName: event.character_id ? before.name : null,
         kind: activityLogKind,
         label: event.message,
+        createdAt: event.created_at,
       });
     }
   }

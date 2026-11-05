@@ -18,6 +18,8 @@ import NeedsSetupBanner from "./NeedsSetupBanner";
 import WishlistCard from "./WishlistCard";
 import PreBisCard from "./PreBisCard";
 import StatisticsCard from "./StatisticsCard";
+import PvpCard, { type PvpData } from "./PvpCard";
+import ReputationsCard, { type ReputationRow } from "./ReputationsCard";
 import AchievementShowcase from "../../AchievementShowcase";
 import { buildAchievementItems, pickShowcaseItems } from "../../achievementBoard";
 
@@ -87,13 +89,19 @@ export default async function CharacterPage({
     .select("category, name, value")
     .eq("character_id", id);
 
+  const { data: reputationRows } = await supabase
+    .from("character_reputations")
+    .select("name, header, standing, standing_label, value, max")
+    .eq("character_id", id)
+    .order("name");
+
   // Powers the header's Achievements showcase below - kept as its own
   // small query (like every other section on this page) rather than
   // folded into Promise.all with the rest, so it's a one-line addition
   // instead of restructuring this page's existing sequential-await style.
   const { data: achievementRows } = await supabase
     .from("achievements")
-    .select("kind, tier, earned_at")
+    .select("kind, tier, earned_at, backfilled")
     .eq("character_id", id);
 
   const { data: prebisRows } = await supabase
@@ -165,6 +173,7 @@ export default async function CharacterPage({
       kind: string;
       tier: AchievementTier | null;
       earned_at: string | null;
+      backfilled: boolean | null;
     }[],
     statRows: statisticRows ?? [],
     recipesCount,
@@ -345,6 +354,15 @@ export default async function CharacterPage({
             ownerId={character.user_id}
             stats={stats ?? []}
           />
+
+          <PvpCard
+            honor={character.honor_points ?? null}
+            rank={character.top_pvp_rank ?? null}
+            pvp={(character.pvp ?? null) as PvpData}
+            stats={statisticRows ?? []}
+          />
+
+          <ReputationsCard reputations={(reputationRows ?? []) as ReputationRow[]} />
         </div>
 
         <div className="dash-col flex flex-col gap-4 lg:col-span-2 xl:col-span-1">

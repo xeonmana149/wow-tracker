@@ -4,13 +4,8 @@ import { useEffect, useState, type MouseEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
-import { norm } from "../../../../lib/icons";
 import {
   LEGACY_CAP,
-  LEGACY_TREES,
-  LEGACY_TREE_ICONS,
-  LEGACY_PERK_ICONS,
-  LEGACY_FALLBACK_DESC,
   canLearnPerk,
   canUnlearnPerk,
   legacyAvailability,
@@ -28,13 +23,12 @@ const TILE = 56;
 const GAP_X = 22;
 const GAP_Y = 30;
 const COLS = 4;
-const ROWS = 3;
-const LABEL_W = 44;
 
+// Rows and columns are the client's own layout, both 1-based
 const gridW = COLS * TILE + (COLS - 1) * GAP_X;
-const gridH = ROWS * TILE + (ROWS - 1) * GAP_Y;
+const gridHFor = (rows: number) => rows * TILE + (rows - 1) * GAP_Y;
 const cx = (col: number) => (col - 1) * (TILE + GAP_X) + TILE / 2;
-const cy = (row: number) => row * (TILE + GAP_Y) + TILE / 2;
+const cy = (row: number) => (row - 1) * (TILE + GAP_Y) + TILE / 2;
 
 // Just a tint behind each tree, since we don't have the game's artwork
 const PANEL_BG = [
@@ -93,16 +87,14 @@ export default function LegacyPlanner({
   characterId,
   ownerId,
   earned,
-  perkInfo,
-  treeIcons,
+  trees,
   initialApplied,
   initialPlan,
 }: {
   characterId: string;
   ownerId: string | null;
   earned: number; // legacy points this account has earned
-  perkInfo: Record<string, { desc: string; icon: string }>;
-  treeIcons: Record<string, string>;
+  trees: LegacyTree[];
   initialApplied: LegacyRanks;
   initialPlan: LegacyRanks;
 }) {
@@ -141,7 +133,9 @@ export default function LegacyPlanner({
   const budget = isPlan ? LEGACY_CAP : Math.min(LEGACY_CAP, earned);
   const locked: LegacyRanks = isPlan ? {} : applied;
   const canEdit = isPlan || isOwner;
-  const spent = legacyTotal(ranks);
+  const spent = legacyTotal(trees, ranks);
+  const rows = Math.max(1, ...trees.flatMap((t) => t.perks.map((p) => p.row)));
+  const gridH = gridHFor(rows);
   const left = budget - spent;
   const liveDirty = differs(applied, pending);
   const planDirty = differs(savedPlan, plan);
@@ -188,7 +182,7 @@ export default function LegacyPlanner({
   // Rows to write for perks whose rank differs from `before`
   function changedRows(after: LegacyRanks, before: LegacyRanks) {
     const rows: { character_id: string; tree: string; perk: string; rank: number }[] = [];
-    for (const tree of LEGACY_TREES) {
+    for (const tree of trees) {
       for (const perk of tree.perks) {
         const key = legacyKey(tree, perk);
         const rank = after[key] ?? 0;
@@ -260,7 +254,7 @@ export default function LegacyPlanner({
     }
 
     // Remove perks that were in the saved plan but aren't any more
-    for (const tree of LEGACY_TREES) {
+    for (const tree of trees) {
       for (const perk of tree.perks) {
         const key = legacyKey(tree, perk);
         if ((savedPlan[key] ?? 0) > 0 && (plan[key] ?? 0) === 0) {
@@ -285,10 +279,11 @@ export default function LegacyPlanner({
   }
 
   // What the tooltip shows
-  const hTree = hover ? LEGACY_TREES.find((t) => t.name === hover.tree) : undefined;
-  const hPerk = hTree?.perks.find((p) => p.name === hover?.perk);
+  const hTree = hover ? trees.find((t) => t.name === hover.tree) : undefined;
+  const hPerk = hTree?.perks.find((p) => p.name === hover?.perk && !p.placeholder);
   const hRank = hTree && hPerk ? legacyRank(ranks, hTree, hPerk) : 0;
-  const hInfo = hPerk ? perkInfo[norm(hPerk.name)] : undefined;
+  const hText = hPerk ? hPerk.ranks[Math.max(1, hRank) - 1] ?? hPerk.ranks[0] : undefined;
+  const hNext = hPerk && hRank > 0 && hRank < hPerk.max ? hPerk.ranks[hRank] : undefined;
   const hOthers = hTree && hPerk ? legacyTreePoints(hTree, ranks) - hRank : 0;
   const hReq = hTree && hPerk?.req ? hTree.perks.find((p) => p.name === hPerk.req) : undefined;
   const hCanLearn = hTree && hPerk ? canLearnPerk(hTree, hPerk, ranks, left).ok : false;
@@ -364,7 +359,7 @@ export default function LegacyPlanner({
       )}
 
       <div className="mt-4 flex flex-col gap-3 lg:flex-row">
-        {LEGACY_TREES.map((tree, ti) => (
+        {trees.map((tree, ti) => (
           <section
             key={tree.name}
             className="flex-1 overflow-x-auto rounded border border-neutral-800 p-3"
@@ -374,7 +369,7 @@ export default function LegacyPlanner({
               <div className="relative h-14 w-14 shrink-0">
                 <div className="h-full w-full overflow-hidden rounded-full border-2 border-amber-700">
                     <PerkIcon
-                    icon={LEGACY_TREE_ICONS[tree.name] ?? treeIcons[tree.name]}
+                    icon={tree.icon}
                     name={tree.name}
                     gray={false}
                   />
@@ -388,22 +383,11 @@ export default function LegacyPlanner({
 
             <div
               className="relative mx-auto mt-5"
-              style={{ width: gridW + LABEL_W, height: gridH }}
+              style={{ width: gridW, height: gridH }}
             >
-              {[0, 1, 2].map((row) => (
-                <div
-                  key={row}
-                  className="absolute text-[11px] text-gray-500"
-                  style={{ left: 0, top: row * (TILE + GAP_Y) + TILE / 2 - 8 }}
-                  title="Points needed in this tree from other perks"
-                >
-                  {row === 0 ? "Open" : `${row * 5} pts`}
-                </div>
-              ))}
-
               <svg
                 className="pointer-events-none absolute top-0"
-                style={{ left: LABEL_W }}
+                style={{ left: 0 }}
                 width={gridW}
                 height={gridH}
               >
@@ -438,9 +422,9 @@ export default function LegacyPlanner({
                   if (!from) return null;
 
                   const x1 = cx(from.col);
-                  const y1 = cy(from.gate / 5);
+                  const y1 = cy(from.row);
                   const x2 = cx(perk.col);
-                  const y2 = cy(perk.gate / 5);
+                  const y2 = cy(perk.row);
                   const dx = x2 - x1;
                   const dy = y2 - y1;
                   const len = Math.hypot(dx, dy);
@@ -467,6 +451,24 @@ export default function LegacyPlanner({
               </svg>
 
               {tree.perks.map((perk) => {
+                const tileStyle = {
+                  width: TILE,
+                  height: TILE,
+                  left: (perk.col - 1) * (TILE + GAP_X),
+                  top: (perk.row - 1) * (TILE + GAP_Y),
+                };
+                if (perk.placeholder) {
+                  return (
+                    <div
+                      key={`${perk.row}-${perk.col}`}
+                      title="To be added in a future update"
+                      className="absolute flex items-center justify-center rounded-md border-2 border-dashed border-neutral-700 bg-neutral-900/60 text-xl font-bold text-neutral-600"
+                      style={tileStyle}
+                    >
+                      ?
+                    </div>
+                  );
+                }
                 const rank = legacyRank(ranks, tree, perk);
                 const open = legacyAvailability(tree, perk, ranks).ok;
                 const learnable = open && rank < perk.max && left > 0;
@@ -507,15 +509,10 @@ export default function LegacyPlanner({
                       unlearn(tree, perk);
                     }}
                     className={`absolute overflow-hidden rounded-md border-2 bg-neutral-900 ${border}`}
-                    style={{
-                      width: TILE,
-                      height: TILE,
-                      left: LABEL_W + (perk.col - 1) * (TILE + GAP_X),
-                      top: (perk.gate / 5) * (TILE + GAP_Y),
-                    }}
+                    style={tileStyle}
                   >
                     <PerkIcon
-                      icon={LEGACY_PERK_ICONS[perk.name] ?? perkInfo[norm(perk.name)]?.icon}
+                      icon={perk.icon}
                       name={perk.name}
                       gray={status === "locked"}
                     />
@@ -531,9 +528,11 @@ export default function LegacyPlanner({
               })}
             </div>
 
-            <p className="mt-3 text-xs text-gray-500">
-              {tree.hidden} more perks in this tree aren&apos;t published yet.
-            </p>
+            {tree.perks.some((p) => p.placeholder) && (
+              <p className="mt-3 text-xs text-gray-500">
+                ? slots are perks Blizzard hasn&apos;t added yet.
+              </p>
+            )}
           </section>
         ))}
       </div>
@@ -634,20 +633,17 @@ export default function LegacyPlanner({
             Rank {hRank}/{hPerk.max}
           </div>
 
+          {hPerk.cost && <div className="text-sm text-white">{hPerk.cost}</div>}
+
           <p className="mt-2 whitespace-pre-line text-sm text-[#ffd100]">
-            {hInfo?.desc ?? LEGACY_FALLBACK_DESC[hPerk.name] ?? "No description recorded yet."}
+            {hText ?? "No description recorded yet."}
           </p>
 
-          {hPerk.byRank.length > 0 && (
-            <p className="mt-2 text-xs text-gray-300">
-              By rank:{" "}
-              {hPerk.byRank.map((value, i) => (
-                <span key={i} className={i + 1 === hRank ? "font-bold text-white" : ""}>
-                  {i > 0 ? " · " : ""}
-                  {value}
-                </span>
-              ))}
-            </p>
+          {hNext && (
+            <>
+              <div className="mt-2 text-sm text-white">Next rank:</div>
+              <p className="whitespace-pre-line text-sm text-[#ffd100]">{hNext}</p>
+            </>
           )}
 
           {hPerk.gate > 0 && (

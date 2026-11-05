@@ -295,6 +295,8 @@ export default function AchievementRow({
               {item.earned
                 ? item.earnedAt
                   ? `Earned ${formatEarnedDate(item.earnedAt)}`
+                  : item.beforeTracking
+                  ? "Earned before tracking"
                   : "Earned"
                 : "Not yet earned"}
             </div>

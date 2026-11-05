@@ -1,8 +1,7 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
+import { loadClassData } from "../../../../lib/server-data";
 import { START_VALUES } from "../../../../lib/stats";
 import { cleanRanks, type ClassData } from "../../../../lib/talents";
 import TalentWorkspace from "./TalentWorkspace";
@@ -11,14 +10,6 @@ export const dynamic = "force-dynamic";
 
 type SlotRow = { slot: number; tree: string; talent: string; rank: number };
 
-async function loadClassData(cls: string): Promise<ClassData | null> {
-  try {
-    const file = path.join(process.cwd(), "lib", "talent-data", `${cls.toLowerCase()}.json`);
-    return JSON.parse(await fs.readFile(file, "utf8")) as ClassData;
-  } catch {
-    return null;
-  }
-}
 
 // Split saved rows into the Primary (1) and Secondary (2) builds
 function bySlot(data: ClassData, rows: SlotRow[] | null) {
@@ -100,7 +91,7 @@ export default async function TalentsPage({
             In the terminal, inside the wow-tracker folder, run:
           </p>
           <pre className="mt-2 rounded bg-neutral-900 p-2 text-sm">
-            node scripts/get-talents.mjs
+            npx tsx scripts/get-talents.mts
           </pre>
         </div>
       )}

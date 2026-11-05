@@ -120,16 +120,21 @@ end
 -- caller of this only ever needed a single return value, so this only ever
 -- forwarded r1 - fine until /wft statsprobe needed GetAchievementInfo's
 -- name/points/description too and they came back silently nil (2026-09-25).
--- Forwards up to 9 return values now, same as safeGet already does.
+-- Forwards EVERY return value now (2026-11-05, addon 1.9.2). It used to stop
+-- at 9, which silently dropped GetAchievementInfo's 10th return - the icon
+-- fileID - so every Legacy Challenge synced with no icon.
+local function forwardPcall(ok, ...)
+    if not ok then
+        return false, nil
+    end
+    return true, ...
+end
+
 local function safeCall(fn, ...)
     if type(fn) ~= "function" then
         return false, nil
     end
-    local ok, r1, r2, r3, r4, r5, r6, r7, r8, r9 = pcall(fn, ...)
-    if not ok then
-        return false, nil
-    end
-    return true, r1, r2, r3, r4, r5, r6, r7, r8, r9
+    return forwardPcall(pcall(fn, ...))
 end
 
 -- Recipe entries used to be bare strings (pre-1.3.0), then gained
@@ -1075,8 +1080,66 @@ end
 -- present and working on this client. Safe against any of them being
 -- missing or erroring (safeCall/safeGet degrade to empty instead of
 -- crashing), same as every other collector here.
+-- Statistic ID scan (2026-11-05, addon 1.9.2) - WoW Forever keeps adding
+-- statistics, and not every one sits in a category that
+-- GetStatisticsCategoryList() returns. So after login the addon checks
+-- every achievement ID (a few thousand per frame, so no stutter), keeps
+-- the ones flagged as a statistic, and caches the list per game build.
+-- collectStatistics() then exports those too, so new statistics reach the
+-- website without another addon update.
+local STAT_SCAN_MAX_ID = 100000
+local STAT_SCAN_PER_FRAME = 4000
+local ACHIEVEMENT_FLAG_STATISTIC = 1
+
+local function isStatisticFlag(flags)
+    if type(flags) ~= "number" then
+        return false
+    end
+    if type(bit) == "table" and type(bit.band) == "function" then
+        return bit.band(flags, ACHIEVEMENT_FLAG_STATISTIC) ~= 0
+    end
+    return flags % 2 == 1
+end
+
+local function statScanBuildKey()
+    local version, build, _, toc = safeGet("GetBuildInfo")
+    return tostring(version) .. "/" .. tostring(build) .. "/" .. tostring(toc)
+end
+
+local function startStatisticIdScan()
+    local getAchievementInfo = _G.GetAchievementInfo
+    if type(getAchievementInfo) ~= "function" then
+        return
+    end
+    WFTSyncDB = WFTSyncDB or {}
+    local key = statScanBuildKey()
+    local cached = WFTSyncDB.statIdScan
+    if type(cached) == "table" and cached.build == key and type(cached.ids) == "table" then
+        return
+    end
+    local found = {}
+    local nextId = 1
+    local scanFrame = CreateFrame("Frame")
+    scanFrame:SetScript("OnUpdate", function(self)
+        local last = math.min(nextId + STAT_SCAN_PER_FRAME - 1, STAT_SCAN_MAX_ID)
+        for id = nextId, last do
+            local ok, realId, name, _, _, _, _, _, _, flags = pcall(getAchievementInfo, id)
+            if ok and realId == id and name and name ~= "" and isStatisticFlag(flags) then
+                table.insert(found, id)
+            end
+        end
+        nextId = last + 1
+        if nextId > STAT_SCAN_MAX_ID then
+            self:SetScript("OnUpdate", nil)
+            WFTSyncDB = WFTSyncDB or {}
+            WFTSyncDB.statIdScan = { build = key, ids = found }
+        end
+    end)
+end
+
 local function collectStatistics()
     local out = {}
+    local seen = {}
 
     local getStatCategoryList = _G.GetStatisticsCategoryList
     local getCategoryInfo = _G.GetCategoryInfo
@@ -1121,18 +1184,152 @@ local function collectStatistics()
                             value = tostring(v)
                         end
                     end
-                    table.insert(out, {
-                        id = id,
-                        category = categoryName,
-                        name = name,
-                        value = value,
-                    })
+                    if not seen[id] then
+                        seen[id] = true
+                        table.insert(out, {
+                            id = id,
+                            category = categoryName,
+                            name = name,
+                            value = value,
+                        })
+                    end
+                end
+            end
+        end
+    end
+
+    -- Anything the ID scan found that the category walk above missed
+    local scan = type(WFTSyncDB) == "table" and WFTSyncDB.statIdScan
+    if type(scan) == "table" and type(scan.ids) == "table" and type(getAchievementInfo) == "function" then
+        local getAchievementCategory = _G.GetAchievementCategory
+        local categoryNames = {}
+        for _, id in ipairs(scan.ids) do
+            if not seen[id] then
+                local okA, realId, name = safeCall(getAchievementInfo, id)
+                if okA and realId and name and name ~= "" then
+                    seen[id] = true
+                    local categoryName = "Other"
+                    if type(getAchievementCategory) == "function" then
+                        local okC, catID = safeCall(getAchievementCategory, id)
+                        if okC and catID then
+                            if categoryNames[catID] == nil then
+                                local okInfo, catName = safeCall(getCategoryInfo, catID)
+                                categoryNames[catID] = (okInfo and catName and catName ~= "") and catName or false
+                            end
+                            categoryName = categoryNames[catID] or categoryName
+                        end
+                    end
+                    local value = "--"
+                    if type(getStatistic) == "function" then
+                        local okV, v = safeCall(getStatistic, id)
+                        if okV and v ~= nil then
+                            value = tostring(v)
+                        end
+                    end
+                    table.insert(out, { id = id, category = categoryName, name = name, value = value })
                 end
             end
         end
     end
 
     return out
+end
+
+-- Reputation (2026-11-05, addon 1.9.2) - every faction on the character's
+-- Reputation pane with its standing and progress. Collapsed headers hide
+-- their factions from the API, so they're expanded for the read and
+-- collapsed again afterwards, leaving the pane as the player had it.
+local function collectReputations()
+    local out = {}
+    local getNum = _G.GetNumFactions
+    local getInfo = _G.GetFactionInfo
+    if type(getNum) ~= "function" or type(getInfo) ~= "function" then
+        return out
+    end
+
+    local expanded = {}
+    local expand = _G.ExpandFactionHeader
+    if type(expand) == "function" then
+        local guard = 0
+        local i = 1
+        while guard < 500 do
+            guard = guard + 1
+            local okN, num = safeCall(getNum)
+            if not okN or type(num) ~= "number" or i > num then
+                break
+            end
+            local okI, name, _, _, _, _, _, _, _, isHeader, isCollapsed = safeCall(getInfo, i)
+            if okI and isHeader and isCollapsed then
+                pcall(expand, i)
+                table.insert(expanded, name)
+            end
+            i = i + 1
+        end
+    end
+
+    local header
+    local okN, num = safeCall(getNum)
+    if okN and type(num) == "number" then
+        for i = 1, num do
+            local okI, name, _, standingID, barMin, barMax, barValue, _, _, isHeader, _, hasRep, _, isChild, factionID =
+                safeCall(getInfo, i)
+            if okI and name and name ~= "" then
+                if isHeader and not hasRep then
+                    header = name
+                elseif type(standingID) == "number" then
+                    local label = _G["FACTION_STANDING_LABEL" .. standingID]
+                    table.insert(out, {
+                        id = factionID,
+                        name = name,
+                        header = header,
+                        standing = standingID,
+                        standingLabel = type(label) == "string" and label or nil,
+                        value = (tonumber(barValue) or 0) - (tonumber(barMin) or 0),
+                        max = (tonumber(barMax) or 0) - (tonumber(barMin) or 0),
+                        total = tonumber(barValue),
+                    })
+                end
+            end
+        end
+    end
+
+    -- Put the pane back the way it was
+    local collapse = _G.CollapseFactionHeader
+    if type(collapse) == "function" and #expanded > 0 then
+        local wanted = {}
+        for _, name in ipairs(expanded) do
+            wanted[name] = true
+        end
+        local okN2, num2 = safeCall(getNum)
+        if okN2 and type(num2) == "number" then
+            for i = num2, 1, -1 do
+                local okI, name, _, _, _, _, _, _, _, isHeader = safeCall(getInfo, i)
+                if okI and isHeader and wanted[name] then
+                    pcall(collapse, i)
+                end
+            end
+        end
+    end
+
+    return out
+end
+
+-- PvP (2026-11-05, addon 1.9.2) - honor plus whichever lifetime kill
+-- counters this client answers. The site also reads honorable kills and
+-- killing blows from the Statistics pane, so nil values here are fine.
+local function collectPvp()
+    local pvp = {}
+    pvp.honor = safeGet("UnitHonor", "player")
+    pvp.honorMax = safeGet("UnitHonorMax", "player")
+    pvp.honorLevel = safeGet("UnitHonorLevel", "player")
+    local hk, dk, highestRank = safeGet("GetPVPLifetimeStats")
+    pvp.lifetimeHonorableKills = tonumber(hk)
+    pvp.lifetimeDishonorableKills = tonumber(dk)
+    pvp.highestRank = tonumber(highestRank)
+    local sessionHK, sessionDK = safeGet("GetPVPSessionStats")
+    pvp.todayHonorableKills = tonumber(sessionHK)
+    pvp.todayDishonorableKills = tonumber(sessionDK)
+    return pvp
 end
 
 -- "Legacy Challenges" (2026-09-27) - the REAL Blizzard-server Achievements
@@ -1209,14 +1406,25 @@ local function collectLegacyAchievements()
                 -- GetAchievementInfo's full signature is id, name, points,
                 -- completed, month, day, year, description, flags, icon,
                 -- rewardText, isGuild, wasEarnedByMe, earnedBy.
-                local okA, id, name, points, completed, _month, _day, _year, description, _flags, icon =
+                local okA, id, name, points, completed, month, day, year, description, _flags, icon =
                     safeCall(getAchievementInfo, catID, i)
                 if okA and id then
+                    -- The day the game says this was completed (addon
+                    -- 1.9.2+), so the website can date it properly even
+                    -- when it was done long before the addon was installed.
+                    -- year comes back as two digits (26 = 2026).
+                    local completedDate = nil
+                    if completed and type(year) == "number" and type(month) == "number" and type(day) == "number"
+                        and month >= 1 and month <= 12 and day >= 1 and day <= 31 then
+                        local fullYear = year < 100 and (2000 + year) or year
+                        completedDate = ("%04d-%02d-%02d"):format(fullYear, month, day)
+                    end
                     local row = {
                         id = id,
                         category = categoryName,
                         name = name,
                         completed = completed and true or false,
+                        completedDate = completedDate,
                         description = description,
                         icon = icon,
                         -- Blizzard's own achievement point value from
@@ -1473,7 +1681,7 @@ local function buildExport()
     local tocversion = select(4, safeGet("GetBuildInfo"))
     local okDate, timestamp = safeCall(_G.date, "%Y-%m-%d %H:%M:%S")
     out.meta = {
-        addonVersion = "1.9.1",
+        addonVersion = "1.9.2",
         tocversion = tocversion,
         exportedAt = okDate and timestamp or nil,
     }
@@ -1500,6 +1708,11 @@ local function buildExport()
     -- until then rather than a fake 0.
     out.pvpRank = (type(WFTSyncDB) == "table" and type(WFTSyncDB.pvpRank) == "table")
         and WFTSyncDB.pvpRank or nil
+    -- Reputation standings and PvP totals (1.9.2) - same never-crash guard
+    local okRep, reputations = pcall(collectReputations)
+    out.reputations = okRep and reputations or nil
+    local okPvp, pvp = pcall(collectPvp)
+    out.pvp = okPvp and pvp or nil
     return out
 end
 
@@ -3584,6 +3797,9 @@ loginFrame:SetScript("OnEvent", function(_, event)
         -- as early as possible, so its reply has time to land before the
         -- next /reload or logout writes an export.
         pcall(_G.RequestTimePlayed)
+        -- Find statistics outside the usual categories (see
+        -- startStatisticIdScan) - runs in the background over a few frames
+        pcall(startStatisticIdScan)
         -- Write an export right away too, so even a brand new install has
         -- real data in SavedVariables the moment you next log out or
         -- /reload, without needing any slash command first.

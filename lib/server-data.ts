@@ -1,18 +1,56 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { cache } from "react";
 import { SPECS } from "./options";
 import { norm } from "./icons";
 import type { ClassData } from "./talents";
+import { fetchGameData, type LegacyData, type RacialsData } from "./gameData";
 
 const DIR = path.join(process.cwd(), "lib", "talent-data");
 
-export async function loadClassData(cls: string): Promise<ClassData | null> {
+// Game data (talent trees, racials, legacy perks) auto-updates: it's fetched
+// from talentsforever.com (the current client's data) through Next's data
+// cache, re-checked at most once a day, so a Blizzard change to the trees
+// reaches the site within a day with no code change or redeploy. If that
+// fetch fails, the bundled copy in lib/talent-data (refresh it with
+// `npx tsx scripts/get-talents.mts`) is used instead. Once per request.
+const GAME_DATA_REVALIDATE_SECONDS = 60 * 60 * 24;
+
+const loadLive = cache(async () => {
   try {
-    const file = path.join(DIR, `${cls.toLowerCase()}.json`);
-    return JSON.parse(await fs.readFile(file, "utf8")) as ClassData;
+    const live = await fetchGameData(async (url) => {
+      const res = await fetch(url, { next: { revalidate: GAME_DATA_REVALIDATE_SECONDS } });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      return res.json();
+    });
+    return live;
   } catch {
     return null;
   }
+});
+
+async function loadBundled<T>(file: string): Promise<T | null> {
+  try {
+    return JSON.parse(await fs.readFile(path.join(DIR, file), "utf8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+export async function loadClassData(cls: string): Promise<ClassData | null> {
+  const key = cls.toLowerCase();
+  const live = (await loadLive())?.classes.find((c) => c.class.toLowerCase() === key);
+  return live ?? loadBundled<ClassData>(`${key}.json`);
+}
+
+export async function loadRacials(): Promise<RacialsData> {
+  const live = (await loadLive())?.racials;
+  if (live && Object.keys(live.races).length > 0) return live;
+  return (await loadBundled<RacialsData>("_racials.json")) ?? { races: {} };
+}
+
+export async function loadLegacyData(): Promise<LegacyData | null> {
+  return (await loadLive())?.legacy ?? loadBundled<LegacyData>("_legacy.json");
 }
 
 // Race and racial-ability pictures. Ability names are stored in a matchable form.
@@ -20,19 +58,24 @@ export async function loadIcons(): Promise<{
   races: Record<string, string>;
   abilities: Record<string, string>;
 }> {
+  const races: Record<string, string> = {};
+  const abilities: Record<string, string> = {};
   try {
     const raw = JSON.parse(await fs.readFile(path.join(DIR, "_icons.json"), "utf8")) as {
       races?: Record<string, string>;
       abilities?: Record<string, string>;
     };
-    const abilities: Record<string, string> = {};
-    for (const [name, icon] of Object.entries(raw.abilities ?? {})) {
-      abilities[norm(name)] = icon;
-    }
-    return { races: raw.races ?? {}, abilities };
+    Object.assign(races, raw.races ?? {});
+    for (const [name, icon] of Object.entries(raw.abilities ?? {})) abilities[norm(name)] = icon;
   } catch {
-    return { races: {}, abilities: {} };
+    // no bundled icon list - the racials data below still covers it
   }
+  // The current racials data wins over the bundled list
+  for (const [race, r] of Object.entries((await loadRacials()).races)) {
+    if (r.icon) races[race] = r.icon;
+    for (const a of r.abilities) if (a.icon) abilities[norm(a.name)] = a.icon;
+  }
+  return { races, abilities };
 }
 
 function matches(treeName: string, specName: string) {
@@ -75,34 +118,4 @@ export async function loadCardData(): Promise<{
   }
 
   return { specIcons, treeNames };
-}
-
-type LegacyFile = {
-  trees?: { name: string; icon: string; perks?: [string, number, string, string][] }[];
-};
-
-// Legacy perk descriptions and pictures from the downloaded data, keyed by perk name
-export async function loadLegacyText(): Promise<{
-  perks: Record<string, { desc: string; icon: string }>;
-  trees: Record<string, string>;
-}> {
-  const perks: Record<string, { desc: string; icon: string }> = {};
-  const trees: Record<string, string> = {};
-
-  try {
-    const raw = JSON.parse(
-      await fs.readFile(path.join(DIR, "_legacy.json"), "utf8")
-    ) as LegacyFile;
-
-    for (const tree of raw.trees ?? []) {
-      trees[tree.name] = tree.icon;
-      for (const [name, , desc, icon] of tree.perks ?? []) {
-        perks[norm(name)] = { desc, icon };
-      }
-    }
-  } catch {
-    // not downloaded yet: the planner still works, without descriptions and pictures
-  }
-
-  return { perks, trees };
 }

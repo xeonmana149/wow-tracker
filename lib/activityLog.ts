@@ -41,6 +41,9 @@ export async function logActivity(
     characterName?: string | null;
     kind: string;
     label: string;
+    // When it really happened, if not now (e.g. a Legacy Challenge done
+    // before the addon was installed)
+    createdAt?: string;
   }
 ): Promise<void> {
   try {
@@ -50,6 +53,7 @@ export async function logActivity(
       character_name: event.characterName ?? null,
       kind: event.kind,
       label: event.label,
+      ...(event.createdAt ? { created_at: event.createdAt } : {}),
     });
     if (error) console.warn("logActivity failed:", error.message);
   } catch (err) {
