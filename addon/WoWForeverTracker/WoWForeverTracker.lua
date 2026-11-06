@@ -1239,16 +1239,40 @@ end
 -- Reputation pane with its standing and progress. Collapsed headers hide
 -- their factions from the API, so they're expanded for the read and
 -- collapsed again afterwards, leaving the pane as the player had it.
+--
+-- 1.9.3: newer clients (WoW Forever's 1.60 build among them) dropped the
+-- GetNumFactions/GetFactionInfo globals for C_Reputation, whose
+-- GetFactionDataByIndex returns a table. 1.9.2 only looked for the globals,
+-- so it exported an empty list there. getInfo below turns the table back
+-- into GetFactionInfo's return order, so the rest of this works on both.
+local function factionApi()
+    local rep = _G.C_Reputation
+    if type(rep) == "table" and type(rep.GetNumFactions) == "function"
+        and type(rep.GetFactionDataByIndex) == "function" then
+        local getInfo = function(i)
+            local d = rep.GetFactionDataByIndex(i)
+            if type(d) ~= "table" then
+                return nil
+            end
+            local hasRep = d.isHeaderWithRep or not d.isHeader
+            return d.name, d.description, d.reaction,
+                d.currentReactionThreshold, d.nextReactionThreshold, d.currentStanding,
+                d.atWarWith, d.canToggleAtWar, d.isHeader, d.isCollapsed,
+                hasRep, d.isWatched, d.isChild, d.factionID
+        end
+        return rep.GetNumFactions, getInfo, rep.ExpandFactionHeader, rep.CollapseFactionHeader
+    end
+    return _G.GetNumFactions, _G.GetFactionInfo, _G.ExpandFactionHeader, _G.CollapseFactionHeader
+end
+
 local function collectReputations()
     local out = {}
-    local getNum = _G.GetNumFactions
-    local getInfo = _G.GetFactionInfo
+    local getNum, getInfo, expand, collapse = factionApi()
     if type(getNum) ~= "function" or type(getInfo) ~= "function" then
         return out
     end
 
     local expanded = {}
-    local expand = _G.ExpandFactionHeader
     if type(expand) == "function" then
         local guard = 0
         local i = 1
@@ -1294,7 +1318,6 @@ local function collectReputations()
     end
 
     -- Put the pane back the way it was
-    local collapse = _G.CollapseFactionHeader
     if type(collapse) == "function" and #expanded > 0 then
         local wanted = {}
         for _, name in ipairs(expanded) do
@@ -1681,7 +1704,7 @@ local function buildExport()
     local tocversion = select(4, safeGet("GetBuildInfo"))
     local okDate, timestamp = safeCall(_G.date, "%Y-%m-%d %H:%M:%S")
     out.meta = {
-        addonVersion = "1.9.2",
+        addonVersion = "1.9.3",
         tocversion = tocversion,
         exportedAt = okDate and timestamp or nil,
     }
