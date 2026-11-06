@@ -1337,6 +1337,39 @@ local function collectReputations()
     return out
 end
 
+-- 1.9.4: the export runs at PLAYER_LOGIN and PLAYER_LOGOUT, and at both
+-- moments WoW Forever's client hands back no faction rows, even though
+-- the same calls list every faction while you're in the world. So the
+-- list is read while playing (see repFrame further down) and kept in
+-- WFTSyncDB.reputations, and the export uses the live list when it has
+-- rows and that saved copy when it doesn't.
+local repSnapshotQuietUntil = 0
+
+local function snapshotReputations()
+    local ok, list = pcall(collectReputations)
+    -- Expanding and collapsing headers fires UPDATE_FACTION itself, so
+    -- ignore that event for a moment after reading, or it would loop
+    local okT, now = safeCall(_G.GetTime)
+    if okT and type(now) == "number" then
+        repSnapshotQuietUntil = now + 2
+    end
+    if ok and type(list) == "table" and #list > 0 then
+        WFTSyncDB = WFTSyncDB or {}
+        WFTSyncDB.reputations = list
+        return list
+    end
+    return nil
+end
+
+local function exportReputations()
+    local live = snapshotReputations()
+    if live then
+        return live
+    end
+    return (type(WFTSyncDB) == "table" and type(WFTSyncDB.reputations) == "table")
+        and WFTSyncDB.reputations or {}
+end
+
 -- PvP (2026-11-05, addon 1.9.2) - honor plus whichever lifetime kill
 -- counters this client answers. The site also reads honorable kills and
 -- killing blows from the Statistics pane, so nil values here are fine.
@@ -1704,7 +1737,7 @@ local function buildExport()
     local tocversion = select(4, safeGet("GetBuildInfo"))
     local okDate, timestamp = safeCall(_G.date, "%Y-%m-%d %H:%M:%S")
     out.meta = {
-        addonVersion = "1.9.3",
+        addonVersion = "1.9.4",
         tocversion = tocversion,
         exportedAt = okDate and timestamp or nil,
     }
@@ -1732,7 +1765,7 @@ local function buildExport()
     out.pvpRank = (type(WFTSyncDB) == "table" and type(WFTSyncDB.pvpRank) == "table")
         and WFTSyncDB.pvpRank or nil
     -- Reputation standings and PvP totals (1.9.2) - same never-crash guard
-    local okRep, reputations = pcall(collectReputations)
+    local okRep, reputations = pcall(exportReputations)
     out.reputations = okRep and reputations or nil
     local okPvp, pvp = pcall(collectPvp)
     out.pvp = okPvp and pvp or nil
@@ -3827,6 +3860,43 @@ loginFrame:SetScript("OnEvent", function(_, event)
         -- real data in SavedVariables the moment you next log out or
         -- /reload, without needing any slash command first.
         writeSyncExport()
+    end
+end)
+
+----------------------------------------------------------------------
+-- Reputation snapshots (1.9.4) - see snapshotReputations
+----------------------------------------------------------------------
+-- A few seconds after entering the world (faction data isn't there yet at
+-- PLAYER_LOGIN), and again whenever a standing changes, a short moment
+-- later so a burst of rep gains is read once.
+local repFrame = CreateFrame("Frame")
+local repPending = false
+local function queueRepSnapshot(delay)
+    if repPending then
+        return
+    end
+    local Timer = _G.C_Timer
+    if type(Timer) == "table" and type(Timer.After) == "function" then
+        repPending = true
+        Timer.After(delay, function()
+            repPending = false
+            pcall(snapshotReputations)
+        end)
+    else
+        pcall(snapshotReputations)
+    end
+end
+pcall(repFrame.RegisterEvent, repFrame, "PLAYER_ENTERING_WORLD")
+pcall(repFrame.RegisterEvent, repFrame, "UPDATE_FACTION")
+repFrame:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_ENTERING_WORLD" then
+        queueRepSnapshot(5)
+    elseif event == "UPDATE_FACTION" then
+        local okT, now = safeCall(_G.GetTime)
+        if okT and type(now) == "number" and now < repSnapshotQuietUntil then
+            return
+        end
+        queueRepSnapshot(2)
     end
 end)
 
