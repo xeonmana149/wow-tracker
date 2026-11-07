@@ -172,7 +172,7 @@ export const QUESTS_COMPLETED_TIER_BADGE = ringBadge(
 export const KILLING_BLOWS_TIER_BADGE = ringBadge(
   "ability_rogue_ambush",
   (tier) =>
-    `Executioner - ${tier} tier - ${{ Copper: 25, Silver: 150, Gold: 500, Platinum: 1500 }[tier]}+ Killing Blows`
+    `Executioner - ${tier} tier - ${{ Copper: "1,000", Silver: "5,000", Gold: "15,000", Platinum: "40,000" }[tier]}+ Killing Blows`
 );
 export const BOSS_KILLS_TIER_BADGE = ringBadge(
   "achievement_boss_ragnaros",

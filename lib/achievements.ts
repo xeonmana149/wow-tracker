@@ -320,12 +320,14 @@ const TIER_DEFS: Record<TieredAchievementKind, TierDef> = {
     description: "Killing Blows landed in combat.",
     family: "combat",
     thresholds: [
-      { tier: "Platinum", value: 1500 },
-      { tier: "Gold", value: 500 },
-      { tier: "Silver", value: 150 },
-      { tier: "Copper", value: 25 },
+      // Raised 2026-11-07 from 25/150/500/1500 - every mob finished counts,
+      // so level-20 characters were already Gold
+      { tier: "Platinum", value: 40000 },
+      { tier: "Gold", value: 15000 },
+      { tier: "Silver", value: 5000 },
+      { tier: "Copper", value: 1000 },
     ],
-    format: (name, tier, value) => `${name} has ${value}+ Killing Blows - ${tier} tier!`,
+    format: (name, tier, value) => `${name} has ${value.toLocaleString()}+ Killing Blows - ${tier} tier!`,
   },
   boss_kills: {
     label: "Slayer",
