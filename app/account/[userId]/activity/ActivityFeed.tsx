@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ACTIVITY_TYPES, loadActivityPage, type ActivityFilters, type ActivityRow } from "../../../../lib/activityLog";
 import { supabase } from "../../../../lib/supabase";
-import { formatDate } from "../../../../lib/accountView";
+import { formatDate, formatDateTime } from "../../../../lib/accountView";
 
 // When WoW Forever went live (2026-11-09, "before the character made for
 // launch add a WoW Forever Launches! section"). The feed draws a banner at
@@ -312,7 +312,7 @@ export default function ActivityFeed({ accountUserId, accountName }: { accountUs
             {r.character_name && <span className="font-semibold text-amber-200">{r.character_name} </span>}
             <span className="text-white">{r.label}</span>
           </span>
-          <span className="shrink-0 text-xs text-gray-500">{formatDate(r.created_at)}</span>
+          <span className="shrink-0 text-xs text-gray-500">{formatDateTime(r.created_at)}</span>
         </div>
         </div>
       ))}

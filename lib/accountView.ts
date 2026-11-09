@@ -155,6 +155,17 @@ export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+// Date and time, in the viewer's own time zone - e.g. "9 Nov 2026, 7:42 pm"
+export function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export type AccountViewData = {
   found: boolean;
   userId: string;
