@@ -71,12 +71,6 @@ type ActivityRowRaw = {
   kind: string;
   label: string;
   created_at: string;
-  // Postgrest returns a related row as an object (or null if the profile
-  // somehow doesn't exist) - never an array, since `user_id` is a plain
-  // to-one foreign key here, not a to-many relationship. `show_activity` is
-  // only read to make the `!inner` + `.eq` filter above possible; it isn't
-  // surfaced on ActivityRow itself.
-  profiles: { display_name: string; show_activity: boolean } | null;
 };
 
 
@@ -102,21 +96,49 @@ export async function loadActivityPage(
   // to the GLOBAL feed (`userId` null). Looking at one specific account's
   // own activity (the "X Only" scope) still shows everything for that
   // account, since you've explicitly asked for it rather than stumbling
-  // onto it in the global stream. Needs `profiles!inner` (not the plain
-  // `profiles(...)` embed used elsewhere) so `.eq("profiles.show_activity")`
-  // actually filters rows instead of just annotating them.
+  // onto it in the global stream.
+  //
+  // 2026-11-09: this used to be one query with a `profiles!inner(...)`
+  // embed, but activity_log.user_id has no foreign key to profiles in the
+  // live database, so PostgREST refused the join (PGRST200) and the whole
+  // feed showed "Failed to load activity". Hidden accounts and display
+  // names are now looked up in their own small queries instead, which
+  // doesn't depend on that key existing.
   let query = client
     .from("activity_log")
-    .select("id, user_id, character_id, character_name, kind, label, created_at, profiles!inner(display_name, show_activity)")
+    .select("id, user_id, character_id, character_name, kind, label, created_at")
     .order("created_at", { ascending: false })
     .limit(PAGE_SIZE + 1);
-  if (userId) query = query.eq("user_id", userId);
-  else query = query.eq("profiles.show_activity", true);
+  if (userId) {
+    query = query.eq("user_id", userId);
+  } else {
+    const { data: hidden, error: hiddenError } = await client
+      .from("profiles")
+      .select("id")
+      .eq("show_activity", false);
+    if (hiddenError) throw hiddenError;
+    const hiddenIds = (hidden ?? []).map((p: { id: string }) => p.id);
+    if (hiddenIds.length > 0) query = query.not("user_id", "in", `(${hiddenIds.join(",")})`);
+  }
   if (before) query = query.lt("created_at", before);
 
   const { data, error } = await query;
   if (error) throw error;
-  const raw = (data ?? []) as unknown as ActivityRowRaw[];
+  const raw = (data ?? []) as ActivityRowRaw[];
+
+  const userIds = [...new Set(raw.map((r) => r.user_id).filter(Boolean))];
+  const names = new Map<string, string>();
+  if (userIds.length > 0) {
+    const { data: profiles, error: profilesError } = await client
+      .from("profiles")
+      .select("id, display_name")
+      .in("id", userIds);
+    if (profilesError) throw profilesError;
+    for (const p of (profiles ?? []) as { id: string; display_name: string | null }[]) {
+      if (p.display_name) names.set(p.id, p.display_name);
+    }
+  }
+
   const rows: ActivityRow[] = raw.map((r) => ({
     id: r.id,
     user_id: r.user_id,
@@ -125,7 +147,7 @@ export async function loadActivityPage(
     kind: r.kind,
     label: r.label,
     created_at: r.created_at,
-    accountName: r.profiles?.display_name ?? "Unknown",
+    accountName: names.get(r.user_id) ?? "Unknown",
   }));
   return { rows: rows.slice(0, PAGE_SIZE), hasMore: rows.length > PAGE_SIZE };
 }

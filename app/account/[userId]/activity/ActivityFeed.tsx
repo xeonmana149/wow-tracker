@@ -77,7 +77,15 @@ export default function ActivityFeed({ accountUserId, accountName }: { accountUs
         setRows((prev) => (replace ? next : [...prev, ...next]));
         setHasMore(more);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load activity");
+        // Supabase errors are plain objects, not Error instances - read
+        // their message too, so a failure says what actually went wrong
+        const message =
+          err instanceof Error
+            ? err.message
+            : typeof err === "object" && err && "message" in err
+              ? String((err as { message: unknown }).message)
+              : null;
+        setError(message ? `Failed to load activity: ${message}` : "Failed to load activity");
       } finally {
         loadingRef.current = false;
         setLoading(false);
