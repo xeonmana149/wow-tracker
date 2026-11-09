@@ -814,13 +814,25 @@ export async function awardTier(
     }
   }
 
-  const { error } = await supabase
-    .from("achievements")
-    .upsert(
-      { character_id: characterId, kind, tier: reached.tier, earned_at: now, ...tierDateUpdate },
-      { onConflict: "character_id,kind" }
-    );
-  if (error) return null;
+  // Claimed atomically (2026-11-09, duplicate "used fast travel 50+ times"
+  // rows): two syncs landing milliseconds apart both read the old tier
+  // above, so both used to "earn" it and both logged an activity row. Now
+  // the write only succeeds if the row is still exactly as it was read -
+  // the update matches on the old tier, the first-ever insert ignores a
+  // conflict - and only the sync whose write came back gets to announce it.
+  const row = { character_id: characterId, kind, tier: reached.tier, earned_at: now, ...tierDateUpdate };
+  if (existing) {
+    let update = supabase.from("achievements").update(row).eq("character_id", characterId).eq("kind", kind);
+    update = existing.tier ? update.eq("tier", existing.tier) : update.is("tier", null);
+    const { data, error } = await update.select("kind");
+    if (error || !data || data.length === 0) return null;
+  } else {
+    const { data, error } = await supabase
+      .from("achievements")
+      .upsert(row, { onConflict: "character_id,kind", ignoreDuplicates: true })
+      .select("kind");
+    if (error || !data || data.length === 0) return null;
+  }
   return reached.tier;
 }
 

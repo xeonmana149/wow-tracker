@@ -35,6 +35,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
+import { logActivity } from "../../../lib/activityLog";
 import { localBadgeIconSrc } from "../../../lib/badgeFrames";
 import GameIcon from "../../GameIcon";
 import TierFramedIcon from "../../TierFramedIcon";
@@ -434,6 +435,15 @@ export default function BadgeTesterPage() {
           achievement_tier: tier,
           message,
         });
+        await logActivity(supabase, {
+          userId,
+          characterId: selectedCharacter,
+          characterName: character.name,
+          kind: "achievement_earned",
+          label: message,
+          achievementKind: kind,
+          achievementTier: tier,
+        });
       }
     }
 
@@ -453,6 +463,14 @@ export default function BadgeTesterPage() {
           achievement_kind: badge.kind,
           achievement_tier: null,
           message,
+        });
+        await logActivity(supabase, {
+          userId,
+          characterId: selectedCharacter,
+          characterName: character.name,
+          kind: "achievement_earned",
+          label: message,
+          achievementKind: badge.kind,
         });
       }
     }

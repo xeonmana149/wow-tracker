@@ -1588,6 +1588,8 @@ export async function applyImport(
         kind: activityLogKind,
         label: event.message,
         createdAt: event.created_at,
+        achievementKind: event.achievement_kind ?? null,
+        achievementTier: event.achievement_tier ?? null,
       });
     }
   }

@@ -19,6 +19,7 @@ import type { AchievementTier } from "../lib/achievements";
 import type { AccountAchievementKind } from "../lib/accountAchievements";
 import { loadBadgeIconOverrides, type BadgeIconOverrides } from "../lib/badgeIconOverrides";
 import { LATEST_VERSIONS } from "../lib/versions";
+import { logActivity } from "../lib/activityLog";
 
 const PRIMARY = [
   "Alchemy",
@@ -191,10 +192,13 @@ export default function Dashboard({
         // route and this page's own Legacy save already write to, just
         // read back here instead of only ever appearing in the floating
         // activity sidebar.
+        // 2026-11-09: reads activity_log, the same table as the Activity
+        // page, so PvP, duels, dungeon clears, AH and epic items show too
         supabase
-          .from("activity_events")
-          .select("id, character_id, kind, message, created_at, achievement_kind, achievement_tier")
+          .from("activity_log")
+          .select("id, character_id, kind, message:label, created_at, achievement_kind, achievement_tier")
           .eq("user_id", userData.user.id)
+          .not("kind", "in", "(profile_updated)")
           .order("created_at", { ascending: false })
           .limit(6),
         loadBadgeIconOverrides(supabase),
@@ -263,6 +267,12 @@ export default function Dashboard({
           user_id: userId,
           kind: "legacy_point",
           message: `Reached ${points} Legacy point${points === 1 ? "" : "s"}`,
+        });
+        // The feeds all read activity_log now (2026-11-09)
+        await logActivity(supabase, {
+          userId,
+          kind: "legacy_point",
+          label: `Reached ${points} Legacy point${points === 1 ? "" : "s"}`,
         });
 
         // The "maxed Legacy" character achievement (awarded here, to
@@ -713,7 +723,8 @@ export default function Dashboard({
                 const c = a.character_id ? charById.get(a.character_id) : undefined;
                 return (
                   <li key={a.id} className="flex items-start gap-2">
-                    {a.kind === "achievement_earned" && a.achievement_kind ? (
+                    {(a.kind === "achievement_earned" || a.kind === "account_achievement_earned") &&
+                    a.achievement_kind ? (
                       <ActivityAchievementIcon
                         kind={a.achievement_kind}
                         tier={a.achievement_tier}

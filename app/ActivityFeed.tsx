@@ -9,6 +9,19 @@ import type { AchievementTier } from "../lib/achievements";
 
 type ActivityKind =
   | "level_up"
+  | "account_achievement_earned"
+  | "boss_first_kill"
+  | "pvp_kill"
+  | "pvp_death"
+  | "pve_death"
+  | "duel"
+  | "reputation_milestone"
+  | "ah_sale"
+  | "ah_purchase"
+  | "item_won"
+  | "item_looted"
+  | "item_crafted"
+  | "item_traded"
   | "profession_maxed"
   | "character_created"
   | "epic_gear"
@@ -29,6 +42,7 @@ type Event = {
   // every other kind, and on achievement rows logged before this existed.
   achievement_kind: string | null;
   achievement_tier: AchievementTier | null;
+  user_id: string;
   characters: { class: string } | null;
 };
 
@@ -42,6 +56,19 @@ const KIND_ICON: Record<ActivityKind, string> = {
   pvp_rank_up: "⚔",
   achievement_earned: "🏅",
   legacy_completed: "🏆",
+  account_achievement_earned: "🏅",
+  boss_first_kill: "🐉",
+  pvp_kill: "⚔",
+  pvp_death: "💀",
+  pve_death: "💀",
+  duel: "🤺",
+  reputation_milestone: "🤝",
+  ah_sale: "💰",
+  ah_purchase: "💰",
+  item_won: "🟣",
+  item_looted: "🟣",
+  item_crafted: "🔨",
+  item_traded: "🤝",
 };
 
 const LEGACY_PREFIX = "Completed Legacy Challenge: ";
@@ -67,7 +94,19 @@ function loadLegacyIcons() {
 // so the feed never grows without bound while the page is open.
 const FEED_LIMIT = 30;
 
-const SELECT_COLUMNS = "id, kind, message, created_at, achievement_kind, achievement_tier, characters(class)";
+// Reads activity_log (2026-11-09, "hook all that new activity stuff into
+// ... the activities sidebar") - the same table as the Activity page, so
+// PvP, duels, dungeon clears, AH and epic items show here too. `label` is
+// renamed to `message` in the query so the rest of this file is unchanged.
+const SELECT_COLUMNS =
+  "id, kind, message:label, created_at, achievement_kind, achievement_tier, user_id, characters(class)";
+const HIDDEN_KINDS = "(profile_updated)";
+
+// Accounts that turned off "Show my activity in the global Activity feed"
+async function hiddenAccounts(): Promise<Set<string>> {
+  const { data } = await supabase.from("profiles").select("id").eq("show_activity", false);
+  return new Set((data ?? []).map((p: { id: string }) => p.id));
+}
 
 function timeAgo(iso: string) {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -89,7 +128,7 @@ function EventIcon({ e, legacyIcons }: { e: Event; legacyIcons: Map<string, numb
     const src = iconUrlForFileId(legacyIcons.get(e.message.replace(LEGACY_PREFIX, "")));
     if (src) return <GameIcon src={src} label={e.message} size={28} round />;
   }
-  if (e.kind === "achievement_earned" && e.achievement_kind) {
+  if ((e.kind === "achievement_earned" || e.kind === "account_achievement_earned") && e.achievement_kind) {
     return (
       <ActivityAchievementIcon
         kind={e.achievement_kind}
@@ -104,7 +143,7 @@ function EventIcon({ e, legacyIcons }: { e: Event; legacyIcons: Map<string, numb
   }
   return (
     <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-neutral-700 text-sm">
-      {KIND_ICON[e.kind]}
+      {KIND_ICON[e.kind] ?? "•"}
     </span>
   );
 }
@@ -143,12 +182,17 @@ export default function ActivityFeed({
   useEffect(() => {
     let cancelled = false;
 
+    let hidden = new Set<string>();
     async function loadInitial() {
-      const { data } = await supabase
-        .from("activity_events")
+      hidden = await hiddenAccounts();
+      let query = supabase
+        .from("activity_log")
         .select(SELECT_COLUMNS)
+        .not("kind", "in", HIDDEN_KINDS)
         .order("created_at", { ascending: false })
         .limit(FEED_LIMIT);
+      if (hidden.size > 0) query = query.not("user_id", "in", `(${[...hidden].join(",")})`);
+      const { data } = await query;
       if (!cancelled) {
         setEvents((data ?? []) as unknown as Event[]);
         setLoading(false);
@@ -162,19 +206,27 @@ export default function ActivityFeed({
     // onto the top of the list, trimming the oldest one off the end so
     // the feed stays capped at FEED_LIMIT without a page refresh.
     const channel = supabase
-      .channel("activity_events_feed")
+      .channel("activity_log_feed")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "activity_events" },
+        { event: "INSERT", schema: "public", table: "activity_log" },
         async (payload) => {
-          const newId = (payload.new as { id: string }).id;
+          const row = payload.new as { id: string; kind: string; user_id: string };
+          if (row.kind === "profile_updated" || hidden.has(row.user_id)) return;
+          const newId = row.id;
           const { data } = await supabase
-            .from("activity_events")
+            .from("activity_log")
             .select(SELECT_COLUMNS)
             .eq("id", newId)
             .single();
           if (data && !cancelled) {
-            setEvents((prev) => [data as unknown as Event, ...prev].slice(0, FEED_LIMIT));
+            // Keep newest-first even when a row arrives with an earlier
+            // real time (e.g. a kill from before the sync), and never twice
+            setEvents((prev) =>
+              [data as unknown as Event, ...prev.filter((p) => p.id !== newId)]
+                .sort((a, b) => b.created_at.localeCompare(a.created_at))
+                .slice(0, FEED_LIMIT)
+            );
             onNewEventRef.current?.();
           }
         }

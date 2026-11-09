@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { copperToParts } from "../../../../lib/money";
 import { awardAchievement, ACHIEVEMENT_MESSAGE } from "../../../../lib/achievements";
+import { logActivity } from "../../../../lib/activityLog";
 import { CHARACTER_TYPES, ROLES, RULESETS, RACE_FACTION, SPECS } from "../../../../lib/options";
 
 type Character = {
@@ -134,6 +135,17 @@ export default function EditForm({ character }: { character: Character }) {
 
         if (newEvents.length > 0) {
           await supabase.from("activity_events").insert(newEvents);
+          // The feeds all read activity_log now (2026-11-09)
+          for (const e of newEvents) {
+            await logActivity(supabase, {
+              userId: uid,
+              characterId: character.id,
+              characterName: displayName,
+              kind: e.kind,
+              label: e.message,
+              achievementKind: e.kind === "achievement_earned" ? "top_pvp_rank" : null,
+            });
+          }
         }
       }
     } catch {

@@ -44,6 +44,9 @@ export async function logActivity(
     // When it really happened, if not now (e.g. a Legacy Challenge done
     // before the addon was installed)
     createdAt?: string;
+    // Which badge the row is about, so the feeds can show its art
+    achievementKind?: string | null;
+    achievementTier?: string | null;
   }
 ): Promise<void> {
   try {
@@ -54,8 +57,12 @@ export async function logActivity(
       kind: event.kind,
       label: event.label,
       ...(event.createdAt ? { created_at: event.createdAt } : {}),
+      ...(event.achievementKind ? { achievement_kind: event.achievementKind } : {}),
+      ...(event.achievementTier ? { achievement_tier: event.achievementTier } : {}),
     });
-    if (error) console.warn("logActivity failed:", error.message);
+    // 23505 = the row is already there (sql/activity-log-dedupe.sql's unique
+    // indexes) - another sync got to it first, which is exactly the point
+    if (error && error.code !== "23505") console.warn("logActivity failed:", error.message);
   } catch (err) {
     console.warn("logActivity threw:", err);
   }
