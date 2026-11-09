@@ -26,11 +26,16 @@ import { applyLiveObservation, ensureItemsExist } from "./items";
 // recomputing anything.
 import { logActivity } from "./activityLog";
 import {
+  formatPlayed,
   logAuctionEvents,
+  logDuelEvents,
   logFirstBossKills,
   logItemEvents,
   logPvpEvents,
+  logReputationMilestones,
   type AuctionLogEntry,
+  type BossGroupEntry,
+  type DuelLogEntry,
   type ItemLogEntry,
   type PvpLogEntry,
 } from "./activityExtras";
@@ -228,10 +233,16 @@ export type ParsedExport = {
     value?: number;
     max?: number;
   }[];
-  // Honor and lifetime kill counts (addon 1.9.2+). Any of these can be
-  // missing when this client doesn't answer the API.
-  // PvP kill/death log (addon 1.9.5+) - see lib/activityExtras.ts
+  // PvP kill/death log, plus deaths to monsters and the environment
+  // (addon 1.9.5+) - see lib/activityExtras.ts
   pvpEvents?: PvpLogEntry[];
+  // Finished duels you were in (addon 1.9.5+)
+  duelEvents?: DuelLogEntry[];
+  // Group members at each boss kill (addon 1.9.5+)
+  bossGroups?: BossGroupEntry[];
+  // Exact time and played time of each level-up, keyed by level as a
+  // string (addon 1.9.5+)
+  levelTimes?: Record<string, { t?: number; played?: number }>;
   // Auction House sales/purchases from mail invoices (addon 1.9.5+)
   auctionEvents?: AuctionLogEntry[];
   // Epic+ items won/looted/crafted/traded (addon 1.9.5+)
@@ -239,6 +250,8 @@ export type ParsedExport = {
   // When each statistic last changed in-game, unix seconds keyed by stat
   // ID as a string (addon 1.9.5+) - see lib/statHistory.ts
   statTimes?: Record<string, number>;
+  // Honor and lifetime kill counts (addon 1.9.2+). Any of these can be
+  // missing when this client doesn't answer the API.
   pvp?: {
     honor?: number;
     honorMax?: number;
@@ -542,11 +555,22 @@ export async function applyImport(
     typeof parsed.basic?.level === "number" &&
     (parsed.basic.level > before.level || isFirstSync)
   ) {
+    // Played time on the level-up (2026-11-09) - the addon's exact note
+    // for that level when it has one (1.9.5+, also gives the real time),
+    // else total played as of this export
+    const levelNote = parsed.levelTimes?.[String(parsed.basic.level)];
+    const played =
+      typeof levelNote?.played === "number" ? levelNote.played : parsed.basic.timePlayedSeconds;
     events.push({
       character_id: characterId,
       user_id: before.user_id,
       kind: "level_up",
-      message: `${before.name} reached level ${parsed.basic.level}`,
+      message: `${before.name} reached level ${parsed.basic.level}${
+        typeof played === "number" && played > 0 && !isFirstSync ? ` (${formatPlayed(played)} played)` : ""
+      }`,
+      ...(typeof levelNote?.t === "number" && levelNote.t > 0 && !isFirstSync
+        ? { created_at: new Date(levelNote.t * 1000).toISOString() }
+        : {}),
     });
 
     if (parsed.basic.level >= MAX_CHARACTER_LEVEL) {
@@ -1046,6 +1070,19 @@ export async function applyImport(
     }
   }
 
+  // Finished duels, with a running record per opponent (addon 1.9.5+)
+  if (Array.isArray(parsed.duelEvents) && parsed.duelEvents.length > 0) {
+    try {
+      await logDuelEvents(
+        supabase,
+        { id: characterId, userId: before.user_id, name: before.name },
+        parsed.duelEvents
+      );
+    } catch (err) {
+      console.warn("logDuelEvents failed:", err);
+    }
+  }
+
   // Epic+ items won, looted, crafted and traded (addon 1.9.5+)
   if (Array.isArray(parsed.itemEvents) && parsed.itemEvents.length > 0) {
     try {
@@ -1064,6 +1101,15 @@ export async function applyImport(
   // are no longer listed.
   if (Array.isArray(parsed.reputations) && parsed.reputations.length > 0) {
     const now = new Date().toISOString();
+    // Standings before this sync, for reputation milestones
+    // (lib/activityExtras.ts)
+    const { data: previousRepRows } = await supabase
+      .from("character_reputations")
+      .select("name, standing")
+      .eq("character_id", characterId);
+    const previousStandings = new Map<string, number>(
+      (previousRepRows ?? []).map((r: { name: string; standing: number }) => [r.name, r.standing])
+    );
     const byName = new Map<string, NonNullable<ParsedExport["reputations"]>[number]>();
     for (const rep of parsed.reputations) {
       if (rep?.name && typeof rep.standing === "number") byName.set(rep.name, rep);
@@ -1090,6 +1136,16 @@ export async function applyImport(
         .delete()
         .eq("character_id", characterId)
         .lt("updated_at", now);
+    }
+    try {
+      await logReputationMilestones(
+        supabase,
+        { id: characterId, userId: before.user_id, name: before.name },
+        previousStandings,
+        [...byName.values()]
+      );
+    } catch (err) {
+      console.warn("logReputationMilestones failed:", err);
     }
   }
 
@@ -1142,7 +1198,8 @@ export async function applyImport(
         { id: characterId, userId: before.user_id, name: before.name },
         new Map([...previousStats].map(([id, s]) => [id, s.value])),
         parsed.statistics,
-        parsed.statTimes
+        parsed.statTimes,
+        parsed.bossGroups
       );
     } catch (err) {
       console.warn("logFirstBossKills failed:", err);

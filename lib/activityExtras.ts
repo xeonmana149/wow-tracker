@@ -52,24 +52,99 @@ export function firstBossKillLabel(characterName: string, statName: string): str
 // statistics were saved (stat_id -> value). `statTimes` (addon 1.9.5+)
 // dates the clear to the minute the addon saw the boss counter change;
 // without it, the entry gets the sync time.
+// Group members at a boss kill (addon 1.9.5+), for "with whom" on a first
+// clear
+export type BossGroupEntry = { t?: number; boss?: string; where?: string; members?: string[] };
+
+// "A", "A and B", "A, B and C"
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names.join("");
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+// The group for this boss: the addon's latest kill of a boss with the same
+// name, no later than 10 minutes after the clear (when its time is known)
+function groupFor(groups: BossGroupEntry[] | undefined, statName: string, at: string | null): string[] {
+  if (!groups?.length) return [];
+  const boss = parseBossStat(statName).boss.toLowerCase();
+  const limit = at ? Date.parse(at) / 1000 + 600 : Infinity;
+  const match = groups
+    .filter((g) => g.boss?.toLowerCase() === boss && typeof g.t === "number" && g.t <= limit)
+    .sort((a, b) => (b.t ?? 0) - (a.t ?? 0))[0];
+  return (match?.members ?? []).filter((m) => typeof m === "string" && m);
+}
+
 export async function logFirstBossKills(
   supabase: SupabaseClient,
   character: Character,
   previous: Map<number, string>,
   stats: Stat[],
-  statTimes?: Record<string, number>
+  statTimes?: Record<string, number>,
+  bossGroups?: BossGroupEntry[]
 ): Promise<void> {
   for (const s of stats) {
     if (s.category !== BOSS_KILLS_CATEGORY) continue;
     if (!previous.has(s.id)) continue;
     if (statNumber(previous.get(s.id)) > 0 || statNumber(s.value) <= 0) continue;
+    const at = statTime(statTimes, s.id);
+    const group = groupFor(bossGroups, s.name, at);
     await logActivity(supabase, {
       userId: character.userId,
       characterId: character.id,
       characterName: character.name,
       kind: "boss_first_kill",
-      label: firstBossKillLabel(character.name, s.name),
-      createdAt: statTime(statTimes, s.id) ?? undefined,
+      label: firstBossKillLabel(character.name, s.name) + (group.length ? ` With ${joinNames(group)}.` : ""),
+      createdAt: at ?? undefined,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------
+// Played time on level-ups, reputation milestones
+// ---------------------------------------------------------------------
+
+// 137400 -> "1d 14h", 19200 -> "5h 20m", 300 -> "5m"
+export function formatPlayed(seconds: number): string {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+const STANDING_NAMES: Record<number, string> = {
+  1: "Hated",
+  2: "Hostile",
+  3: "Unfriendly",
+  4: "Neutral",
+  5: "Friendly",
+  6: "Honored",
+  7: "Revered",
+  8: "Exalted",
+};
+// Honored and up are worth a feed entry
+const REPUTATION_MILESTONE_MIN = 6;
+
+// A faction whose standing went up since the last sync, to Honored or
+// better. A faction seen for the first time is a starting point, not a
+// milestone. Dated at the sync - the game doesn't say when it happened.
+export async function logReputationMilestones(
+  supabase: SupabaseClient,
+  character: Character,
+  previous: Map<string, number>,
+  reps: { name: string; standing: number; standingLabel?: string }[]
+): Promise<void> {
+  for (const rep of reps) {
+    const before = previous.get(rep.name);
+    if (typeof before !== "number" || rep.standing <= before || rep.standing < REPUTATION_MILESTONE_MIN) continue;
+    const label = rep.standingLabel || STANDING_NAMES[rep.standing] || `standing ${rep.standing}`;
+    await logActivity(supabase, {
+      userId: character.userId,
+      characterId: character.id,
+      characterName: character.name,
+      kind: "reputation_milestone",
+      label: `${character.name} reached ${label} with ${rep.name}`,
     });
   }
 }
@@ -81,7 +156,11 @@ export async function logFirstBossKills(
 export type PvpLogEntry = {
   // Unix seconds, from the game client's clock
   t?: number;
-  kind: "kill" | "death";
+  // kill / death: an enemy player. death_pve: a monster (name, level).
+  // death_env: falling, drowning, lava... (env)
+  kind: "kill" | "death" | "death_pve" | "death_env";
+  // Environmental damage type for death_env, e.g. "Falling", "Drowning"
+  env?: string;
   name?: string;
   realm?: string;
   // -1 means "??" (10+ levels above you); missing means never seen
@@ -128,13 +207,36 @@ function describe(e: PvpLogEntry): string {
   return parts.length ? ` (${parts.join(" ")})` : "";
 }
 
+const ENV_DEATHS: Record<string, string> = {
+  Falling: "fell to their death",
+  Drowning: "drowned",
+  Fatigue: "died of fatigue",
+  Lava: "burned to death in lava",
+  Fire: "burned to death",
+  Slime: "died in slime",
+};
+
 export function pvpLabel(characterName: string, e: PvpLogEntry): string {
-  const who = e.name || "an unknown player";
   const where = e.zone ? ` in ${e.zone}` : "";
+  if (e.kind === "death_env") {
+    return `${characterName} ${(e.env && ENV_DEATHS[e.env]) || "died"}${where}`;
+  }
+  if (e.kind === "death_pve") {
+    const lvl = typeof e.level === "number" ? ` (lvl ${e.level < 0 ? "??" : e.level})` : "";
+    return `${characterName} was killed by ${e.name || "something"}${lvl}${where}`;
+  }
+  const who = e.name || "an unknown player";
   return e.kind === "kill"
     ? `${characterName} killed ${who}${describe(e)}${where}`
     : `${characterName} was killed by ${who}${describe(e)}${where}`;
 }
+
+const PVP_KINDS: Record<PvpLogEntry["kind"], string> = {
+  kill: "pvp_kill",
+  death: "pvp_death",
+  death_pve: "pve_death",
+  death_env: "pve_death",
+};
 
 // ---------------------------------------------------------------------
 // Posting addon logs
@@ -186,7 +288,7 @@ async function postNewEntries(
   }
 }
 
-const hasTime = (e: { t?: number }): e is { t: number } => typeof e.t === "number" && e.t > 0;
+const hasTime = <T extends { t?: number }>(e: T): e is T & { t: number } => typeof e.t === "number" && e.t > 0;
 
 export async function logPvpEvents(
   supabase: SupabaseClient,
@@ -194,13 +296,91 @@ export async function logPvpEvents(
   entries: PvpLogEntry[]
 ): Promise<void> {
   const rows = entries
-    .filter((e) => (e.kind === "kill" || e.kind === "death") && hasTime(e))
+    .filter((e) => e.kind in PVP_KINDS && hasTime(e))
     .map((e) => ({
-      kind: e.kind === "kill" ? "pvp_kill" : "pvp_death",
+      kind: PVP_KINDS[e.kind],
       label: pvpLabel(character.name, e),
       t: e.t as number,
     }));
-  await postNewEntries(supabase, character, ["pvp_kill", "pvp_death"], rows);
+  await postNewEntries(supabase, character, ["pvp_kill", "pvp_death", "pve_death"], rows);
+}
+
+// ---------------------------------------------------------------------
+// Duels (2026-11-09)
+// ---------------------------------------------------------------------
+// From the addon's duelEvents (1.9.5+): every finished duel you were in.
+// `opponent` is the other player's in-game name. Each entry also gets your
+// running record against that opponent, counted from your earlier duel
+// entries - e.g. "(3-1 vs Grimbash)".
+
+export type DuelLogEntry = {
+  t?: number;
+  won?: boolean;
+  // They ran out of range instead of losing the fight
+  fled?: boolean;
+  opponent?: string;
+  zone?: string;
+};
+
+export function duelLabel(characterName: string, e: DuelLogEntry): string {
+  const who = e.opponent || "someone";
+  const where = e.zone ? ` in ${e.zone}` : "";
+  if (e.won) return e.fled ? `${who} fled from a duel with ${characterName}${where}` : `${characterName} defeated ${who} in a duel${where}`;
+  return e.fled ? `${characterName} fled from a duel with ${who}${where}` : `${characterName} lost a duel to ${who}${where}`;
+}
+
+export async function logDuelEvents(
+  supabase: SupabaseClient,
+  character: Character,
+  entries: DuelLogEntry[]
+): Promise<void> {
+  const valid = entries.filter((e) => hasTime(e) && typeof e.won === "boolean" && e.opponent);
+  if (valid.length === 0) return;
+
+  // Every duel this character already has on record, for the running score
+  const { data: history, error } = await supabase
+    .from("activity_log")
+    .select("label, created_at")
+    .eq("character_id", character.id)
+    .eq("kind", "duel");
+  if (error) {
+    console.warn("logDuelEvents: couldn't read earlier duels:", error.message);
+    return;
+  }
+  const seen = new Set((history ?? []).map((r: { label: string; created_at: string }) => r.label.replace(/ \(\d+-\d+ vs .*\)$/, "") + "|" + Math.floor(Date.parse(r.created_at) / 1000)));
+  const record = new Map<string, { w: number; l: number }>();
+  const tally = (opponent: string, won: boolean) => {
+    const r = record.get(opponent) ?? { w: 0, l: 0 };
+    if (won) r.w++;
+    else r.l++;
+    record.set(opponent, r);
+  };
+  for (const r of history ?? []) {
+    const m = / \((\d+)-(\d+) vs (.*)\)$/.exec(r.label);
+    if (m) {
+      const cur = record.get(m[3]);
+      const w = Number(m[1]);
+      const l = Number(m[2]);
+      if (!cur || w + l > cur.w + cur.l) record.set(m[3], { w, l });
+    }
+  }
+
+  for (const e of valid.sort((a, b) => (a.t as number) - (b.t as number))) {
+    const base = duelLabel(character.name, e);
+    const key = `${base}|${e.t}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tally(e.opponent as string, e.won as boolean);
+    const r = record.get(e.opponent as string) as { w: number; l: number };
+    await logActivity(supabase, {
+      userId: character.userId,
+      characterId: character.id,
+      characterName: character.name,
+      kind: "duel",
+      label: `${base} (${r.w}-${r.l} vs ${e.opponent})`,
+      createdAt: new Date((e.t as number) * 1000).toISOString(),
+    });
+  }
 }
 
 // ---------------------------------------------------------------------
