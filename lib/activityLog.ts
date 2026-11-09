@@ -107,6 +107,7 @@ export const ACTIVITY_TYPES: Record<string, { label: string; kinds: string[] }> 
   legacy: { label: "Legacy Challenges", kinds: ["legacy_completed"] },
   dungeons: { label: "First dungeon/raid clears", kinds: ["boss_first_kill"] },
   pvp: { label: "PvP kills & deaths", kinds: ["pvp_kill", "pvp_death"] },
+  auctions: { label: "Auction House (50g+)", kinds: ["ah_sale", "ah_purchase"] },
   characters: { label: "New characters", kinds: ["character_created"] },
 };
 

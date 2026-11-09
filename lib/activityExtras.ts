@@ -182,3 +182,96 @@ export async function logPvpEvents(
     });
   }
 }
+
+// ---------------------------------------------------------------------
+// Auction House sales and purchases (2026-11-09, "how about auction house
+// tracking like big sales or big buys maybe 50 gold+?" / "list the item
+// too")
+// ---------------------------------------------------------------------
+// From the addon's auctionEvents log (addon 1.9.5+), read from Auction
+// House mail invoices. The addon logs every sale and purchase; only ones
+// at or above AUCTION_MIN_COPPER reach the feed.
+
+export const AUCTION_MIN_COPPER = 50 * 10000; // 50 gold
+
+export type AuctionLogEntry = {
+  // Unix seconds - when the mail arrived (worked out from its expiry)
+  t?: number;
+  kind: "sale" | "purchase";
+  item?: string;
+  count?: number;
+  // The buyer (for a sale) or seller (for a purchase)
+  player?: string;
+  // Copper - the final auction price
+  price?: number;
+};
+
+// 725000 -> "72g 50s", 500000 -> "50g"
+export function formatGold(copper: number): string {
+  const g = Math.floor(copper / 10000);
+  const s = Math.floor((copper % 10000) / 100);
+  const c = copper % 100;
+  const parts: string[] = [];
+  if (g) parts.push(`${g.toLocaleString()}g`);
+  if (s) parts.push(`${s}s`);
+  if (c && !g) parts.push(`${c}c`);
+  return parts.join(" ") || "0c";
+}
+
+export function auctionLabel(characterName: string, e: AuctionLogEntry): string {
+  const item = `${e.item || "an item"}${typeof e.count === "number" && e.count > 1 ? ` x${e.count}` : ""}`;
+  const price = formatGold(e.price ?? 0);
+  return e.kind === "sale"
+    ? `${characterName} sold ${item} for ${price}${e.player ? ` to ${e.player}` : ""}`
+    : `${characterName} bought ${item} for ${price}${e.player ? ` from ${e.player}` : ""}`;
+}
+
+// Same approach as logPvpEvents: the addon re-sends its whole recent log,
+// so entries already posted (same character, kind and time) are skipped.
+export async function logAuctionEvents(
+  supabase: SupabaseClient,
+  character: Character,
+  entries: AuctionLogEntry[]
+): Promise<void> {
+  const big = entries.filter(
+    (e) =>
+      (e.kind === "sale" || e.kind === "purchase") &&
+      typeof e.t === "number" &&
+      e.t > 0 &&
+      typeof e.price === "number" &&
+      e.price >= AUCTION_MIN_COPPER
+  );
+  if (big.length === 0) return;
+
+  const times = big.map((e) => new Date((e.t as number) * 1000).toISOString());
+  const oldest = times.reduce((a, b) => (a < b ? a : b));
+  const { data: existing, error } = await supabase
+    .from("activity_log")
+    .select("kind, created_at")
+    .eq("character_id", character.id)
+    .in("kind", ["ah_sale", "ah_purchase"])
+    .gte("created_at", oldest);
+  if (error) {
+    console.warn("logAuctionEvents: couldn't read existing entries:", error.message);
+    return;
+  }
+  const posted = new Set(
+    (existing ?? []).map((r: { kind: string; created_at: string }) => `${r.kind}|${Date.parse(r.created_at)}`)
+  );
+
+  for (let i = 0; i < big.length; i++) {
+    const e = big[i];
+    const kind = e.kind === "sale" ? "ah_sale" : "ah_purchase";
+    const key = `${kind}|${Date.parse(times[i])}`;
+    if (posted.has(key)) continue;
+    posted.add(key);
+    await logActivity(supabase, {
+      userId: character.userId,
+      characterId: character.id,
+      characterName: character.name,
+      kind,
+      label: auctionLabel(character.name, e),
+      createdAt: times[i],
+    });
+  }
+}

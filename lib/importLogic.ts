@@ -25,7 +25,13 @@ import { applyLiveObservation, ensureItemsExist } from "./items";
 // the SAME `events` array that table has always been built from, rather than
 // recomputing anything.
 import { logActivity } from "./activityLog";
-import { logFirstBossKills, logPvpEvents, type PvpLogEntry } from "./activityExtras";
+import {
+  logAuctionEvents,
+  logFirstBossKills,
+  logPvpEvents,
+  type AuctionLogEntry,
+  type PvpLogEntry,
+} from "./activityExtras";
 import { recordStatHistory, type StoredStat } from "./statHistory";
 
 export type ParsedTraitNode = {
@@ -224,6 +230,8 @@ export type ParsedExport = {
   // missing when this client doesn't answer the API.
   // PvP kill/death log (addon 1.9.5+) - see lib/activityExtras.ts
   pvpEvents?: PvpLogEntry[];
+  // Auction House sales/purchases from mail invoices (addon 1.9.5+)
+  auctionEvents?: AuctionLogEntry[];
   // When each statistic last changed in-game, unix seconds keyed by stat
   // ID as a string (addon 1.9.5+) - see lib/statHistory.ts
   statTimes?: Record<string, number>;
@@ -1018,6 +1026,19 @@ export async function applyImport(
       );
     } catch (err) {
       console.warn("logPvpEvents failed:", err);
+    }
+  }
+
+  // Auction House sales and purchases of 50g+ (addon 1.9.5+)
+  if (Array.isArray(parsed.auctionEvents) && parsed.auctionEvents.length > 0) {
+    try {
+      await logAuctionEvents(
+        supabase,
+        { id: characterId, userId: before.user_id, name: before.name },
+        parsed.auctionEvents
+      );
+    } catch (err) {
+      console.warn("logAuctionEvents failed:", err);
     }
   }
 
