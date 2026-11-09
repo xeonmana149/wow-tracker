@@ -3805,31 +3805,32 @@ local function cmdLegacyIconProbe()
 end
 
 ----------------------------------------------------------------------
--- PvP kill/death log (1.9.5, 2026-11-09)
+-- PvP, rare and death log (1.9.5, reworked 1.9.10 and 1.9.11)
 ----------------------------------------------------------------------
--- Records each enemy player you land the killing blow on, and the player
--- who killed you, with their name, level, class and race, so the website
--- can post "X killed Y (lvl 24 Orc Warrior)" to the Activity feed.
+-- Records players you kill, what killed you, and rares your group kills,
+-- with names, levels, classes and races, so the website can post "X
+-- killed Y (lvl 24 Orc Warrior)" to the Activity feed.
 --
--- The September version of this (COMBAT_LOG_EVENT_UNFILTERED) was removed
--- after a "blocked from an action" popup at login. This one is careful
--- about the parts that could plausibly matter:
---   * it only starts listening 10 seconds after entering the world, away
---     from the login/reload code path the popup showed up in
---   * the combat log handler only compares a few strings and stores plain
---     values; the name/class/level lookups happen only on an actual kill
---   * /wft pvplog off switches it off completely (and /wft pvplog on back)
+-- None of it uses the combat log. This client doesn't give addons the
+-- combat log (1.9.5-1.9.10 listened and never logged a thing), and a
+-- combat log handler was what caused the "blocked from an action" popup
+-- in September. Instead:
+--   * player kills: the game's honor message names each player you get
+--     honor for (items section below, pvpLogFrame.onHonor)
+--   * rare kills: the XP message names the mob, matched against rares
+--     seen on target/mouseover/nameplates (pvpLogFrame.onXp)
+--   * your deaths: on PLAYER_DEAD, an empty breath bar means drowned, an
+--     empty fatigue bar means fatigue, a fall of a second or more means
+--     fell; otherwise the enemy that was targeting you is the killer
+--   * /wft pvplog off switches it all off (and /wft pvplog on back)
 --
 -- Levels: the game only tells an addon another player's level while they
--- are your target, under your mouse or in your group, so levels are
--- remembered from those moments. A player 10+ levels above you shows as
--- -1 ("??"), and a level never seen is left out.
+-- are your target, under your mouse, on a nameplate or in your group, so
+-- levels are remembered from those moments. A player 10+ levels above you
+-- shows as -1 ("??"), and a level never seen is left out.
 
 local PVP_LOG_MAX = 300
 local pvpLogFrame = CreateFrame("Frame")
-local pvpLogListening = false
-local playerGUID
-local lastHostileHit -- { guid, name, at } - most recent enemy player to hit you
 local seenLevels = {} -- guid -> level, from target/mouseover/nameplates
 -- Rare mobs (1.9.6, "rare kills"): guid -> { name, level, rank }, noted
 -- whenever one is targeted, moused over or shows a nameplate, so a kill
@@ -3837,20 +3838,18 @@ local seenLevels = {} -- guid -> level, from target/mouseover/nameplates
 local seenRares = {}
 local RARE_RANKS = { rare = "Rare", rareelite = "Rare Elite", worldboss = "World Boss" }
 
--- 1.9.10 (2026-11-09, "I want players names and lvl and class"): the
--- combat log never reached the addon on this client, so nothing was ever
--- logged. Kills, rare kills and deaths now come from what the game says
--- in chat and from units on screen; the combat log is only used, when it
--- works, to name who landed the killing blow. This state lives on the
--- frame because the file is close to Lua's 200-local limit:
+-- State lives on the frame because this file is close to Lua's 200-local
+-- limit:
 --   players[name] = { level, class, race, realm, guid } for every player
 --     seen as your target, under your mouse or on a nameplate
---   blows[name] = { killer, guid, at, used } from the combat log's PARTY_KILL
---   honored[name] = GetTime() of the last honor message naming them
+--   fallingSince / landedAt / fellFor: the falling watch (GetTime values)
+--   breathOutAt / fatigueOutAt: last time the breath / fatigue bar was empty
 pvpLogFrame.players = {}
 pvpLogFrame.playerCount = 0
-pvpLogFrame.blows = {}
-pvpLogFrame.honored = {}
+
+local function pvpLogOff()
+    return type(WFTSyncDB) == "table" and WFTSyncDB.pvpLogOff
+end
 
 -- "Thrall-Stormrage" -> "Thrall"
 pvpLogFrame.shortName = function(name)
@@ -3935,12 +3934,23 @@ local function levelFor(guid)
     return seenLevels[guid]
 end
 
--- kind "kill" or "death". guid may be nil (an honor message only names
--- the player); then everything comes from the players cache. extra adds
--- honor, hkRank and killer.
-local function recordPvp(kind, guid, name, extra)
+local function addToPvpLog(entry)
     local db = ensureSyncDB()
     db.pvpLog = type(db.pvpLog) == "table" and db.pvpLog or {}
+    local okT, now = safeCall(_G.time)
+    local okZ, zone = safeCall(_G.GetRealZoneText)
+    entry.t = okT and now or nil
+    entry.zone = okZ and zone or nil
+    table.insert(db.pvpLog, entry)
+    while #db.pvpLog > PVP_LOG_MAX do
+        table.remove(db.pvpLog, 1)
+    end
+end
+
+-- kind "kill" or "death". guid may be nil (an honor message only names
+-- the player); then everything comes from the players cache. extra adds
+-- honor and hkRank.
+local function recordPvp(kind, guid, name, extra)
     -- GetPlayerInfoByGUID: localizedClass, englishClass, localizedRace,
     -- englishRace, sex, name, realm
     local englishClass, englishRace, infoName, realm
@@ -3958,115 +3968,34 @@ local function recordPvp(kind, guid, name, extra)
     if level == nil or (level < 0 and seen.level and seen.level >= 0) then
         level = seen.level
     end
-    local okT, now = safeCall(_G.time)
-    local okZ, zone = safeCall(_G.GetRealZoneText)
     local entry = {
-        t = okT and now or nil,
         kind = kind,
         name = infoName or name,
         realm = (type(realm) == "string" and realm ~= "") and realm or seen.realm,
         level = level,
         class = englishClass or seen.class,
         race = englishRace or seen.race,
-        zone = okZ and zone or nil,
     }
     if type(extra) == "table" then
         for k, v in pairs(extra) do
             entry[k] = v
         end
     end
-    table.insert(db.pvpLog, entry)
-    while #db.pvpLog > PVP_LOG_MAX do
-        table.remove(db.pvpLog, 1)
-    end
+    addToPvpLog(entry)
 end
 
-local function isPlayerGUID(guid)
-    return type(guid) == "string" and guid:sub(1, 7) == "Player-"
-end
-
--- A player died to you or your group (combat log, when it works). The
--- honor message that follows uses this to name who landed the blow. A
--- kill of yours that gives no honor (no honor message within 5 seconds,
--- e.g. a low-level player) is logged from here instead.
-pvpLogFrame.noteBlow = function(srcGUID, srcName, dstGUID, dstName)
-    local short = pvpLogFrame.shortName(dstName)
-    if not short then
-        return
-    end
-    -- killer stays nil for your own blow, so the site doesn't say "with
-    -- <you> landing the killing blow"
-    local blow = { guid = dstGUID, at = GetTime() }
-    if srcGUID ~= playerGUID then
-        blow.killer = pvpLogFrame.shortName(srcName)
-    end
-    pvpLogFrame.blows[short] = blow
-    if srcGUID ~= playerGUID then
-        return
-    end
-    local Timer = _G.C_Timer
-    if type(Timer) == "table" and type(Timer.After) == "function" then
-        Timer.After(5, function()
-            local honoredAt = pvpLogFrame.honored[short]
-            if blow.used or (honoredAt and math.abs(honoredAt - blow.at) < 10) then
-                return
-            end
-            blow.used = true
-            pcall(recordPvp, "kill", dstGUID, dstName, { killer = blow.killer })
-        end)
-    end
-end
-
--- A rare your group killed, in the same log as PvP. killer is whoever got
--- the killing blow (you or a group member), when the combat log says.
-local function recordRareKill(rare, killer)
-    local db = ensureSyncDB()
-    db.pvpLog = type(db.pvpLog) == "table" and db.pvpLog or {}
-    local okT, now = safeCall(_G.time)
-    local okZ, zone = safeCall(_G.GetRealZoneText)
-    table.insert(db.pvpLog, {
-        t = okT and now or nil,
+-- A rare your group killed, in the same log as PvP
+local function recordRareKill(rare)
+    addToPvpLog({
         kind = "rare_kill",
         name = rare.name,
         level = rare.level,
         rank = RARE_RANKS[rare.rank],
-        killer = killer,
-        zone = okZ and zone or nil,
     })
-    while #db.pvpLog > PVP_LOG_MAX do
-        table.remove(db.pvpLog, 1)
-    end
 end
 
--- Deaths to monsters and the environment (1.9.5, "killed by Hogger in
--- Elwynn Forest"): whatever hit you last - an enemy player, a monster, or
--- falling/drowning/lava - is kept, and PLAYER_DEAD logs it.
-local function onCombatLog()
-    local _, sub, _, srcGUID, srcName, _, _, dstGUID, dstName, _, _, envType = CombatLogGetCurrentEventInfo()
-    if sub == "PARTY_KILL" then
-        if isPlayerGUID(dstGUID) then
-            pvpLogFrame.noteBlow(srcGUID, srcName, dstGUID, dstName)
-        elseif seenRares[dstGUID] then
-            -- PARTY_KILL only fires for you and your group
-            local rare = seenRares[dstGUID]
-            seenRares[dstGUID] = nil
-            rare.name = rare.name or dstName
-            pcall(recordRareKill, rare, srcName)
-        end
-    elseif dstGUID == playerGUID then
-        if sub == "ENVIRONMENTAL_DAMAGE" then
-            lastHostileHit = { env = envType, at = GetTime() }
-        elseif srcGUID ~= playerGUID and srcGUID
-            and (sub == "SWING_DAMAGE" or sub == "RANGE_DAMAGE" or sub == "SPELL_DAMAGE"
-                or sub == "SPELL_PERIODIC_DAMAGE") then
-            lastHostileHit = { guid = srcGUID, name = srcName, at = GetTime(), player = isPlayerGUID(srcGUID) }
-        end
-    end
-end
-
--- When you die without the combat log having said what hit you: the
--- enemy targeting you - your own target first, then every nameplate.
--- Returns { guid, name, level, player } or nil.
+-- When you die: the enemy targeting you - your own target first, then
+-- every nameplate. Returns { guid, name, level, player } or nil.
 pvpLogFrame.guessKiller = function()
     local units = { "target" }
     for i = 1, 40 do
@@ -4095,45 +4024,92 @@ pvpLogFrame.guessKiller = function()
     return nil
 end
 
--- A monster's or environmental death, kept in the same log as PvP. With
--- neither a name nor a cause it's a plain "died in <zone>".
-local function recordOtherDeath(hit)
-    local db = ensureSyncDB()
-    db.pvpLog = type(db.pvpLog) == "table" and db.pvpLog or {}
-    local okT, now = safeCall(_G.time)
-    local okZ, zone = safeCall(_G.GetRealZoneText)
-    table.insert(db.pvpLog, {
-        t = okT and now or nil,
-        kind = (hit.env or not hit.name) and "death_env" or "death_pve",
-        env = hit.env,
-        name = hit.name,
-        level = hit.level or (hit.guid and levelFor(hit.guid)) or nil,
-        zone = okZ and zone or nil,
-    })
-    while #db.pvpLog > PVP_LOG_MAX do
-        table.remove(db.pvpLog, 1)
+-- Falling, breath and fatigue, checked 4 times a second. IsFalling() is
+-- still true or only just false when a fall kills you; the mirror timer
+-- bars (BREATH, EXHAUSTION) read 0 while you drown or tire out.
+pvpLogFrame.watchTick = function()
+    local now = GetTime()
+    local okF, falling = safeCall(_G.IsFalling)
+    if okF and falling then
+        pvpLogFrame.fallingSince = pvpLogFrame.fallingSince or now
+    elseif pvpLogFrame.fallingSince then
+        pvpLogFrame.fellFor = now - pvpLogFrame.fallingSince
+        pvpLogFrame.landedAt = now
+        pvpLogFrame.fallingSince = nil
+    end
+    for i = 1, 3 do
+        local okM, timer = safeCall(_G.GetMirrorTimerInfo, i)
+        if okM and (timer == "BREATH" or timer == "EXHAUSTION") then
+            local okP, left = safeCall(_G.GetMirrorTimerProgress, timer)
+            if okP and type(left) == "number" and left <= 0 then
+                if timer == "BREATH" then
+                    pvpLogFrame.breathOutAt = now
+                else
+                    pvpLogFrame.fatigueOutAt = now
+                end
+            end
+        end
     end
 end
 
-local function startPvpLog()
-    if pvpLogListening or (type(WFTSyncDB) == "table" and WFTSyncDB.pvpLogOff) then
+pvpLogFrame.startWatch = function()
+    local Timer = _G.C_Timer
+    if pvpLogFrame.ticker or pvpLogOff() or type(Timer) ~= "table" or type(Timer.NewTicker) ~= "function" then
         return
     end
-    if type(_G.CombatLogGetCurrentEventInfo) ~= "function" then
-        return
-    end
-    local okG, g = safeCall(_G.UnitGUID, "player")
-    playerGUID = okG and g or nil
-    if not playerGUID then
-        return
-    end
-    pvpLogListening = true
-    pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "COMBAT_LOG_EVENT_UNFILTERED")
+    pvpLogFrame.ticker = Timer.NewTicker(0.25, function()
+        pcall(pvpLogFrame.watchTick)
+    end)
 end
 
-local function stopPvpLog()
-    pvpLogListening = false
-    pcall(pvpLogFrame.UnregisterEvent, pvpLogFrame, "COMBAT_LOG_EVENT_UNFILTERED")
+pvpLogFrame.stopWatch = function()
+    if pvpLogFrame.ticker then
+        pcall(pvpLogFrame.ticker.Cancel, pvpLogFrame.ticker)
+        pvpLogFrame.ticker = nil
+    end
+end
+
+-- What killed you, if it was the world: "Drowning", "Fatigue", "Falling"
+pvpLogFrame.environmentDeath = function()
+    local now = GetTime()
+    if pvpLogFrame.breathOutAt and now - pvpLogFrame.breathOutAt < 3 then
+        return "Drowning"
+    end
+    if pvpLogFrame.fatigueOutAt and now - pvpLogFrame.fatigueOutAt < 3 then
+        return "Fatigue"
+    end
+    if pvpLogFrame.fallingSince and now - pvpLogFrame.fallingSince >= 1 then
+        return "Falling"
+    end
+    if pvpLogFrame.landedAt and now - pvpLogFrame.landedAt < 1 and (pvpLogFrame.fellFor or 0) >= 1 then
+        return "Falling"
+    end
+    return nil
+end
+
+pvpLogFrame.onDeath = function()
+    local env = pvpLogFrame.environmentDeath()
+    local okL, myLevel = safeCall(_G.UnitLevel, "player")
+    myLevel = (okL and type(myLevel) == "number") and myLevel or nil
+    if env then
+        addToPvpLog({ kind = "death_env", env = env, myLevel = myLevel })
+        return
+    end
+    local hit = pvpLogFrame.guessKiller()
+    if hit and hit.player then
+        recordPvp("death", hit.guid, hit.name, { myLevel = myLevel })
+    elseif hit then
+        addToPvpLog({
+            kind = "death_pve",
+            name = hit.name,
+            level = hit.level or (hit.guid and levelFor(hit.guid)) or nil,
+            myLevel = myLevel,
+        })
+    else
+        -- Nothing on screen was after you: lava, fire, or something gone
+        -- from view - a plain "died in <zone>"
+        addToPvpLog({ kind = "death_env", myLevel = myLevel })
+    end
 end
 
 for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_DEAD", "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT",
@@ -4141,9 +4117,7 @@ for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_DEAD", "PLAYER_TARGET_CHA
     pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, ev)
 end
 pvpLogFrame:SetScript("OnEvent", function(_, event, arg1)
-    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        pcall(onCombatLog)
-    elseif event == "PLAYER_TARGET_CHANGED" then
+    if event == "PLAYER_TARGET_CHANGED" then
         pcall(rememberLevel, "target")
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
         pcall(rememberLevel, "mouseover")
@@ -4162,29 +4136,11 @@ pvpLogFrame:SetScript("OnEvent", function(_, event, arg1)
             pcall(pvpLogFrame.onXp, arg1)
         end
     elseif event == "PLAYER_DEAD" then
-        -- Killed by whatever the combat log saw hit you in the last 10
-        -- seconds, otherwise by the enemy that was targeting you
-        local hit = lastHostileHit
-        lastHostileHit = nil
-        if type(WFTSyncDB) == "table" and WFTSyncDB.pvpLogOff then
-            return
-        end
-        if not (hit and (GetTime() - hit.at) <= 10) then
-            local okK, guess = pcall(pvpLogFrame.guessKiller)
-            hit = (okK and guess) or {}
-        end
-        if hit.player then
-            pcall(recordPvp, "death", hit.guid, hit.name)
-        else
-            pcall(recordOtherDeath, hit)
+        if not pvpLogOff() then
+            pcall(pvpLogFrame.onDeath)
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
-        local Timer = _G.C_Timer
-        if type(Timer) == "table" and type(Timer.After) == "function" then
-            Timer.After(10, function()
-                pcall(startPvpLog)
-            end)
-        end
+        pcall(pvpLogFrame.startWatch)
     end
 end)
 
@@ -4281,21 +4237,8 @@ pvpLogFrame.onHonor = function(msg)
     if not name or db.pvpLogOff then
         return
     end
-    local short = pvpLogFrame.shortName(name)
-    pvpLogFrame.honored[short] = GetTime()
-    local blow = pvpLogFrame.blows[short]
-    if blow and (blow.used or GetTime() - blow.at > 10) then
-        blow = nil
-    end
-    if blow then
-        blow.used = true
-    end
-    local seen = pvpLogFrame.players[short] or {}
-    recordPvp("kill", (blow and blow.guid) or seen.guid, name, {
-        honor = honor,
-        hkRank = rank,
-        killer = blow and blow.killer or nil,
-    })
+    local seen = pvpLogFrame.players[pvpLogFrame.shortName(name)] or {}
+    recordPvp("kill", seen.guid, name, { honor = honor, hkRank = rank })
 end
 
 -- Rares: "Mor'Ladim dies, you gain 450 experience." for a rare seen
@@ -4329,7 +4272,7 @@ pvpLogFrame.onXp = function(msg)
     for guid, rare in pairs(seenRares) do
         if rare.name == name then
             seenRares[guid] = nil
-            recordRareKill(rare, nil)
+            recordRareKill(rare)
             return
         end
     end
@@ -4791,19 +4734,18 @@ local function cmdPvpLog(arg)
     local db = ensureSyncDB()
     if arg == "off" then
         db.pvpLogOff = true
-        stopPvpLog()
+        pvpLogFrame.stopWatch()
         print("|cffffcc00WFT:|r PvP kill/death logging is |cffff6666off|r. /wft pvplog on to turn it back on.")
         return
     elseif arg == "on" then
         db.pvpLogOff = nil
-        startPvpLog()
+        pvpLogFrame.startWatch()
         print("|cffffcc00WFT:|r PvP kill/death logging is |cff66ff66on|r.")
         return
     end
     local log = type(db.pvpLog) == "table" and db.pvpLog or {}
-    print(("|cffffcc00WFT PvP log:|r %s, %d entries, %d honor tracked, combat log %s"):format(
-        db.pvpLogOff and "off" or "on", #log, db.honorTracked or 0,
-        pvpLogListening and "listening" or "not available"))
+    print(("|cffffcc00WFT PvP log:|r %s, %d entries, %d honor tracked"):format(
+        db.pvpLogOff and "off" or "on", #log, db.honorTracked or 0))
     local verbs = { kill = "killed", death = "killed by", death_pve = "killed by", rare_kill = "killed rare",
         death_env = "died" }
     for i = math.max(1, #log - 4), #log do

@@ -187,6 +187,8 @@ export type PvpLogEntry = {
   // PvP rank title from it
   honor?: number;
   hkRank?: string;
+  // Your own level when you died (1.9.11+), for the grey-mob note
+  myLevel?: number;
   // Environmental damage type for death_env, e.g. "Falling", "Drowning"
   env?: string;
   name?: string;
@@ -244,6 +246,13 @@ const ENV_DEATHS: Record<string, string> = {
   Slime: "died in slime",
 };
 
+// The highest mob level that's grey (no XP) to you - the classic formula
+function greyLevel(myLevel: number): number {
+  if (myLevel <= 5) return 0;
+  if (myLevel <= 39) return myLevel - Math.floor(myLevel / 10) - 5;
+  return myLevel - Math.floor(myLevel / 5) - 1;
+}
+
 export function pvpLabel(characterName: string, e: PvpLogEntry): string {
   const where = e.zone ? ` in ${e.zone}` : "";
   if (e.kind === "death_env") {
@@ -256,7 +265,11 @@ export function pvpLabel(characterName: string, e: PvpLogEntry): string {
   }
   if (e.kind === "death_pve") {
     const lvl = typeof e.level === "number" ? ` (lvl ${e.level < 0 ? "??" : e.level})` : "";
-    return `${characterName} was killed by ${e.name || "something"}${lvl}${where}`;
+    const grey =
+      typeof e.level === "number" && e.level > 0 && typeof e.myLevel === "number" && e.level <= greyLevel(e.myLevel)
+        ? " - a grey mob 💀"
+        : "";
+    return `${characterName} was killed by ${e.name || "something"}${lvl}${where}${grey}`;
   }
   const who = e.name || "an unknown player";
   if (e.kind === "kill") {
