@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logActivity } from "./activityLog";
+import { statTime } from "./statHistory";
 
 // Extra Activity feed events (2026-11-09, "I wish we had more stuff tracked
 // like first completion of dungeons/raids and like pvp kills, the name of
@@ -48,12 +49,15 @@ export function firstBossKillLabel(characterName: string, statName: string): str
 }
 
 // `previous` is what was stored for this character BEFORE this sync's
-// statistics were saved (stat_id -> value)
+// statistics were saved (stat_id -> value). `statTimes` (addon 1.9.5+)
+// dates the clear to the minute the addon saw the boss counter change;
+// without it, the entry gets the sync time.
 export async function logFirstBossKills(
   supabase: SupabaseClient,
   character: Character,
   previous: Map<number, string>,
-  stats: Stat[]
+  stats: Stat[],
+  statTimes?: Record<string, number>
 ): Promise<void> {
   for (const s of stats) {
     if (s.category !== BOSS_KILLS_CATEGORY) continue;
@@ -65,6 +69,7 @@ export async function logFirstBossKills(
       characterName: character.name,
       kind: "boss_first_kill",
       label: firstBossKillLabel(character.name, s.name),
+      createdAt: statTime(statTimes, s.id) ?? undefined,
     });
   }
 }

@@ -25,7 +25,8 @@ import { applyLiveObservation, ensureItemsExist } from "./items";
 // the SAME `events` array that table has always been built from, rather than
 // recomputing anything.
 import { logActivity } from "./activityLog";
-import { BOSS_KILLS_CATEGORY, logFirstBossKills, logPvpEvents, type PvpLogEntry } from "./activityExtras";
+import { logFirstBossKills, logPvpEvents, type PvpLogEntry } from "./activityExtras";
+import { recordStatHistory, type StoredStat } from "./statHistory";
 
 export type ParsedTraitNode = {
   entryID?: number;
@@ -223,6 +224,9 @@ export type ParsedExport = {
   // missing when this client doesn't answer the API.
   // PvP kill/death log (addon 1.9.5+) - see lib/activityExtras.ts
   pvpEvents?: PvpLogEntry[];
+  // When each statistic last changed in-game, unix seconds keyed by stat
+  // ID as a string (addon 1.9.5+) - see lib/statHistory.ts
+  statTimes?: Record<string, number>;
   pvp?: {
     honor?: number;
     honorMax?: number;
@@ -1055,16 +1059,18 @@ export async function applyImport(
   //    replaces what's on file for those stat IDs, one upsert per exported
   //    stat, keyed on (character_id, stat_id).
   if (parsed.statistics && parsed.statistics.length > 0) {
-    // Boss Kills counters as they stood BEFORE this sync, for first
-    // dungeon/raid clears (lib/activityExtras.ts) - read before the upsert
-    // below overwrites them
-    const { data: previousBossRows } = await supabase
+    // Every statistic as it stood BEFORE this sync - for the statistic
+    // history (lib/statHistory.ts) and first dungeon/raid clears
+    // (lib/activityExtras.ts). Read before the upsert below overwrites it.
+    const { data: previousStatRows } = await supabase
       .from("character_statistics")
-      .select("stat_id, value")
-      .eq("character_id", characterId)
-      .eq("category", BOSS_KILLS_CATEGORY);
-    const previousBossKills = new Map<number, string>(
-      (previousBossRows ?? []).map((r: { stat_id: number; value: string }) => [r.stat_id, r.value])
+      .select("stat_id, value, updated_at")
+      .eq("character_id", characterId);
+    const previousStats = new Map<number, StoredStat>(
+      (previousStatRows ?? []).map((r: { stat_id: number; value: string; updated_at: string | null }) => [
+        r.stat_id,
+        { value: r.value, updated_at: r.updated_at },
+      ])
     );
 
     const statisticRows = parsed.statistics.map((s) => ({
@@ -1082,11 +1088,23 @@ export async function applyImport(
     if (error) throw new Error(error.message);
 
     try {
+      await recordStatHistory(
+        supabase,
+        { id: characterId, userId: before.user_id },
+        previousStats,
+        parsed.statistics,
+        parsed.statTimes
+      );
+    } catch (err) {
+      console.warn("recordStatHistory failed:", err);
+    }
+    try {
       await logFirstBossKills(
         supabase,
         { id: characterId, userId: before.user_id, name: before.name },
-        previousBossKills,
-        parsed.statistics
+        new Map([...previousStats].map(([id, s]) => [id, s.value])),
+        parsed.statistics,
+        parsed.statTimes
       );
     } catch (err) {
       console.warn("logFirstBossKills failed:", err);
