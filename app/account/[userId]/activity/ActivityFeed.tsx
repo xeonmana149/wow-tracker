@@ -308,7 +308,10 @@ export default function ActivityFeed({ accountUserId, accountName }: { accountUs
                 {r.accountName}
               </Link>
             )}
-            {scope === "global" && r.character_name && <span className="text-gray-500"> · </span>}
+            {/* Always a separator after the name - account-wide rows (Legacy
+                Challenges, account badges) have no character name to sit
+                between them, which ran "Aaron" into "Completed..." */}
+            {scope === "global" && <span className="text-gray-500"> · </span>}
             {r.character_name && <span className="font-semibold text-amber-200">{r.character_name} </span>}
             <span className="text-white">{r.label}</span>
           </span>
