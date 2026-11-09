@@ -4589,6 +4589,7 @@ local syncBtn
 local syncGlowUntil = 0
 local syncLastSeen -- what was waiting at the last check, to spot new things
 local syncWasResting = false
+local syncChatNotified = 0 -- how many reminder intervals have been announced
 
 local function syncSettings()
     local db = ensureSyncDB()
@@ -4751,6 +4752,20 @@ local function syncRefresh()
         r, g, b, due = 0.6, 0.38, 0.05, 1
     end
     syncBtn.due = due
+
+    -- Chat reminder (1.9.8, "add a sync reminder to the general chat too")
+    -- - a line in your own chat window each time another reminder interval
+    -- passes (30m, 60m, 90m...). Only you see it; nothing is sent to any
+    -- channel. /wft sync chat off turns it off.
+    local intervals = math.floor(mins / s.remind)
+    if intervals > syncChatNotified then
+        syncChatNotified = intervals
+        if not s.chatOff then
+            local waiting = syncWaitingText(syncWaiting())
+            print(("|cffffcc00WFT:|r It's been %dm since your last sync%s. Click the |cffffcc00Sync|r button or type /wft sync when you're somewhere safe."):format(
+                mins, waiting and (" - waiting: " .. waiting) or ""))
+        end
+    end
     syncBtn.bg:SetColorTexture(r, g, b, 0.9)
     syncBtn.label:SetText(mins < 1 and "Sync" or ("Sync  |cffcccccc" .. mins .. "m|r"))
     if inCombat() then
@@ -4905,6 +4920,13 @@ function cmdSync(arg, value)
             syncBtn:SetPoint("TOP", UIParent, "TOP", 0, -12)
         end
         print("|cffffcc00WFT:|r Sync button moved back to the top of the screen.")
+    elseif arg == "chat" then
+        if value == "off" or value == "on" then
+            s.chatOff = value == "off"
+        else
+            s.chatOff = not s.chatOff
+        end
+        print("|cffffcc00WFT:|r Sync reminders in chat " .. (s.chatOff and "off." or "on."))
     elseif arg == "remind" then
         local n = tonumber(value)
         if n and n >= 1 then
@@ -4918,6 +4940,7 @@ function cmdSync(arg, value)
         print("|cffffcc00WFT:|r /wft sync - reload to sync now")
         print("  /wft sync hide | show | lock | unlock | reset")
         print("  /wft sync remind <minutes> - when the button turns amber (red at double)")
+        print("  /wft sync chat on | off - the reminder line in your chat window")
     end
 end
 
