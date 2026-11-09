@@ -313,7 +313,13 @@ export default function ActivityFeed({ accountUserId, accountName }: { accountUs
                 between them, which ran "Aaron" into "Completed..." */}
             {scope === "global" && <span className="text-gray-500"> · </span>}
             {r.character_name && <span className="font-semibold text-amber-200">{r.character_name} </span>}
-            <span className="text-white">{r.label}</span>
+            {/* Most labels already start with the character's name - drop
+                it there so it isn't shown twice next to the highlighted one */}
+            <span className="text-white">
+              {r.character_name && r.label.startsWith(`${r.character_name} `)
+                ? r.label.slice(r.character_name.length + 1)
+                : r.label}
+            </span>
           </span>
           <span className="shrink-0 text-xs text-gray-500">{formatDateTime(r.created_at)}</span>
         </div>
