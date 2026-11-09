@@ -136,51 +136,71 @@ export function pvpLabel(characterName: string, e: PvpLogEntry): string {
     : `${characterName} was killed by ${who}${describe(e)}${where}`;
 }
 
-// The addon sends its whole recent log every sync, so each entry is matched
-// against what's already posted (same character, kind and time) and only
-// new ones are logged.
-export async function logPvpEvents(
+// ---------------------------------------------------------------------
+// Posting addon logs
+// ---------------------------------------------------------------------
+// The addon sends its whole recent log (PvP, Auction House, items) every
+// sync, so each entry is matched against what's already posted for this
+// character - same kind, time and text - and only new ones are logged.
+// Matching on the text too means two different items from one trade (same
+// second) are both kept.
+
+type NewEntry = { kind: string; label: string; t: number };
+
+async function postNewEntries(
   supabase: SupabaseClient,
   character: Character,
-  entries: PvpLogEntry[]
+  kinds: string[],
+  entries: NewEntry[]
 ): Promise<void> {
-  const valid = entries.filter(
-    (e) => (e.kind === "kill" || e.kind === "death") && typeof e.t === "number" && e.t > 0
-  );
-  if (valid.length === 0) return;
-
-  const times = valid.map((e) => new Date((e.t as number) * 1000).toISOString());
-  const oldest = times.reduce((a, b) => (a < b ? a : b));
+  if (entries.length === 0) return;
+  const oldest = new Date(Math.min(...entries.map((e) => e.t)) * 1000).toISOString();
   const { data: existing, error } = await supabase
     .from("activity_log")
-    .select("kind, created_at")
+    .select("kind, label, created_at")
     .eq("character_id", character.id)
-    .in("kind", ["pvp_kill", "pvp_death"])
+    .in("kind", kinds)
     .gte("created_at", oldest);
   if (error) {
-    console.warn("logPvpEvents: couldn't read existing entries:", error.message);
+    console.warn("postNewEntries: couldn't read existing entries:", error.message);
     return;
   }
+  const keyOf = (kind: string, label: string, ms: number) => `${kind}|${Math.floor(ms / 1000)}|${label}`;
   const posted = new Set(
-    (existing ?? []).map((r: { kind: string; created_at: string }) => `${r.kind}|${Date.parse(r.created_at)}`)
+    (existing ?? []).map((r: { kind: string; label: string; created_at: string }) =>
+      keyOf(r.kind, r.label, Date.parse(r.created_at))
+    )
   );
-
-  for (let i = 0; i < valid.length; i++) {
-    const e = valid[i];
-    const kind = e.kind === "kill" ? "pvp_kill" : "pvp_death";
-    const at = times[i];
-    const key = `${kind}|${Date.parse(at)}`;
+  for (const e of entries) {
+    const key = keyOf(e.kind, e.label, e.t * 1000);
     if (posted.has(key)) continue;
     posted.add(key);
     await logActivity(supabase, {
       userId: character.userId,
       characterId: character.id,
       characterName: character.name,
-      kind,
-      label: pvpLabel(character.name, e),
-      createdAt: at,
+      kind: e.kind,
+      label: e.label,
+      createdAt: new Date(e.t * 1000).toISOString(),
     });
   }
+}
+
+const hasTime = (e: { t?: number }): e is { t: number } => typeof e.t === "number" && e.t > 0;
+
+export async function logPvpEvents(
+  supabase: SupabaseClient,
+  character: Character,
+  entries: PvpLogEntry[]
+): Promise<void> {
+  const rows = entries
+    .filter((e) => (e.kind === "kill" || e.kind === "death") && hasTime(e))
+    .map((e) => ({
+      kind: e.kind === "kill" ? "pvp_kill" : "pvp_death",
+      label: pvpLabel(character.name, e),
+      t: e.t as number,
+    }));
+  await postNewEntries(supabase, character, ["pvp_kill", "pvp_death"], rows);
 }
 
 // ---------------------------------------------------------------------
@@ -204,6 +224,8 @@ export type AuctionLogEntry = {
   player?: string;
   // Copper - the final auction price
   price?: number;
+  // Item quality (4 epic, 5 legendary) when the client knew it
+  quality?: number;
 };
 
 // 725000 -> "72g 50s", 500000 -> "50g"
@@ -218,60 +240,107 @@ export function formatGold(copper: number): string {
   return parts.join(" ") || "0c";
 }
 
-export function auctionLabel(characterName: string, e: AuctionLogEntry): string {
-  const item = `${e.item || "an item"}${typeof e.count === "number" && e.count > 1 ? ` x${e.count}` : ""}`;
-  const price = formatGold(e.price ?? 0);
-  return e.kind === "sale"
-    ? `${characterName} sold ${item} for ${price}${e.player ? ` to ${e.player}` : ""}`
-    : `${characterName} bought ${item} for ${price}${e.player ? ` from ${e.player}` : ""}`;
+const QUALITY_NAMES: Record<number, string> = { 4: "Epic", 5: "Legendary", 6: "Artifact" };
+
+// "Thunderfury (Legendary)", "Runecloth x20" - quality only for epic+
+function itemText(item: string | undefined, quality?: number, count?: number): string {
+  const name = item || "an item";
+  const qty = typeof count === "number" && count > 1 ? ` x${count}` : "";
+  const q = typeof quality === "number" ? QUALITY_NAMES[quality] : undefined;
+  return `${name}${qty}${q ? ` (${q})` : ""}`;
 }
 
-// Same approach as logPvpEvents: the addon re-sends its whole recent log,
-// so entries already posted (same character, kind and time) are skipped.
+export function auctionLabel(characterName: string, e: AuctionLogEntry): string {
+  const item = itemText(e.item, e.quality, e.count);
+  const price = formatGold(e.price ?? 0);
+  return e.kind === "sale"
+    ? `${characterName} sold ${item} on the Auction House for ${price}${e.player ? ` to ${e.player}` : ""}`
+    : `${characterName} bought ${item} from the Auction House for ${price}${e.player ? ` from ${e.player}` : ""}`;
+}
+
+// Posted when it's 50g+ or the item is epic or better
 export async function logAuctionEvents(
   supabase: SupabaseClient,
   character: Character,
   entries: AuctionLogEntry[]
 ): Promise<void> {
-  const big = entries.filter(
-    (e) =>
-      (e.kind === "sale" || e.kind === "purchase") &&
-      typeof e.t === "number" &&
-      e.t > 0 &&
-      typeof e.price === "number" &&
-      e.price >= AUCTION_MIN_COPPER
-  );
-  if (big.length === 0) return;
-
-  const times = big.map((e) => new Date((e.t as number) * 1000).toISOString());
-  const oldest = times.reduce((a, b) => (a < b ? a : b));
-  const { data: existing, error } = await supabase
-    .from("activity_log")
-    .select("kind, created_at")
-    .eq("character_id", character.id)
-    .in("kind", ["ah_sale", "ah_purchase"])
-    .gte("created_at", oldest);
-  if (error) {
-    console.warn("logAuctionEvents: couldn't read existing entries:", error.message);
-    return;
-  }
-  const posted = new Set(
-    (existing ?? []).map((r: { kind: string; created_at: string }) => `${r.kind}|${Date.parse(r.created_at)}`)
-  );
-
-  for (let i = 0; i < big.length; i++) {
-    const e = big[i];
-    const kind = e.kind === "sale" ? "ah_sale" : "ah_purchase";
-    const key = `${kind}|${Date.parse(times[i])}`;
-    if (posted.has(key)) continue;
-    posted.add(key);
-    await logActivity(supabase, {
-      userId: character.userId,
-      characterId: character.id,
-      characterName: character.name,
-      kind,
+  const rows = entries
+    .filter(
+      (e) =>
+        (e.kind === "sale" || e.kind === "purchase") &&
+        hasTime(e) &&
+        typeof e.price === "number" &&
+        (e.price >= AUCTION_MIN_COPPER || (typeof e.quality === "number" && e.quality >= 4))
+    )
+    .map((e) => ({
+      kind: e.kind === "sale" ? "ah_sale" : "ah_purchase",
       label: auctionLabel(character.name, e),
-      createdAt: times[i],
-    });
+      t: e.t as number,
+    }));
+  await postNewEntries(supabase, character, ["ah_sale", "ah_purchase"], rows);
+}
+
+// ---------------------------------------------------------------------
+// Epic and legendary items (2026-11-09, "tracking when epics/legendaries
+// are won in dungeon/raid/loot roll. or traded or crafted ... with the
+// roll number too")
+// ---------------------------------------------------------------------
+// From the addon's itemEvents log (addon 1.9.5+), which only holds epic
+// and better.
+
+export type ItemLogEntry = {
+  t?: number;
+  kind: "won" | "looted" | "crafted" | "trade_gave" | "trade_got";
+  item?: string;
+  itemId?: number;
+  quality?: number;
+  count?: number;
+  // Where it happened - the dungeon/raid name inside one, else the zone
+  where?: string;
+  // Loot rolls: your roll and its type (Need / Greed / Disenchant)
+  roll?: number;
+  rollType?: string;
+  // Trades: who with
+  player?: string;
+};
+
+const ITEM_KINDS: Record<ItemLogEntry["kind"], string> = {
+  won: "item_won",
+  looted: "item_looted",
+  crafted: "item_crafted",
+  trade_gave: "item_traded",
+  trade_got: "item_traded",
+};
+export const ITEM_ACTIVITY_KINDS = ["item_won", "item_looted", "item_crafted", "item_traded"];
+
+export function itemLabel(characterName: string, e: ItemLogEntry): string {
+  const item = itemText(e.item, e.quality, e.count);
+  const where = e.where ? ` in ${e.where}` : "";
+  const who = e.player || "someone";
+  switch (e.kind) {
+    case "won": {
+      const roll =
+        typeof e.roll === "number" ? ` with a ${e.rollType ? `${e.rollType} ` : ""}roll of ${e.roll}` : "";
+      return `${characterName} won ${item}${where}${roll}`;
+    }
+    case "looted":
+      return `${characterName} looted ${item}${where}`;
+    case "crafted":
+      return `${characterName} crafted ${item}`;
+    case "trade_got":
+      return `${characterName} got ${item} from ${who} in a trade`;
+    case "trade_gave":
+      return `${characterName} traded ${item} to ${who}`;
   }
+}
+
+export async function logItemEvents(
+  supabase: SupabaseClient,
+  character: Character,
+  entries: ItemLogEntry[]
+): Promise<void> {
+  const rows = entries
+    .filter((e) => e.kind in ITEM_KINDS && hasTime(e) && (typeof e.quality !== "number" || e.quality >= 4))
+    .map((e) => ({ kind: ITEM_KINDS[e.kind], label: itemLabel(character.name, e), t: e.t as number }));
+  await postNewEntries(supabase, character, ITEM_ACTIVITY_KINDS, rows);
 }

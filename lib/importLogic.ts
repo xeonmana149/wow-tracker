@@ -28,8 +28,10 @@ import { logActivity } from "./activityLog";
 import {
   logAuctionEvents,
   logFirstBossKills,
+  logItemEvents,
   logPvpEvents,
   type AuctionLogEntry,
+  type ItemLogEntry,
   type PvpLogEntry,
 } from "./activityExtras";
 import { recordStatHistory, type StoredStat } from "./statHistory";
@@ -232,6 +234,8 @@ export type ParsedExport = {
   pvpEvents?: PvpLogEntry[];
   // Auction House sales/purchases from mail invoices (addon 1.9.5+)
   auctionEvents?: AuctionLogEntry[];
+  // Epic+ items won/looted/crafted/traded (addon 1.9.5+)
+  itemEvents?: ItemLogEntry[];
   // When each statistic last changed in-game, unix seconds keyed by stat
   // ID as a string (addon 1.9.5+) - see lib/statHistory.ts
   statTimes?: Record<string, number>;
@@ -1039,6 +1043,19 @@ export async function applyImport(
       );
     } catch (err) {
       console.warn("logAuctionEvents failed:", err);
+    }
+  }
+
+  // Epic+ items won, looted, crafted and traded (addon 1.9.5+)
+  if (Array.isArray(parsed.itemEvents) && parsed.itemEvents.length > 0) {
+    try {
+      await logItemEvents(
+        supabase,
+        { id: characterId, userId: before.user_id, name: before.name },
+        parsed.itemEvents
+      );
+    } catch (err) {
+      console.warn("logItemEvents failed:", err);
     }
   }
 
