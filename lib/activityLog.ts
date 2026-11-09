@@ -86,10 +86,37 @@ type ActivityRowRaw = {
 // now everyone's activity, site-wide; passing a specific userId narrows it
 // back down to one account, same query otherwise. The caller (ActivityFeed's
 // scope toggle) decides which this is on any given page load.
+// Search filters on the Activity page (2026-11-09, "for the future when me
+// and friends wanna look back"). Every field is optional; empty means "any".
+export type ActivityFilters = {
+  // Words anywhere in the event text, e.g. "Gold tier" or "fishing"
+  search?: string;
+  // Inclusive ISO timestamps - the page turns its date pickers into these
+  from?: string | null;
+  to?: string | null;
+  // One of ACTIVITY_TYPES' keys
+  type?: string;
+  character?: string;
+};
+
+// The event types the filter offers, and which activity_log kinds each one
+// covers
+export const ACTIVITY_TYPES: Record<string, { label: string; kinds: string[] }> = {
+  achievements: { label: "Achievements", kinds: ["achievement_earned", "account_achievement_earned"] },
+  levels: { label: "Level ups", kinds: ["level_up"] },
+  legacy: { label: "Legacy Challenges", kinds: ["legacy_completed"] },
+  characters: { label: "New characters", kinds: ["character_created"] },
+};
+
+// Kinds never shown in the feed - profile saves (removed 2026-11-09, "its
+// not interesting"); any old rows left in the table stay hidden
+const HIDDEN_KINDS = ["profile_updated"];
+
 export async function loadActivityPage(
   client: SupabaseClient,
   userId: string | null,
-  before: string | null
+  before: string | null,
+  filters: ActivityFilters = {}
 ): Promise<{ rows: ActivityRow[]; hasMore: boolean }> {
   // Settings page's "Show my activity in the global Activity feed" toggle
   // (2026-10-03, sql/account-settings.sql's `show_activity`) - only applied
@@ -121,6 +148,16 @@ export async function loadActivityPage(
     if (hiddenIds.length > 0) query = query.not("user_id", "in", `(${hiddenIds.join(",")})`);
   }
   if (before) query = query.lt("created_at", before);
+
+  query = query.not("kind", "in", `(${HIDDEN_KINDS.join(",")})`);
+  // `%` and `_` are wildcards in ilike - strip them so a search is literal
+  const search = filters.search?.replace(/[%_]/g, "").trim();
+  if (search) query = query.ilike("label", `%${search}%`);
+  if (filters.from) query = query.gte("created_at", filters.from);
+  if (filters.to) query = query.lte("created_at", filters.to);
+  const type = filters.type ? ACTIVITY_TYPES[filters.type] : undefined;
+  if (type) query = query.in("kind", type.kinds);
+  if (filters.character) query = query.eq("character_name", filters.character);
 
   const { data, error } = await query;
   if (error) throw error;
