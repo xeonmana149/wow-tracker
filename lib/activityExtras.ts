@@ -181,7 +181,12 @@ export type PvpLogEntry = {
   // name of whoever landed the killing blow
   kind: "kill" | "death" | "death_pve" | "death_env" | "rare_kill";
   rank?: string;
+  // Whoever landed the killing blow (rare_kill, and kill from 1.9.10)
   killer?: string;
+  // kill (1.9.10+): honor from the game's honor message, and the victim's
+  // PvP rank title from it
+  honor?: number;
+  hkRank?: string;
   // Environmental damage type for death_env, e.g. "Falling", "Drowning"
   env?: string;
   name?: string;
@@ -254,9 +259,12 @@ export function pvpLabel(characterName: string, e: PvpLogEntry): string {
     return `${characterName} was killed by ${e.name || "something"}${lvl}${where}`;
   }
   const who = e.name || "an unknown player";
-  return e.kind === "kill"
-    ? `${characterName} killed ${who}${describe(e)}${where}`
-    : `${characterName} was killed by ${who}${describe(e)}${where}`;
+  if (e.kind === "kill") {
+    const honor = typeof e.honor === "number" && e.honor > 0 ? ` for ${e.honor} honor` : "";
+    const by = e.killer && e.killer !== characterName ? ` with ${e.killer} landing the killing blow` : "";
+    return `${characterName} killed ${who}${describe(e)}${where}${honor}${by}`;
+  }
+  return `${characterName} was killed by ${who}${describe(e)}${where}`;
 }
 
 const PVP_KINDS: Record<PvpLogEntry["kind"], string> = {

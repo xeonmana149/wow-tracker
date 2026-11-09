@@ -1420,6 +1420,9 @@ local function collectPvp()
     local sessionHK, sessionDK = safeGet("GetPVPSessionStats")
     pvp.todayHonorableKills = tonumber(sessionHK)
     pvp.todayDishonorableKills = tonumber(sessionDK)
+    -- 1.9.10: honor counted from the game's honor messages since this
+    -- version was installed (UnitHonor read 0 after a kill on this client)
+    pvp.honorTracked = (type(WFTSyncDB) == "table" and tonumber(WFTSyncDB.honorTracked)) or nil
     return pvp
 end
 
@@ -3827,12 +3830,35 @@ local pvpLogFrame = CreateFrame("Frame")
 local pvpLogListening = false
 local playerGUID
 local lastHostileHit -- { guid, name, at } - most recent enemy player to hit you
-local seenLevels = {} -- guid -> level, from target/mouseover
+local seenLevels = {} -- guid -> level, from target/mouseover/nameplates
 -- Rare mobs (1.9.6, "rare kills"): guid -> { name, level, rank }, noted
 -- whenever one is targeted, moused over or shows a nameplate, so a kill
 -- can be logged even after it's no longer targeted
 local seenRares = {}
 local RARE_RANKS = { rare = "Rare", rareelite = "Rare Elite", worldboss = "World Boss" }
+
+-- 1.9.10 (2026-11-09, "I want players names and lvl and class"): the
+-- combat log never reached the addon on this client, so nothing was ever
+-- logged. Kills, rare kills and deaths now come from what the game says
+-- in chat and from units on screen; the combat log is only used, when it
+-- works, to name who landed the killing blow. This state lives on the
+-- frame because the file is close to Lua's 200-local limit:
+--   players[name] = { level, class, race, realm, guid } for every player
+--     seen as your target, under your mouse or on a nameplate
+--   blows[name] = { killer, guid, at, used } from the combat log's PARTY_KILL
+--   honored[name] = GetTime() of the last honor message naming them
+pvpLogFrame.players = {}
+pvpLogFrame.playerCount = 0
+pvpLogFrame.blows = {}
+pvpLogFrame.honored = {}
+
+-- "Thrall-Stormrage" -> "Thrall"
+pvpLogFrame.shortName = function(name)
+    if type(name) ~= "string" or name == "" then
+        return nil
+    end
+    return name:match("^([^%-]+)") or name
+end
 
 local function rememberRare(unit)
     local okC, rank = safeCall(_G.UnitClassification, unit)
@@ -3861,10 +3887,39 @@ local function rememberLevel(unit)
         return
     end
     local okG, guid = safeCall(_G.UnitGUID, unit)
+    guid = (okG and type(guid) == "string") and guid or nil
     local okL, level = safeCall(_G.UnitLevel, unit)
-    if okG and guid and okL and type(level) == "number" then
+    level = (okL and type(level) == "number") and level or nil
+    if guid and level then
         seenLevels[guid] = level
     end
+    local okN, name, realm = safeCall(_G.UnitName, unit)
+    if not okN or type(name) ~= "string" or name == "" then
+        return
+    end
+    local okC, _, cls = safeCall(_G.UnitClass, unit)
+    local okR, _, race = safeCall(_G.UnitRace, unit)
+    local players = pvpLogFrame.players
+    if not players[name] then
+        pvpLogFrame.playerCount = pvpLogFrame.playerCount + 1
+        if pvpLogFrame.playerCount > 500 then
+            players = {}
+            pvpLogFrame.players = players
+            pvpLogFrame.playerCount = 1
+        end
+    end
+    local known = players[name] or {}
+    -- A real level beats "??" (-1, 10+ above you) seen earlier or later
+    if level == nil or (level < 0 and known.level and known.level >= 0) then
+        level = known.level
+    end
+    players[name] = {
+        level = level,
+        class = (okC and type(cls) == "string" and cls ~= "") and cls or known.class,
+        race = (okR and type(race) == "string" and race ~= "") and race or known.race,
+        realm = (type(realm) == "string" and realm ~= "") and realm or known.realm,
+        guid = guid or known.guid,
+    }
 end
 
 local function levelFor(guid)
@@ -3880,28 +3935,47 @@ local function levelFor(guid)
     return seenLevels[guid]
 end
 
-local function recordPvp(kind, guid, name)
+-- kind "kill" or "death". guid may be nil (an honor message only names
+-- the player); then everything comes from the players cache. extra adds
+-- honor, hkRank and killer.
+local function recordPvp(kind, guid, name, extra)
     local db = ensureSyncDB()
     db.pvpLog = type(db.pvpLog) == "table" and db.pvpLog or {}
     -- GetPlayerInfoByGUID: localizedClass, englishClass, localizedRace,
     -- englishRace, sex, name, realm
     local englishClass, englishRace, infoName, realm
-    local okInfo, _, c2, _, r2, _, n, rl = safeCall(_G.GetPlayerInfoByGUID, guid)
-    if okInfo then
-        englishClass, englishRace, infoName, realm = c2, r2, n, rl
+    if guid then
+        local okInfo, _, c2, _, r2, _, n, rl = safeCall(_G.GetPlayerInfoByGUID, guid)
+        if okInfo then
+            englishClass = (type(c2) == "string" and c2 ~= "") and c2 or nil
+            englishRace = (type(r2) == "string" and r2 ~= "") and r2 or nil
+            infoName = (type(n) == "string" and n ~= "") and n or nil
+            realm = rl
+        end
+    end
+    local seen = pvpLogFrame.players[pvpLogFrame.shortName(infoName or name) or ""] or {}
+    local level = guid and levelFor(guid) or nil
+    if level == nil or (level < 0 and seen.level and seen.level >= 0) then
+        level = seen.level
     end
     local okT, now = safeCall(_G.time)
     local okZ, zone = safeCall(_G.GetRealZoneText)
-    table.insert(db.pvpLog, {
+    local entry = {
         t = okT and now or nil,
         kind = kind,
         name = infoName or name,
-        realm = (type(realm) == "string" and realm ~= "") and realm or nil,
-        level = levelFor(guid),
-        class = englishClass,
-        race = englishRace,
+        realm = (type(realm) == "string" and realm ~= "") and realm or seen.realm,
+        level = level,
+        class = englishClass or seen.class,
+        race = englishRace or seen.race,
         zone = okZ and zone or nil,
-    })
+    }
+    if type(extra) == "table" then
+        for k, v in pairs(extra) do
+            entry[k] = v
+        end
+    end
+    table.insert(db.pvpLog, entry)
     while #db.pvpLog > PVP_LOG_MAX do
         table.remove(db.pvpLog, 1)
     end
@@ -3911,8 +3985,40 @@ local function isPlayerGUID(guid)
     return type(guid) == "string" and guid:sub(1, 7) == "Player-"
 end
 
+-- A player died to you or your group (combat log, when it works). The
+-- honor message that follows uses this to name who landed the blow. A
+-- kill of yours that gives no honor (no honor message within 5 seconds,
+-- e.g. a low-level player) is logged from here instead.
+pvpLogFrame.noteBlow = function(srcGUID, srcName, dstGUID, dstName)
+    local short = pvpLogFrame.shortName(dstName)
+    if not short then
+        return
+    end
+    -- killer stays nil for your own blow, so the site doesn't say "with
+    -- <you> landing the killing blow"
+    local blow = { guid = dstGUID, at = GetTime() }
+    if srcGUID ~= playerGUID then
+        blow.killer = pvpLogFrame.shortName(srcName)
+    end
+    pvpLogFrame.blows[short] = blow
+    if srcGUID ~= playerGUID then
+        return
+    end
+    local Timer = _G.C_Timer
+    if type(Timer) == "table" and type(Timer.After) == "function" then
+        Timer.After(5, function()
+            local honoredAt = pvpLogFrame.honored[short]
+            if blow.used or (honoredAt and math.abs(honoredAt - blow.at) < 10) then
+                return
+            end
+            blow.used = true
+            pcall(recordPvp, "kill", dstGUID, dstName, { killer = blow.killer })
+        end)
+    end
+end
+
 -- A rare your group killed, in the same log as PvP. killer is whoever got
--- the killing blow (you or a group member).
+-- the killing blow (you or a group member), when the combat log says.
 local function recordRareKill(rare, killer)
     local db = ensureSyncDB()
     db.pvpLog = type(db.pvpLog) == "table" and db.pvpLog or {}
@@ -3938,8 +4044,8 @@ end
 local function onCombatLog()
     local _, sub, _, srcGUID, srcName, _, _, dstGUID, dstName, _, _, envType = CombatLogGetCurrentEventInfo()
     if sub == "PARTY_KILL" then
-        if srcGUID == playerGUID and isPlayerGUID(dstGUID) then
-            recordPvp("kill", dstGUID, dstName)
+        if isPlayerGUID(dstGUID) then
+            pvpLogFrame.noteBlow(srcGUID, srcName, dstGUID, dstName)
         elseif seenRares[dstGUID] then
             -- PARTY_KILL only fires for you and your group
             local rare = seenRares[dstGUID]
@@ -3958,7 +4064,39 @@ local function onCombatLog()
     end
 end
 
--- A monster's or environmental death, kept in the same log as PvP
+-- When you die without the combat log having said what hit you: the
+-- enemy targeting you - your own target first, then every nameplate.
+-- Returns { guid, name, level, player } or nil.
+pvpLogFrame.guessKiller = function()
+    local units = { "target" }
+    for i = 1, 40 do
+        units[#units + 1] = "nameplate" .. i
+    end
+    for _, unit in ipairs(units) do
+        local okE, exists = safeCall(_G.UnitExists, unit)
+        local okH, hostile = safeCall(_G.UnitCanAttack, "player", unit)
+        local okT, onMe = safeCall(_G.UnitIsUnit, unit .. "target", "player")
+        if okE and exists and okH and hostile and okT and onMe then
+            local okN, name = safeCall(_G.UnitName, unit)
+            if okN and type(name) == "string" and name ~= "" then
+                local okP, isPlayer = safeCall(_G.UnitIsPlayer, unit)
+                local okG, guid = safeCall(_G.UnitGUID, unit)
+                local okL, level = safeCall(_G.UnitLevel, unit)
+                pcall(rememberLevel, unit)
+                return {
+                    guid = (okG and type(guid) == "string") and guid or nil,
+                    name = name,
+                    level = (okL and type(level) == "number") and level or nil,
+                    player = (okP and isPlayer) and true or false,
+                }
+            end
+        end
+    end
+    return nil
+end
+
+-- A monster's or environmental death, kept in the same log as PvP. With
+-- neither a name nor a cause it's a plain "died in <zone>".
 local function recordOtherDeath(hit)
     local db = ensureSyncDB()
     db.pvpLog = type(db.pvpLog) == "table" and db.pvpLog or {}
@@ -3966,10 +4104,10 @@ local function recordOtherDeath(hit)
     local okZ, zone = safeCall(_G.GetRealZoneText)
     table.insert(db.pvpLog, {
         t = okT and now or nil,
-        kind = hit.env and "death_env" or "death_pve",
+        kind = (hit.env or not hit.name) and "death_env" or "death_pve",
         env = hit.env,
         name = hit.name,
-        level = hit.guid and levelFor(hit.guid) or nil,
+        level = hit.level or (hit.guid and levelFor(hit.guid)) or nil,
         zone = okZ and zone or nil,
     })
     while #db.pvpLog > PVP_LOG_MAX do
@@ -3998,32 +4136,47 @@ local function stopPvpLog()
     pcall(pvpLogFrame.UnregisterEvent, pvpLogFrame, "COMBAT_LOG_EVENT_UNFILTERED")
 end
 
-pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "PLAYER_ENTERING_WORLD")
-pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "PLAYER_DEAD")
-pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "PLAYER_TARGET_CHANGED")
-pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "UPDATE_MOUSEOVER_UNIT")
-pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "NAME_PLATE_UNIT_ADDED")
+for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_DEAD", "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT",
+    "NAME_PLATE_UNIT_ADDED", "CHAT_MSG_COMBAT_HONOR_GAIN", "CHAT_MSG_COMBAT_XP_GAIN" }) do
+    pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, ev)
+end
 pvpLogFrame:SetScript("OnEvent", function(_, event, arg1)
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
         pcall(onCombatLog)
     elseif event == "PLAYER_TARGET_CHANGED" then
-        rememberLevel("target")
+        pcall(rememberLevel, "target")
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
-        rememberLevel("mouseover")
+        pcall(rememberLevel, "mouseover")
     elseif event == "NAME_PLATE_UNIT_ADDED" then
         if type(arg1) == "string" then
-            pcall(rememberRare, arg1)
+            pcall(rememberLevel, arg1)
+        end
+    elseif event == "CHAT_MSG_COMBAT_HONOR_GAIN" then
+        -- onHonor/onXp are set in the items section below, where the
+        -- message-template helpers live
+        if pvpLogFrame.onHonor then
+            pcall(pvpLogFrame.onHonor, arg1)
+        end
+    elseif event == "CHAT_MSG_COMBAT_XP_GAIN" then
+        if pvpLogFrame.onXp then
+            pcall(pvpLogFrame.onXp, arg1)
         end
     elseif event == "PLAYER_DEAD" then
-        -- Killed by whatever hit you in the last 10 seconds
+        -- Killed by whatever the combat log saw hit you in the last 10
+        -- seconds, otherwise by the enemy that was targeting you
         local hit = lastHostileHit
         lastHostileHit = nil
-        if pvpLogListening and hit and (GetTime() - hit.at) <= 10 then
-            if hit.player then
-                pcall(recordPvp, "death", hit.guid, hit.name)
-            else
-                pcall(recordOtherDeath, hit)
-            end
+        if type(WFTSyncDB) == "table" and WFTSyncDB.pvpLogOff then
+            return
+        end
+        if not (hit and (GetTime() - hit.at) <= 10) then
+            local okK, guess = pcall(pvpLogFrame.guessKiller)
+            hit = (okK and guess) or {}
+        end
+        if hit.player then
+            pcall(recordPvp, "death", hit.guid, hit.name)
+        else
+            pcall(recordOtherDeath, hit)
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
         local Timer = _G.C_Timer
@@ -4080,6 +4233,106 @@ local function pattern(name)
         PATTERNS[name] = templateToPattern(_G[name]) or false
     end
     return PATTERNS[name] or nil
+end
+
+-- PvP kills and rare kills from chat (1.9.10) - see the PvP section above.
+-- They live here because they use the message-template helpers.
+-- Honor: "Thrall dies, honorable kill Rank: Scout (Estimated Honor Points:
+-- 12)" names every player you get honor for, killing blow or not, and
+-- "You have been awarded 50 honor." is bonus honor with no kill. Every
+-- point is added to WFTSyncDB.honorTracked, since the game's own honor
+-- value read 0 after a kill on this client.
+pvpLogFrame.HONOR_GLOBALS = { "COMBATLOG_HONORGAIN", "COMBATLOG_HONORGAIN_NO_RANK",
+    "COMBATLOG_HONORGAIN_EXHAUSTION1", "COMBATLOG_HONORAWARD" }
+pvpLogFrame.onHonor = function(msg)
+    if type(msg) ~= "string" then
+        return
+    end
+    local name, rank, honor
+    local matched = false
+    for _, global in ipairs(pvpLogFrame.HONOR_GLOBALS) do
+        local p = pattern(global)
+        local caps = p and { msg:match(p) } or {}
+        if #caps > 0 then
+            matched = true
+            for _, c in ipairs(caps) do
+                if c:match("^%d+$") then
+                    honor = tonumber(c)
+                elseif global ~= "COMBATLOG_HONORAWARD" then
+                    if not name then
+                        name = c
+                    elseif not rank then
+                        rank = c
+                    end
+                end
+            end
+            break
+        end
+    end
+    if not matched then
+        -- Older/odd wording: the name before " dies", the last number is the honor
+        name = msg:match("^(.-) dies")
+        honor = tonumber(msg:match("(%d+)%D*$"))
+    end
+    local db = ensureSyncDB()
+    if honor then
+        db.honorTracked = (db.honorTracked or 0) + honor
+    end
+    if not name or db.pvpLogOff then
+        return
+    end
+    local short = pvpLogFrame.shortName(name)
+    pvpLogFrame.honored[short] = GetTime()
+    local blow = pvpLogFrame.blows[short]
+    if blow and (blow.used or GetTime() - blow.at > 10) then
+        blow = nil
+    end
+    if blow then
+        blow.used = true
+    end
+    local seen = pvpLogFrame.players[short] or {}
+    recordPvp("kill", (blow and blow.guid) or seen.guid, name, {
+        honor = honor,
+        hkRank = rank,
+        killer = blow and blow.killer or nil,
+    })
+end
+
+-- Rares: "Mor'Ladim dies, you gain 450 experience." for a rare seen
+-- earlier logs the kill (no XP, e.g. a grey rare, means no entry)
+pvpLogFrame.XP_GLOBALS = { "COMBATLOG_XPGAIN_FIRSTPERSON", "COMBATLOG_XPGAIN_FIRSTPERSON_GROUP",
+    "COMBATLOG_XPGAIN_FIRSTPERSON_RAID", "COMBATLOG_XPGAIN_EXHAUSTION1", "COMBATLOG_XPGAIN_EXHAUSTION1_GROUP",
+    "COMBATLOG_XPGAIN_EXHAUSTION1_RAID", "COMBATLOG_XPGAIN_EXHAUSTION2", "COMBATLOG_XPGAIN_EXHAUSTION2_GROUP",
+    "COMBATLOG_XPGAIN_EXHAUSTION2_RAID", "COMBATLOG_XPGAIN_EXHAUSTION4", "COMBATLOG_XPGAIN_EXHAUSTION4_GROUP",
+    "COMBATLOG_XPGAIN_EXHAUSTION4_RAID", "COMBATLOG_XPGAIN_EXHAUSTION5", "COMBATLOG_XPGAIN_EXHAUSTION5_GROUP",
+    "COMBATLOG_XPGAIN_EXHAUSTION5_RAID" }
+pvpLogFrame.onXp = function(msg)
+    if type(msg) ~= "string" or next(seenRares) == nil then
+        return
+    end
+    if type(WFTSyncDB) == "table" and WFTSyncDB.pvpLogOff then
+        return
+    end
+    local name
+    for _, global in ipairs(pvpLogFrame.XP_GLOBALS) do
+        local p = pattern(global)
+        local first = p and msg:match(p)
+        if first and not first:match("^%d+$") then
+            name = first
+            break
+        end
+    end
+    name = name or msg:match("^(.-) dies")
+    if not name then
+        return
+    end
+    for guid, rare in pairs(seenRares) do
+        if rare.name == name then
+            seenRares[guid] = nil
+            recordRareKill(rare, nil)
+            return
+        end
+    end
 end
 
 -- Quality from the item itself where the client has it cached, otherwise
@@ -4548,14 +4801,17 @@ local function cmdPvpLog(arg)
         return
     end
     local log = type(db.pvpLog) == "table" and db.pvpLog or {}
-    print(("|cffffcc00WFT PvP log:|r %s, %d entries"):format(
-        db.pvpLogOff and "off" or (pvpLogListening and "on" or "starting"), #log))
+    print(("|cffffcc00WFT PvP log:|r %s, %d entries, %d honor tracked, combat log %s"):format(
+        db.pvpLogOff and "off" or "on", #log, db.honorTracked or 0,
+        pvpLogListening and "listening" or "not available"))
+    local verbs = { kill = "killed", death = "killed by", death_pve = "killed by", rare_kill = "killed rare",
+        death_env = "died" }
     for i = math.max(1, #log - 4), #log do
         local e = log[i]
-        print(("  %s %s %s lvl %s %s %s"):format(
-            e.t and date("%d %b %H:%M", e.t) or "?", e.kind == "kill" and "killed" or "killed by",
-            tostring(e.name), e.level == -1 and "??" or tostring(e.level or "?"),
-            tostring(e.race or ""), tostring(e.class or "")))
+        print(("  %s %s %s lvl %s %s %s%s"):format(
+            e.t and date("%d %b %H:%M", e.t) or "?", verbs[e.kind] or tostring(e.kind),
+            tostring(e.name or e.env or ""), e.level == -1 and "??" or tostring(e.level or "?"),
+            tostring(e.race or ""), tostring(e.class or ""), e.honor and (" +" .. e.honor .. " honor") or ""))
     end
 end
 

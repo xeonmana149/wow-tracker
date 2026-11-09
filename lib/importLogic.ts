@@ -261,6 +261,9 @@ export type ParsedExport = {
     highestRank?: number;
     todayHonorableKills?: number;
     todayDishonorableKills?: number;
+    // Honor counted from the game's honor messages since addon 1.9.10 was
+    // installed (UnitHonor read 0 after a kill on this client)
+    honorTracked?: number;
   };
 };
 
@@ -492,6 +495,12 @@ export async function applyImport(
   // honor-as-a-resource-bar API (UnitHonor), so this is a real live value
   // from the addon now, not a manual field anymore.
   if (typeof parsed.basic?.honor === "number") charUpdate.honor_points = parsed.basic.honor;
+  // ...except it can read 0 while you're earning honor, so the addon's own
+  // tally (1.9.10+) is used when it's higher
+  const honorTracked = parsed.pvp?.honorTracked;
+  if (typeof honorTracked === "number" && honorTracked > ((charUpdate.honor_points as number | undefined) ?? 0)) {
+    charUpdate.honor_points = honorTracked;
+  }
   // Race and class don't realistically change once a character exists, but
   // keeping them synced from the addon (rather than only ever set once at
   // creation) means a wrong value never has to be hand-fixed - it just

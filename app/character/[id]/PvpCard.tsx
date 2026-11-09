@@ -8,6 +8,7 @@ export type PvpData = {
   lifetimeHonorableKills?: number;
   lifetimeDishonorableKills?: number;
   todayHonorableKills?: number;
+  honorTracked?: number;
 } | null;
 
 type StatRow = { category: string; name: string; value: string };
@@ -44,8 +45,13 @@ export default function PvpCard({
     if (value !== null) rows.push({ label, value: value.toLocaleString() });
   };
 
+  // The game's honor value can read 0 while you're earning honor, so the
+  // addon's own tally (1.9.10+) replaces a 0 bar
+  const tracked = firstNumber(pvp?.honorTracked);
   const honorNow = firstNumber(pvp?.honor, honor);
-  if (honorNow !== null) {
+  if (tracked !== null && tracked > 0 && !honorNow) {
+    add("Honor earned", tracked);
+  } else if (honorNow !== null) {
     rows.push({
       label: "Honor",
       value: pvp?.honorMax ? `${honorNow.toLocaleString()} / ${pvp.honorMax.toLocaleString()}` : honorNow.toLocaleString(),
