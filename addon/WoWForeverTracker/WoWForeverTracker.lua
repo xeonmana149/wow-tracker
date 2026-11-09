@@ -1772,7 +1772,7 @@ local function buildExport()
     local tocversion = select(4, safeGet("GetBuildInfo"))
     local okDate, timestamp = safeCall(_G.date, "%Y-%m-%d %H:%M:%S")
     out.meta = {
-        addonVersion = "1.9.7",
+        addonVersion = "1.9.8",
         tocversion = tocversion,
         exportedAt = okDate and timestamp or nil,
     }
