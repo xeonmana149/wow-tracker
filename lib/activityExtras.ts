@@ -48,6 +48,19 @@ export function firstBossKillLabel(characterName: string, statName: string): str
     : `${characterName} defeated ${boss} for the first time!`;
 }
 
+function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+}
+
+export function repeatBossKillLabel(characterName: string, statName: string, count: number): string {
+  const { boss, place } = parseBossStat(statName);
+  return place
+    ? `${characterName} cleared ${place} for the ${ordinal(count)} time - ${boss} defeated!`
+    : `${characterName} defeated ${boss} for the ${ordinal(count)} time!`;
+}
+
 // `previous` is what was stored for this character BEFORE this sync's
 // statistics were saved (stat_id -> value). `statTimes` (addon 1.9.5+)
 // dates the clear to the minute the addon saw the boss counter change;
@@ -85,15 +98,21 @@ export async function logFirstBossKills(
   for (const s of stats) {
     if (s.category !== BOSS_KILLS_CATEGORY) continue;
     if (!previous.has(s.id)) continue;
-    if (statNumber(previous.get(s.id)) > 0 || statNumber(s.value) <= 0) continue;
+    const before = statNumber(previous.get(s.id));
+    const now = statNumber(s.value);
+    if (now <= before) continue;
     const at = statTime(statTimes, s.id);
     const group = groupFor(bossGroups, s.name, at);
+    const withGroup = group.length ? ` With ${joinNames(group)}.` : "";
+    // Repeat clears too (2026-11-09, "even repeat clears") - one entry per
+    // sync with the new total, which also keeps every label unique
+    const first = before <= 0;
     await logActivity(supabase, {
       userId: character.userId,
       characterId: character.id,
       characterName: character.name,
-      kind: "boss_first_kill",
-      label: firstBossKillLabel(character.name, s.name) + (group.length ? ` With ${joinNames(group)}.` : ""),
+      kind: first ? "boss_first_kill" : "boss_clear",
+      label: (first ? firstBossKillLabel(character.name, s.name) : repeatBossKillLabel(character.name, s.name, now)) + withGroup,
       createdAt: at ?? undefined,
     });
   }
@@ -158,7 +177,11 @@ export type PvpLogEntry = {
   t?: number;
   // kill / death: an enemy player. death_pve: a monster (name, level).
   // death_env: falling, drowning, lava... (env)
-  kind: "kill" | "death" | "death_pve" | "death_env";
+  // rare_kill (addon 1.9.6+): a rare mob your group killed - rank and the
+  // name of whoever landed the killing blow
+  kind: "kill" | "death" | "death_pve" | "death_env" | "rare_kill";
+  rank?: string;
+  killer?: string;
   // Environmental damage type for death_env, e.g. "Falling", "Drowning"
   env?: string;
   name?: string;
@@ -221,6 +244,11 @@ export function pvpLabel(characterName: string, e: PvpLogEntry): string {
   if (e.kind === "death_env") {
     return `${characterName} ${(e.env && ENV_DEATHS[e.env]) || "died"}${where}`;
   }
+  if (e.kind === "rare_kill") {
+    const lvl = typeof e.level === "number" ? ` (lvl ${e.level < 0 ? "??" : e.level}${e.rank ? ` ${e.rank}` : ""})` : e.rank ? ` (${e.rank})` : "";
+    const by = e.killer && e.killer !== characterName ? ` with ${e.killer} landing the killing blow` : "";
+    return `${characterName} killed the rare ${e.name || "mob"}${lvl}${where}${by}`;
+  }
   if (e.kind === "death_pve") {
     const lvl = typeof e.level === "number" ? ` (lvl ${e.level < 0 ? "??" : e.level})` : "";
     return `${characterName} was killed by ${e.name || "something"}${lvl}${where}`;
@@ -236,6 +264,7 @@ const PVP_KINDS: Record<PvpLogEntry["kind"], string> = {
   death: "pvp_death",
   death_pve: "pve_death",
   death_env: "pve_death",
+  rare_kill: "rare_kill",
 };
 
 // ---------------------------------------------------------------------
@@ -302,7 +331,7 @@ export async function logPvpEvents(
       label: pvpLabel(character.name, e),
       t: e.t as number,
     }));
-  await postNewEntries(supabase, character, ["pvp_kill", "pvp_death", "pve_death"], rows);
+  await postNewEntries(supabase, character, ["pvp_kill", "pvp_death", "pve_death", "rare_kill"], rows);
 }
 
 // ---------------------------------------------------------------------

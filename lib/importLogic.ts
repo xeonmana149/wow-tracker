@@ -372,7 +372,10 @@ const LEGENDARY_COLOR = "ff8000";
 const NOTABLE_GEAR_COLORS = new Set([EPIC_COLOR, LEGENDARY_COLOR]);
 
 // Gold amounts (in real gold, not copper) worth calling out per character.
-const GOLD_MILESTONES = [100, 500, 1000, 5000];
+// 2026-11-09: "gold milestones like 50, 100, 1000, 5000, etc." Each posts once
+// per character ever (sql/activity-log-dedupe.sql), even if gold dips and
+// climbs back over it
+const GOLD_MILESTONES = [50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000];
 
 // MAX_CHARACTER_LEVEL and TOP_PVP_RANK_CAP now live in ./achievements
 // (2026-10-03) - centralized so this file, accountAchievements.ts and

@@ -3828,10 +3828,36 @@ local pvpLogListening = false
 local playerGUID
 local lastHostileHit -- { guid, name, at } - most recent enemy player to hit you
 local seenLevels = {} -- guid -> level, from target/mouseover
+-- Rare mobs (1.9.6, "rare kills"): guid -> { name, level, rank }, noted
+-- whenever one is targeted, moused over or shows a nameplate, so a kill
+-- can be logged even after it's no longer targeted
+local seenRares = {}
+local RARE_RANKS = { rare = "Rare", rareelite = "Rare Elite", worldboss = "World Boss" }
+
+local function rememberRare(unit)
+    local okC, rank = safeCall(_G.UnitClassification, unit)
+    if not okC or not RARE_RANKS[rank] then
+        return
+    end
+    local okG, guid = safeCall(_G.UnitGUID, unit)
+    local okN, name = safeCall(_G.UnitName, unit)
+    local okL, level = safeCall(_G.UnitLevel, unit)
+    if okG and guid then
+        seenRares[guid] = {
+            name = okN and name or nil,
+            level = (okL and type(level) == "number") and level or nil,
+            rank = rank,
+        }
+    end
+end
 
 local function rememberLevel(unit)
     local okP, isPlayer = safeCall(_G.UnitIsPlayer, unit)
-    if not okP or not isPlayer then
+    if not okP then
+        return
+    end
+    if not isPlayer then
+        rememberRare(unit)
         return
     end
     local okG, guid = safeCall(_G.UnitGUID, unit)
@@ -3885,6 +3911,27 @@ local function isPlayerGUID(guid)
     return type(guid) == "string" and guid:sub(1, 7) == "Player-"
 end
 
+-- A rare your group killed, in the same log as PvP. killer is whoever got
+-- the killing blow (you or a group member).
+local function recordRareKill(rare, killer)
+    local db = ensureSyncDB()
+    db.pvpLog = type(db.pvpLog) == "table" and db.pvpLog or {}
+    local okT, now = safeCall(_G.time)
+    local okZ, zone = safeCall(_G.GetRealZoneText)
+    table.insert(db.pvpLog, {
+        t = okT and now or nil,
+        kind = "rare_kill",
+        name = rare.name,
+        level = rare.level,
+        rank = RARE_RANKS[rare.rank],
+        killer = killer,
+        zone = okZ and zone or nil,
+    })
+    while #db.pvpLog > PVP_LOG_MAX do
+        table.remove(db.pvpLog, 1)
+    end
+end
+
 -- Deaths to monsters and the environment (1.9.5, "killed by Hogger in
 -- Elwynn Forest"): whatever hit you last - an enemy player, a monster, or
 -- falling/drowning/lava - is kept, and PLAYER_DEAD logs it.
@@ -3893,6 +3940,12 @@ local function onCombatLog()
     if sub == "PARTY_KILL" then
         if srcGUID == playerGUID and isPlayerGUID(dstGUID) then
             recordPvp("kill", dstGUID, dstName)
+        elseif seenRares[dstGUID] then
+            -- PARTY_KILL only fires for you and your group
+            local rare = seenRares[dstGUID]
+            seenRares[dstGUID] = nil
+            rare.name = rare.name or dstName
+            pcall(recordRareKill, rare, srcName)
         end
     elseif dstGUID == playerGUID then
         if sub == "ENVIRONMENTAL_DAMAGE" then
@@ -3949,13 +4002,18 @@ pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "PLAYER_ENTERING_WORLD")
 pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "PLAYER_DEAD")
 pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "PLAYER_TARGET_CHANGED")
 pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "UPDATE_MOUSEOVER_UNIT")
-pvpLogFrame:SetScript("OnEvent", function(_, event)
+pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "NAME_PLATE_UNIT_ADDED")
+pvpLogFrame:SetScript("OnEvent", function(_, event, arg1)
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
         pcall(onCombatLog)
     elseif event == "PLAYER_TARGET_CHANGED" then
         rememberLevel("target")
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
         rememberLevel("mouseover")
+    elseif event == "NAME_PLATE_UNIT_ADDED" then
+        if type(arg1) == "string" then
+            pcall(rememberRare, arg1)
+        end
     elseif event == "PLAYER_DEAD" then
         -- Killed by whatever hit you in the last 10 seconds
         local hit = lastHostileHit

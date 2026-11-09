@@ -11,6 +11,8 @@ type ActivityKind =
   | "level_up"
   | "account_achievement_earned"
   | "boss_first_kill"
+  | "boss_clear"
+  | "rare_kill"
   | "pvp_kill"
   | "pvp_death"
   | "pve_death"
@@ -58,6 +60,8 @@ const KIND_ICON: Record<ActivityKind, string> = {
   legacy_completed: "🏆",
   account_achievement_earned: "🏅",
   boss_first_kill: "🐉",
+  boss_clear: "🐉",
+  rare_kill: "⭐",
   pvp_kill: "⚔",
   pvp_death: "💀",
   pve_death: "💀",
