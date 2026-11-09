@@ -1235,6 +1235,41 @@ local function collectStatistics()
     return out
 end
 
+-- Statistic change times (1.9.5, 2026-11-09, "can we attach times and
+-- dates to statistics?"). The Statistics pane only has current values, so
+-- the addon looks at them every few minutes while you play (and 3 seconds
+-- after a boss dies) and notes the time whenever a value changed since the
+-- last look. WFTSyncDB.statLast holds the values from the last look and
+-- WFTSyncDB.statTimes the time (unix seconds) each stat last changed,
+-- both keyed by the stat ID as a string. The website uses those times to
+-- date its statistic history and first dungeon/raid clears.
+--
+-- A stat seen for the first time only records its value - there's no
+-- earlier value to have changed from.
+local function stampStatisticTimes()
+    local okC, stats = pcall(collectStatistics)
+    if not okC or type(stats) ~= "table" then
+        return
+    end
+    local okT, now = safeCall(_G.time)
+    if not okT or type(now) ~= "number" then
+        return
+    end
+    WFTSyncDB = WFTSyncDB or {}
+    local last = type(WFTSyncDB.statLast) == "table" and WFTSyncDB.statLast or {}
+    local times = type(WFTSyncDB.statTimes) == "table" and WFTSyncDB.statTimes or {}
+    for _, s in ipairs(stats) do
+        local key = tostring(s.id)
+        local previous = last[key]
+        if previous ~= nil and previous ~= s.value then
+            times[key] = now
+        end
+        last[key] = s.value
+    end
+    WFTSyncDB.statLast = last
+    WFTSyncDB.statTimes = times
+end
+
 -- Reputation (2026-11-05, addon 1.9.2) - every faction on the character's
 -- Reputation pane with its standing and progress. Collapsed headers hide
 -- their factions from the API, so they're expanded for the read and
@@ -1737,7 +1772,7 @@ local function buildExport()
     local tocversion = select(4, safeGet("GetBuildInfo"))
     local okDate, timestamp = safeCall(_G.date, "%Y-%m-%d %H:%M:%S")
     out.meta = {
-        addonVersion = "1.9.4",
+        addonVersion = "1.9.5",
         tocversion = tocversion,
         exportedAt = okDate and timestamp or nil,
     }
@@ -1753,6 +1788,11 @@ local function buildExport()
     -- crash there take down the whole export, same guard as collectTraits.
     local okStats, statistics = pcall(collectStatistics)
     out.statistics = okStats and statistics or nil
+    -- When each statistic last changed (1.9.5) - one last look first, so
+    -- a change since the previous look gets this export's time
+    pcall(stampStatisticTimes)
+    out.statTimes = (type(WFTSyncDB) == "table" and type(WFTSyncDB.statTimes) == "table")
+        and WFTSyncDB.statTimes or nil
     -- Legacy Challenges (see collectLegacyAchievements above) - same
     -- never-crash-the-export guard.
     local okLegacy, legacyAchievements = pcall(collectLegacyAchievements)
@@ -1769,6 +1809,24 @@ local function buildExport()
     out.reputations = okRep and reputations or nil
     local okPvp, pvp = pcall(collectPvp)
     out.pvp = okPvp and pvp or nil
+    -- PvP kill/death log (1.9.5) - see the PvP kill/death log section. The
+    -- whole recent log goes every time; the website skips entries it has
+    -- already posted.
+    out.pvpEvents = (type(WFTSyncDB) == "table" and type(WFTSyncDB.pvpLog) == "table")
+        and WFTSyncDB.pvpLog or nil
+    -- Auction House sales/purchases (1.9.5) - see the Auction House section
+    out.auctionEvents = (type(WFTSyncDB) == "table" and type(WFTSyncDB.ahLog) == "table")
+        and WFTSyncDB.ahLog or nil
+    -- Epic+ items won/looted/crafted/traded (1.9.5) - see the Epic and
+    -- legendary items section
+    out.itemEvents = (type(WFTSyncDB) == "table" and type(WFTSyncDB.itemLog) == "table")
+        and WFTSyncDB.itemLog or nil
+    -- Duels, boss-kill groups and level-up times (1.9.5)
+    if type(WFTSyncDB) == "table" then
+        out.duelEvents = type(WFTSyncDB.duelLog) == "table" and WFTSyncDB.duelLog or nil
+        out.bossGroups = type(WFTSyncDB.bossGroups) == "table" and WFTSyncDB.bossGroups or nil
+        out.levelTimes = type(WFTSyncDB.levelTimes) == "table" and WFTSyncDB.levelTimes or nil
+    end
     return out
 end
 
@@ -3743,6 +3801,706 @@ local function cmdLegacyIconProbe()
     showExportWindow(table.concat(out, "\n"))
 end
 
+----------------------------------------------------------------------
+-- PvP kill/death log (1.9.5, 2026-11-09)
+----------------------------------------------------------------------
+-- Records each enemy player you land the killing blow on, and the player
+-- who killed you, with their name, level, class and race, so the website
+-- can post "X killed Y (lvl 24 Orc Warrior)" to the Activity feed.
+--
+-- The September version of this (COMBAT_LOG_EVENT_UNFILTERED) was removed
+-- after a "blocked from an action" popup at login. This one is careful
+-- about the parts that could plausibly matter:
+--   * it only starts listening 10 seconds after entering the world, away
+--     from the login/reload code path the popup showed up in
+--   * the combat log handler only compares a few strings and stores plain
+--     values; the name/class/level lookups happen only on an actual kill
+--   * /wft pvplog off switches it off completely (and /wft pvplog on back)
+--
+-- Levels: the game only tells an addon another player's level while they
+-- are your target, under your mouse or in your group, so levels are
+-- remembered from those moments. A player 10+ levels above you shows as
+-- -1 ("??"), and a level never seen is left out.
+
+local PVP_LOG_MAX = 300
+local pvpLogFrame = CreateFrame("Frame")
+local pvpLogListening = false
+local playerGUID
+local lastHostileHit -- { guid, name, at } - most recent enemy player to hit you
+local seenLevels = {} -- guid -> level, from target/mouseover
+
+local function rememberLevel(unit)
+    local okP, isPlayer = safeCall(_G.UnitIsPlayer, unit)
+    if not okP or not isPlayer then
+        return
+    end
+    local okG, guid = safeCall(_G.UnitGUID, unit)
+    local okL, level = safeCall(_G.UnitLevel, unit)
+    if okG and guid and okL and type(level) == "number" then
+        seenLevels[guid] = level
+    end
+end
+
+local function levelFor(guid)
+    for _, unit in ipairs({ "target", "mouseover", "focus", "targettarget" }) do
+        local okG, g = safeCall(_G.UnitGUID, unit)
+        if okG and g == guid then
+            local okL, level = safeCall(_G.UnitLevel, unit)
+            if okL and type(level) == "number" then
+                return level
+            end
+        end
+    end
+    return seenLevels[guid]
+end
+
+local function recordPvp(kind, guid, name)
+    local db = ensureSyncDB()
+    db.pvpLog = type(db.pvpLog) == "table" and db.pvpLog or {}
+    -- GetPlayerInfoByGUID: localizedClass, englishClass, localizedRace,
+    -- englishRace, sex, name, realm
+    local englishClass, englishRace, infoName, realm
+    local okInfo, _, c2, _, r2, _, n, rl = safeCall(_G.GetPlayerInfoByGUID, guid)
+    if okInfo then
+        englishClass, englishRace, infoName, realm = c2, r2, n, rl
+    end
+    local okT, now = safeCall(_G.time)
+    local okZ, zone = safeCall(_G.GetRealZoneText)
+    table.insert(db.pvpLog, {
+        t = okT and now or nil,
+        kind = kind,
+        name = infoName or name,
+        realm = (type(realm) == "string" and realm ~= "") and realm or nil,
+        level = levelFor(guid),
+        class = englishClass,
+        race = englishRace,
+        zone = okZ and zone or nil,
+    })
+    while #db.pvpLog > PVP_LOG_MAX do
+        table.remove(db.pvpLog, 1)
+    end
+end
+
+local function isPlayerGUID(guid)
+    return type(guid) == "string" and guid:sub(1, 7) == "Player-"
+end
+
+-- Deaths to monsters and the environment (1.9.5, "killed by Hogger in
+-- Elwynn Forest"): whatever hit you last - an enemy player, a monster, or
+-- falling/drowning/lava - is kept, and PLAYER_DEAD logs it.
+local function onCombatLog()
+    local _, sub, _, srcGUID, srcName, _, _, dstGUID, dstName, _, _, envType = CombatLogGetCurrentEventInfo()
+    if sub == "PARTY_KILL" then
+        if srcGUID == playerGUID and isPlayerGUID(dstGUID) then
+            recordPvp("kill", dstGUID, dstName)
+        end
+    elseif dstGUID == playerGUID then
+        if sub == "ENVIRONMENTAL_DAMAGE" then
+            lastHostileHit = { env = envType, at = GetTime() }
+        elseif srcGUID ~= playerGUID and srcGUID
+            and (sub == "SWING_DAMAGE" or sub == "RANGE_DAMAGE" or sub == "SPELL_DAMAGE"
+                or sub == "SPELL_PERIODIC_DAMAGE") then
+            lastHostileHit = { guid = srcGUID, name = srcName, at = GetTime(), player = isPlayerGUID(srcGUID) }
+        end
+    end
+end
+
+-- A monster's or environmental death, kept in the same log as PvP
+local function recordOtherDeath(hit)
+    local db = ensureSyncDB()
+    db.pvpLog = type(db.pvpLog) == "table" and db.pvpLog or {}
+    local okT, now = safeCall(_G.time)
+    local okZ, zone = safeCall(_G.GetRealZoneText)
+    table.insert(db.pvpLog, {
+        t = okT and now or nil,
+        kind = hit.env and "death_env" or "death_pve",
+        env = hit.env,
+        name = hit.name,
+        level = hit.guid and levelFor(hit.guid) or nil,
+        zone = okZ and zone or nil,
+    })
+    while #db.pvpLog > PVP_LOG_MAX do
+        table.remove(db.pvpLog, 1)
+    end
+end
+
+local function startPvpLog()
+    if pvpLogListening or (type(WFTSyncDB) == "table" and WFTSyncDB.pvpLogOff) then
+        return
+    end
+    if type(_G.CombatLogGetCurrentEventInfo) ~= "function" then
+        return
+    end
+    local okG, g = safeCall(_G.UnitGUID, "player")
+    playerGUID = okG and g or nil
+    if not playerGUID then
+        return
+    end
+    pvpLogListening = true
+    pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "COMBAT_LOG_EVENT_UNFILTERED")
+end
+
+local function stopPvpLog()
+    pvpLogListening = false
+    pcall(pvpLogFrame.UnregisterEvent, pvpLogFrame, "COMBAT_LOG_EVENT_UNFILTERED")
+end
+
+pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "PLAYER_ENTERING_WORLD")
+pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "PLAYER_DEAD")
+pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "PLAYER_TARGET_CHANGED")
+pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, "UPDATE_MOUSEOVER_UNIT")
+pvpLogFrame:SetScript("OnEvent", function(_, event)
+    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        pcall(onCombatLog)
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        rememberLevel("target")
+    elseif event == "UPDATE_MOUSEOVER_UNIT" then
+        rememberLevel("mouseover")
+    elseif event == "PLAYER_DEAD" then
+        -- Killed by whatever hit you in the last 10 seconds
+        local hit = lastHostileHit
+        lastHostileHit = nil
+        if pvpLogListening and hit and (GetTime() - hit.at) <= 10 then
+            if hit.player then
+                pcall(recordPvp, "death", hit.guid, hit.name)
+            else
+                pcall(recordOtherDeath, hit)
+            end
+        end
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        local Timer = _G.C_Timer
+        if type(Timer) == "table" and type(Timer.After) == "function" then
+            Timer.After(10, function()
+                pcall(startPvpLog)
+            end)
+        end
+    end
+end)
+
+----------------------------------------------------------------------
+-- Epic and legendary items (1.9.5, 2026-11-09, "tracking when
+-- epics/legendaries are won in dungeon/raid/loot roll. or traded or
+-- crafted ... with the roll number too")
+----------------------------------------------------------------------
+-- Read from the game's own messages rather than the combat log:
+--   * loot roll results ("Need Roll - 87 for [item] by Xeon Mana") and
+--     "You won: [item]" - the win is logged with your roll and roll type
+--   * "You receive loot: [item]" - looted without a roll
+--   * "You create: [item]" - crafted
+--   * the trade window's items on both sides, logged when the game says
+--     the trade completed
+-- Each message is matched with the client's own text template (the
+-- LOOT_ROLL_* / LOOT_ITEM_* globals), so it works in any client language.
+-- Only epic (quality 4) and better is logged. WFTSyncDB.itemLog keeps the
+-- most recent ITEM_LOG_MAX; the website posts each once.
+
+local ITEM_LOG_MAX = 300
+local itemFrame = CreateFrame("Frame")
+local myRolls = {} -- item link -> { roll, rollType, at }
+local recentlyWon = {} -- item link -> time, so "You receive loot" after a win isn't logged twice
+local trade = { partner = nil, mine = {}, theirs = {} }
+
+-- "Need Roll - %d for %s by %s" -> "^Need Roll %- (%d+) for (.+) by (.+)$"
+-- Placeholders (%s, %d, and positional %1$s) are swapped for markers
+-- first, then everything else that means something in a Lua pattern is
+-- escaped, then the markers become captures.
+local function templateToPattern(fmt)
+    if type(fmt) ~= "string" then
+        return nil
+    end
+    local p = fmt:gsub("%%%d?%$?s", "\001")
+    p = p:gsub("%%%d?%$?d", "\002")
+    p = p:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1")
+    p = p:gsub("\001", "(.+)")
+    p = p:gsub("\002", "(%%d+)")
+    return "^" .. p .. "$"
+end
+
+local PATTERNS = {}
+local function pattern(name)
+    if PATTERNS[name] == nil then
+        PATTERNS[name] = templateToPattern(_G[name]) or false
+    end
+    return PATTERNS[name] or nil
+end
+
+-- Quality from the item itself where the client has it cached, otherwise
+-- from the link's colour (epic purple / legendary orange / artifact gold)
+local LINK_COLOR_QUALITY = { a335ee = 4, ff8000 = 5, e6cc80 = 6 }
+local function itemQuality(link)
+    local ok, _, _, quality = safeCall(_G.GetItemInfo, link)
+    if ok and type(quality) == "number" then
+        return quality
+    end
+    local color = type(link) == "string" and link:match("|cff(%x%x%x%x%x%x)")
+    return color and LINK_COLOR_QUALITY[color:lower()] or nil
+end
+
+local function itemName(link)
+    return type(link) == "string" and (link:match("%[(.-)%]") or link) or nil
+end
+
+local function itemId(link)
+    return type(link) == "string" and tonumber(link:match("item:(%d+)")) or nil
+end
+
+local function currentPlace()
+    local okI, name, instanceType = safeCall(_G.GetInstanceInfo)
+    if okI and name and instanceType and instanceType ~= "none" then
+        return name
+    end
+    local okZ, zone = safeCall(_G.GetRealZoneText)
+    return okZ and zone or nil
+end
+
+local function isMe(name)
+    if type(name) ~= "string" then
+        return false
+    end
+    local okN, me = safeCall(_G.UnitName, "player")
+    return name == (_G.YOU or "You") or (okN and (name == me or name:match("^[^-]+") == me))
+end
+
+local function recordItem(kind, link, extra)
+    local quality = itemQuality(link)
+    if type(quality) ~= "number" or quality < 4 then
+        return
+    end
+    local db = ensureSyncDB()
+    db.itemLog = type(db.itemLog) == "table" and db.itemLog or {}
+    local okT, now = safeCall(_G.time)
+    local entry = {
+        t = okT and now or nil,
+        kind = kind,
+        item = itemName(link),
+        itemId = itemId(link),
+        quality = quality,
+        where = currentPlace(),
+    }
+    for k, v in pairs(extra or {}) do
+        entry[k] = v
+    end
+    table.insert(db.itemLog, entry)
+    while #db.itemLog > ITEM_LOG_MAX do
+        table.remove(db.itemLog, 1)
+    end
+end
+
+local ROLL_TYPES = {
+    LOOT_ROLL_ROLLED_NEED = "Need",
+    LOOT_ROLL_ROLLED_GREED = "Greed",
+    LOOT_ROLL_ROLLED_DE = "Disenchant",
+}
+
+local function onLootMessage(msg)
+    if type(msg) ~= "string" then
+        return
+    end
+    -- Your own roll on an item, kept until the winner is announced
+    for global, rollType in pairs(ROLL_TYPES) do
+        local p = pattern(global)
+        if p then
+            local roll, link, who = msg:match(p)
+            if roll and isMe(who) then
+                myRolls[link] = { roll = tonumber(roll), rollType = rollType, at = GetTime() }
+                return
+            end
+        end
+    end
+    local p = pattern("LOOT_ROLL_YOU_WON")
+    local link = p and msg:match(p)
+    if link then
+        local mine = myRolls[link]
+        myRolls[link] = nil
+        recentlyWon[link] = GetTime()
+        recordItem("won", link, { roll = mine and mine.roll or nil, rollType = mine and mine.rollType or nil })
+        return
+    end
+    p = pattern("LOOT_ITEM_CREATED_SELF_MULTIPLE")
+    local count
+    if p then
+        link, count = msg:match(p)
+    end
+    if not link then
+        p = pattern("LOOT_ITEM_CREATED_SELF")
+        link = p and msg:match(p)
+    end
+    if link then
+        recordItem("crafted", link, { count = tonumber(count) })
+        return
+    end
+    p = pattern("LOOT_ITEM_SELF_MULTIPLE")
+    if p then
+        link, count = msg:match(p)
+    end
+    if not link then
+        p = pattern("LOOT_ITEM_SELF")
+        link = p and msg:match(p)
+    end
+    if link then
+        local won = recentlyWon[link]
+        if won and GetTime() - won < 30 then
+            recentlyWon[link] = nil
+            return
+        end
+        recordItem("looted", link, { count = tonumber(count) })
+    end
+end
+
+-- Trades: remember what's in the window on both sides as it changes, and
+-- log it when the game reports the trade completed
+local function snapshotTrade()
+    for i = 1, 7 do
+        local okM, mine = safeCall(_G.GetTradePlayerItemLink, i)
+        trade.mine[i] = okM and mine or nil
+        local okT, theirs = safeCall(_G.GetTradeTargetItemLink, i)
+        trade.theirs[i] = okT and theirs or nil
+    end
+end
+
+local function tradeCompleted()
+    local partner = trade.partner
+    for i = 1, 7 do
+        if trade.mine[i] then
+            recordItem("trade_gave", trade.mine[i], { player = partner })
+        end
+        if trade.theirs[i] then
+            recordItem("trade_got", trade.theirs[i], { player = partner })
+        end
+    end
+    trade.mine, trade.theirs = {}, {}
+end
+
+for _, ev in ipairs({ "CHAT_MSG_LOOT", "TRADE_SHOW", "TRADE_PLAYER_ITEM_CHANGED", "TRADE_TARGET_ITEM_CHANGED",
+    "TRADE_ACCEPT_UPDATE", "UI_INFO_MESSAGE" }) do
+    pcall(itemFrame.RegisterEvent, itemFrame, ev)
+end
+itemFrame:SetScript("OnEvent", function(_, event, ...)
+    if event == "CHAT_MSG_LOOT" then
+        pcall(onLootMessage, (...))
+    elseif event == "TRADE_SHOW" then
+        local okN, partner = safeCall(_G.UnitName, "NPC")
+        trade = { partner = okN and partner or nil, mine = {}, theirs = {} }
+        pcall(snapshotTrade)
+    elseif event == "TRADE_PLAYER_ITEM_CHANGED" or event == "TRADE_TARGET_ITEM_CHANGED"
+        or event == "TRADE_ACCEPT_UPDATE" then
+        pcall(snapshotTrade)
+    elseif event == "UI_INFO_MESSAGE" then
+        -- (messageType, message) on newer clients, (message) on older ones
+        local a, b = ...
+        local done = _G.ERR_TRADE_COMPLETE
+        if done and (a == done or b == done) then
+            pcall(tradeCompleted)
+        end
+    end
+end)
+
+----------------------------------------------------------------------
+-- Duels (1.9.5, 2026-11-09)
+----------------------------------------------------------------------
+-- The game announces every finished duel in system chat:
+-- DUEL_WINNER_KNOCKOUT "%1$s has defeated %2$s in a duel" and
+-- DUEL_WINNER_RETREAT "%2$s has fled from %1$s in a duel" (%1 is always
+-- the winner). Only duels you were in are logged, with the opponent and
+-- whether you won. The website keeps the running record per opponent.
+
+local DUEL_LOG_MAX = 200
+local duelFrame = CreateFrame("Frame")
+
+-- Pattern plus which argument each capture is, since the "fled" message
+-- names the loser first
+local function duelPattern(global)
+    local fmt = _G[global]
+    if type(fmt) ~= "string" then
+        return nil
+    end
+    local order = {}
+    for n in fmt:gmatch("%%(%d)%$s") do
+        table.insert(order, tonumber(n))
+    end
+    if #order ~= 2 then
+        order = { 1, 2 }
+    end
+    return templateToPattern(fmt), order
+end
+
+local function onSystemMessage(msg)
+    if type(msg) ~= "string" then
+        return
+    end
+    for _, global in ipairs({ "DUEL_WINNER_KNOCKOUT", "DUEL_WINNER_RETREAT" }) do
+        local p, order = duelPattern(global)
+        if p then
+            local a, b = msg:match(p)
+            if a and b then
+                local args = {}
+                args[order[1]], args[order[2]] = a, b
+                local winner, loser = args[1], args[2]
+                local won = isMe(winner)
+                if not won and not isMe(loser) then
+                    return
+                end
+                local db = ensureSyncDB()
+                db.duelLog = type(db.duelLog) == "table" and db.duelLog or {}
+                local okT, now = safeCall(_G.time)
+                table.insert(db.duelLog, {
+                    t = okT and now or nil,
+                    won = won,
+                    fled = global == "DUEL_WINNER_RETREAT",
+                    opponent = won and loser or winner,
+                    zone = currentPlace(),
+                })
+                while #db.duelLog > DUEL_LOG_MAX do
+                    table.remove(db.duelLog, 1)
+                end
+                return
+            end
+        end
+    end
+end
+
+pcall(duelFrame.RegisterEvent, duelFrame, "CHAT_MSG_SYSTEM")
+duelFrame:SetScript("OnEvent", function(_, _, msg)
+    pcall(onSystemMessage, msg)
+end)
+
+-- Who was in your group at each boss kill (1.9.5), so a first dungeon/raid
+-- clear on the website can say who it was with. Called from the boss-kill
+-- events further down.
+local BOSS_GROUP_MAX = 100
+local function recordBossGroup(boss)
+    if type(boss) ~= "string" or boss == "" then
+        return
+    end
+    local members = {}
+    local okR, inRaid = safeCall(_G.IsInRaid)
+    local okN, count = safeCall(_G.GetNumGroupMembers)
+    count = okN and type(count) == "number" and count or 0
+    local prefix = (okR and inRaid) and "raid" or "party"
+    local last = prefix == "raid" and count or math.min(count, 4)
+    for i = 1, last do
+        local okU, name = safeCall(_G.UnitName, prefix .. i)
+        if okU and type(name) == "string" and name ~= "" and not isMe(name) then
+            table.insert(members, name)
+        end
+    end
+    local db = ensureSyncDB()
+    db.bossGroups = type(db.bossGroups) == "table" and db.bossGroups or {}
+    local okT, now = safeCall(_G.time)
+    -- ENCOUNTER_END and BOSS_KILL can both fire for one kill
+    local prev = db.bossGroups[#db.bossGroups]
+    if prev and prev.boss == boss and okT and prev.t and now - prev.t < 60 then
+        return
+    end
+    table.insert(db.bossGroups, { t = okT and now or nil, boss = boss, where = currentPlace(), members = members })
+    while #db.bossGroups > BOSS_GROUP_MAX do
+        table.remove(db.bossGroups, 1)
+    end
+end
+
+-- Level-ups (1.9.5): the exact time and total played time of each one.
+-- Played time is only reported at login (TIME_PLAYED_MSG), so it's that
+-- figure plus however long you've been online since.
+local levelFrame = CreateFrame("Frame")
+local playedBase, playedBaseAt
+pcall(levelFrame.RegisterEvent, levelFrame, "TIME_PLAYED_MSG")
+pcall(levelFrame.RegisterEvent, levelFrame, "PLAYER_LEVEL_UP")
+levelFrame:SetScript("OnEvent", function(_, event, a)
+    if event == "TIME_PLAYED_MSG" and type(a) == "number" then
+        playedBase, playedBaseAt = a, GetTime()
+    elseif event == "PLAYER_LEVEL_UP" and type(a) == "number" then
+        local db = ensureSyncDB()
+        db.levelTimes = type(db.levelTimes) == "table" and db.levelTimes or {}
+        local okT, now = safeCall(_G.time)
+        db.levelTimes[tostring(a)] = {
+            t = okT and now or nil,
+            played = playedBase and math.floor(playedBase + (GetTime() - playedBaseAt)) or nil,
+        }
+    end
+end)
+
+----------------------------------------------------------------------
+-- Auction House sales and purchases (1.9.5, 2026-11-09, "how about
+-- auction house tracking like big sales or big buys maybe 50 gold+?")
+----------------------------------------------------------------------
+-- Every sale and won auction arrives as mail, and the game gives addons an
+-- "invoice" for those mails: sale or purchase, the item, the price and the
+-- other player. Read whenever the mailbox updates, so a sale is logged the
+-- next time you open a mailbox. Everything is logged here; the website
+-- decides which are big enough to post (50g+).
+--
+-- The game doesn't say when a mail arrived, only how many days it has
+-- left. Auction mail lasts 30 days, so arrival = now - (30 - daysLeft)
+-- days, worked out once when the mail is first seen and kept from then on.
+--
+-- Some clients only fill in an invoice after the mail's text has been
+-- fetched, which marks it read - so that's done only for Auction House
+-- mail, only when the invoice came back empty.
+
+local AH_LOG_MAX = 300
+local AH_MAIL_DAYS = 30
+local ahFrame = CreateFrame("Frame")
+local ahScanQueued = false
+
+local function scanAuctionMail()
+    local okN, num = safeCall(_G.GetInboxNumItems)
+    if not okN or type(num) ~= "number" or num == 0 then
+        return
+    end
+    local db = ensureSyncDB()
+    db.ahLog = type(db.ahLog) == "table" and db.ahLog or {}
+    db.ahSeen = type(db.ahSeen) == "table" and db.ahSeen or {}
+    local okT, now = safeCall(_G.time)
+    if not okT or type(now) ~= "number" then
+        return
+    end
+
+    for i = 1, num do
+        local okH, _, _, sender, subject, _, _, daysLeft = safeCall(_G.GetInboxHeaderInfo, i)
+        local okI, invoiceType, itemName, playerName, bid, _, _, _, _, _, _, count =
+            safeCall(_G.GetInboxInvoiceInfo, i)
+        if okH and (not okI or not invoiceType) and type(sender) == "string" and sender:find("Auction House") then
+            pcall(_G.GetInboxText, i)
+            okI, invoiceType, itemName, playerName, bid, _, _, _, _, _, _, count =
+                safeCall(_G.GetInboxInvoiceInfo, i)
+        end
+        if okH and okI and (invoiceType == "seller" or invoiceType == "buyer")
+            and type(bid) == "number" and bid > 0 and type(daysLeft) == "number" then
+            local arrived = math.floor(now - (AH_MAIL_DAYS - daysLeft) * 86400)
+            -- Same mail on a later scan: same item/player/price, arrival
+            -- within the hour (daysLeft keeps ticking down between scans)
+            local key = table.concat({ invoiceType, tostring(itemName), tostring(playerName), tostring(bid),
+                tostring(math.floor(arrived / 3600)) }, "|")
+            local keyPrev = table.concat({ invoiceType, tostring(itemName), tostring(playerName), tostring(bid),
+                tostring(math.floor(arrived / 3600) - 1) }, "|")
+            if not db.ahSeen[key] and not db.ahSeen[keyPrev] then
+                db.ahSeen[key] = arrived
+                -- Quantity: the invoice's own count where the client gives
+                -- one, else the attached item's stack (purchases only)
+                local qty = type(count) == "number" and count or nil
+                if not qty and invoiceType == "buyer" then
+                    local okA, _, _, _, attachedCount = safeCall(_G.GetInboxItem, i, 1)
+                    if okA and type(attachedCount) == "number" then
+                        qty = attachedCount
+                    end
+                end
+                -- Quality, so epics/legendaries post whatever the price:
+                -- from the attached item's link on a purchase, else by name
+                -- (works once the client has seen the item)
+                local okL, link = safeCall(_G.GetInboxItemLink, i, 1)
+                local quality = itemQuality((okL and link) or itemName)
+                table.insert(db.ahLog, {
+                    t = arrived,
+                    kind = invoiceType == "seller" and "sale" or "purchase",
+                    item = itemName,
+                    count = qty,
+                    player = playerName,
+                    price = bid,
+                    quality = quality,
+                })
+                while #db.ahLog > AH_LOG_MAX do
+                    table.remove(db.ahLog, 1)
+                end
+            end
+        end
+    end
+
+    -- Forget dedupe keys for mail that has long expired
+    for key, arrived in pairs(db.ahSeen) do
+        if type(arrived) ~= "number" or now - arrived > (AH_MAIL_DAYS + 2) * 86400 then
+            db.ahSeen[key] = nil
+        end
+    end
+end
+
+pcall(ahFrame.RegisterEvent, ahFrame, "MAIL_INBOX_UPDATE")
+ahFrame:SetScript("OnEvent", function()
+    -- MAIL_INBOX_UPDATE fires in bursts while the mailbox loads - read once
+    -- it settles
+    if ahScanQueued then
+        return
+    end
+    local Timer = _G.C_Timer
+    if type(Timer) == "table" and type(Timer.After) == "function" then
+        ahScanQueued = true
+        Timer.After(1, function()
+            ahScanQueued = false
+            pcall(scanAuctionMail)
+        end)
+    else
+        pcall(scanAuctionMail)
+    end
+end)
+
+-- Statistic change times (1.9.5) - see stampStatisticTimes. Every 5
+-- minutes while out of combat, and 3 seconds after a boss dies (so a first
+-- dungeon/raid clear gets the minute it happened, not the next sync).
+local statTimesFrame = CreateFrame("Frame")
+local statTicker
+local function queueStatStamp(delay)
+    local Timer = _G.C_Timer
+    if type(Timer) == "table" and type(Timer.After) == "function" then
+        Timer.After(delay, function()
+            pcall(stampStatisticTimes)
+        end)
+    end
+end
+pcall(statTimesFrame.RegisterEvent, statTimesFrame, "PLAYER_ENTERING_WORLD")
+pcall(statTimesFrame.RegisterEvent, statTimesFrame, "ENCOUNTER_END")
+pcall(statTimesFrame.RegisterEvent, statTimesFrame, "BOSS_KILL")
+statTimesFrame:SetScript("OnEvent", function(_, event, ...)
+    if event == "ENCOUNTER_END" then
+        local _, encounterName, _, _, success = ...
+        if success == 1 or success == true then
+            pcall(recordBossGroup, encounterName)
+            queueStatStamp(3)
+        end
+    elseif event == "BOSS_KILL" then
+        local _, encounterName = ...
+        pcall(recordBossGroup, encounterName)
+        queueStatStamp(3)
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        -- First look a little after loading in (records starting values)
+        queueStatStamp(15)
+        local Timer = _G.C_Timer
+        if not statTicker and type(Timer) == "table" and type(Timer.NewTicker) == "function" then
+            statTicker = Timer.NewTicker(300, function()
+                local okC, inCombat = safeCall(_G.InCombatLockdown)
+                if okC and inCombat then
+                    return
+                end
+                pcall(stampStatisticTimes)
+            end)
+        end
+    end
+end)
+
+-- /wft pvplog [on|off] - show the last few entries, or switch logging
+local function cmdPvpLog(arg)
+    local db = ensureSyncDB()
+    if arg == "off" then
+        db.pvpLogOff = true
+        stopPvpLog()
+        print("|cffffcc00WFT:|r PvP kill/death logging is |cffff6666off|r. /wft pvplog on to turn it back on.")
+        return
+    elseif arg == "on" then
+        db.pvpLogOff = nil
+        startPvpLog()
+        print("|cffffcc00WFT:|r PvP kill/death logging is |cff66ff66on|r.")
+        return
+    end
+    local log = type(db.pvpLog) == "table" and db.pvpLog or {}
+    print(("|cffffcc00WFT PvP log:|r %s, %d entries"):format(
+        db.pvpLogOff and "off" or (pvpLogListening and "on" or "starting"), #log))
+    for i = math.max(1, #log - 4), #log do
+        local e = log[i]
+        print(("  %s %s %s lvl %s %s %s"):format(
+            e.t and date("%d %b %H:%M", e.t) or "?", e.kind == "kill" and "killed" or "killed by",
+            tostring(e.name), e.level == -1 and "??" or tostring(e.level or "?"),
+            tostring(e.race or ""), tostring(e.class or "")))
+    end
+end
+
 SLASH_WFT1 = "/wft"
 SlashCmdList["WFT"] = function(rawMsg)
     -- Kept in its original case (profession names are case-sensitive, e.g.
@@ -3777,6 +4535,8 @@ SlashCmdList["WFT"] = function(rawMsg)
         cmdSpecProbe()
     elseif msg == "counters" then
         cmdCounters()
+    elseif msg == "pvplog" or msg:match("^pvplog%s") then
+        cmdPvpLog(msg:match("^pvplog%s+(%S+)"))
     elseif msg == "statsprobe" then
         cmdStatsProbe()
     elseif msg == "achievementsprobe" then
@@ -3822,6 +4582,7 @@ SlashCmdList["WFT"] = function(rawMsg)
         print("  /wft savetest - test whether this client saves data to disk across a full logout/login")
         print("  /wft profdump - dump raw GetProfessions() values (diagnostic, for me to look at)")
         print("  /wft pvpdump - dump raw PvP stat values (diagnostic, for me to look at)")
+        print("  /wft pvplog - show your last PvP kills/deaths; /wft pvplog off (or on) to switch logging")
         print("  /wft specprobe - check for a spec API on this client (diagnostic, for me to look at)")
         print("  /wft counters - show your current death count (PvP kill tracking is paused)")
         print("  /wft statsprobe - check for a Statistics-pane API on this client (diagnostic, for me to look at)")
