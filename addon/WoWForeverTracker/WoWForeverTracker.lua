@@ -4559,6 +4559,382 @@ local function cmdPvpLog(arg)
     end
 end
 
+----------------------------------------------------------------------
+-- Sync button (1.9.7, 2026-11-09, "a small ui in game that says sync?
+-- and every 30 minutes it goes red or something as a reminder and if you
+-- press it, it just reloads the game")
+----------------------------------------------------------------------
+-- The game only writes this addon's data to disk on logout or /reload, so
+-- the button is a one-click /reload that the tray app then syncs.
+--   * the time since the last sync (this UI load) is shown on it; it turns
+--     amber after the reminder time (30 min by default) and red at double
+--     that, with a gentle pulse
+--   * greyed out in combat; inside a dungeon or raid it asks first
+--   * the tooltip lists what's waiting to sync and whether you're in a
+--     safe spot (inn or city)
+--   * it glows for a while after something worth sharing - a level-up, a
+--     boss kill, an epic item, a rare kill - and when you rest in an inn or
+--     city with something waiting
+--   * drag to move; right-click locks/unlocks; /wft sync for the rest
+-- Settings live in WFTSyncDB.syncButton (per character).
+--
+-- Wrapped in do ... end: the main file is close to Lua's limit of 200
+-- top-level locals, so only cmdSync is visible outside.
+
+local cmdSync
+do
+local SYNC_GLOW_SECONDS = 30
+local syncSessionStart = time()
+local syncBtn
+local syncGlowUntil = 0
+local syncLastSeen -- what was waiting at the last check, to spot new things
+local syncWasResting = false
+
+local function syncSettings()
+    local db = ensureSyncDB()
+    db.syncButton = type(db.syncButton) == "table" and db.syncButton or {}
+    local s = db.syncButton
+    if type(s.remind) ~= "number" or s.remind < 1 then
+        s.remind = 30
+    end
+    return s
+end
+
+-- Entries in a log stamped at or after the last sync
+local function countSince(log, test)
+    if type(log) ~= "table" then
+        return 0
+    end
+    local n = 0
+    for _, e in ipairs(log) do
+        if type(e) == "table" and type(e.t) == "number" and e.t >= syncSessionStart and (not test or test(e)) then
+            n = n + 1
+        end
+    end
+    return n
+end
+
+-- What's happened since the last sync, by type
+local function syncWaiting()
+    local db = type(WFTSyncDB) == "table" and WFTSyncDB or {}
+    local w = {
+        kills = countSince(db.pvpLog, function(e) return e.kind == "kill" end),
+        deaths = countSince(db.pvpLog, function(e)
+            return e.kind == "death" or e.kind == "death_pve" or e.kind == "death_env"
+        end),
+        rares = countSince(db.pvpLog, function(e) return e.kind == "rare_kill" end),
+        epics = countSince(db.itemLog),
+        duels = countSince(db.duelLog),
+        clears = countSince(db.bossGroups),
+        level = nil,
+    }
+    if type(db.levelTimes) == "table" then
+        for lvl, info in pairs(db.levelTimes) do
+            local n = tonumber(lvl)
+            if n and type(info) == "table" and type(info.t) == "number" and info.t >= syncSessionStart
+                and (not w.level or n > w.level) then
+                w.level = n
+            end
+        end
+    end
+    return w
+end
+
+local function plural(n, word)
+    return ("%d %s%s"):format(n, word, n == 1 and "" or "s")
+end
+
+local function syncWaitingText(w)
+    local parts = {}
+    if w.level then table.insert(parts, "level " .. w.level) end
+    if w.clears > 0 then table.insert(parts, plural(w.clears, "boss kill")) end
+    if w.rares > 0 then table.insert(parts, plural(w.rares, "rare kill")) end
+    if w.epics > 0 then table.insert(parts, plural(w.epics, "epic item")) end
+    if w.kills > 0 then table.insert(parts, plural(w.kills, "PvP kill")) end
+    if w.duels > 0 then table.insert(parts, plural(w.duels, "duel")) end
+    if w.deaths > 0 then table.insert(parts, plural(w.deaths, "death")) end
+    return #parts > 0 and table.concat(parts, ", ") or nil
+end
+
+-- The things worth a glow, as one number per kind
+local function syncHighlights(w)
+    return (w.level or 0), w.clears, w.rares, w.epics
+end
+
+local function minutesSinceSync()
+    return math.floor((time() - syncSessionStart) / 60)
+end
+
+local function inCombat()
+    local ok, v = safeCall(_G.InCombatLockdown)
+    return ok and v
+end
+
+local function inInstance()
+    local ok, v = safeCall(_G.IsInInstance)
+    return ok and v
+end
+
+local function isResting()
+    local ok, v = safeCall(_G.IsResting)
+    return ok and v
+end
+
+local function doSync()
+    if inCombat() then
+        print("|cffffcc00WFT:|r Can't sync in combat - try again once you're out.")
+        return
+    end
+    if inInstance() then
+        StaticPopup_Show("WFT_SYNC_CONFIRM")
+        return
+    end
+    ReloadUI()
+end
+
+StaticPopupDialogs = StaticPopupDialogs or {}
+StaticPopupDialogs["WFT_SYNC_CONFIRM"] = {
+    text = "Sync now?\n\nThis reloads your game - you'll get a short loading screen inside the dungeon.",
+    button1 = "Sync",
+    button2 = "Not now",
+    OnAccept = function()
+        if not inCombat() then
+            ReloadUI()
+        end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+}
+
+local function syncShowTooltip(self)
+    GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+    GameTooltip:AddLine("WoW Forever Tracker - Sync")
+    local mins = minutesSinceSync()
+    GameTooltip:AddLine(mins < 1 and "Last synced just now" or ("Last synced " .. mins .. "m ago"), 1, 1, 1)
+    local waiting = syncWaitingText(syncWaiting())
+    if waiting then
+        GameTooltip:AddLine("Waiting: " .. waiting, 1, 0.82, 0, true)
+    else
+        GameTooltip:AddLine("Nothing new waiting yet", 0.6, 0.6, 0.6)
+    end
+    GameTooltip:AddLine(" ")
+    if inCombat() then
+        GameTooltip:AddLine("Can't sync in combat.", 1, 0.3, 0.3)
+    elseif isResting() then
+        GameTooltip:AddLine("You're in a safe spot - good time to sync.", 0.3, 1, 0.3, true)
+    else
+        GameTooltip:AddLine("Make sure you're somewhere safe when syncing - you're out in the open.", 1, 0.6, 0.2, true)
+    end
+    if inInstance() then
+        GameTooltip:AddLine("In a dungeon - you'll be asked to confirm.", 1, 0.82, 0, true)
+    end
+    GameTooltip:AddLine(" ")
+    local s = syncSettings()
+    GameTooltip:AddLine("Click: reload to sync", 0.6, 0.6, 0.6)
+    GameTooltip:AddLine(s.locked and "Right-click: unlock to move" or "Drag to move - right-click: lock", 0.6, 0.6, 0.6)
+    GameTooltip:AddLine("/wft sync for more options", 0.6, 0.6, 0.6)
+    GameTooltip:Show()
+end
+
+local function syncRefresh()
+    if not syncBtn then
+        return
+    end
+    local s = syncSettings()
+    local mins = minutesSinceSync()
+    local r, g, b = 0.15, 0.15, 0.15
+    local due = 0
+    if mins >= s.remind * 2 then
+        r, g, b, due = 0.55, 0.08, 0.08, 2
+    elseif mins >= s.remind then
+        r, g, b, due = 0.6, 0.38, 0.05, 1
+    end
+    syncBtn.due = due
+    syncBtn.bg:SetColorTexture(r, g, b, 0.9)
+    syncBtn.label:SetText(mins < 1 and "Sync" or ("Sync  |cffcccccc" .. mins .. "m|r"))
+    if inCombat() then
+        syncBtn.label:SetTextColor(0.5, 0.5, 0.5)
+    else
+        syncBtn.label:SetTextColor(1, 0.82, 0)
+    end
+
+    -- Glow: something worth sharing just happened, or you've just walked
+    -- into an inn or city with something waiting
+    local w = syncWaiting()
+    local now = GetTime()
+    local lvl, clears, rares, epics = syncHighlights(w)
+    if syncLastSeen then
+        if lvl > syncLastSeen[1] or clears > syncLastSeen[2] or rares > syncLastSeen[3] or epics > syncLastSeen[4] then
+            syncGlowUntil = now + SYNC_GLOW_SECONDS
+        end
+    end
+    syncLastSeen = { lvl, clears, rares, epics }
+    local resting = isResting()
+    if resting and not syncWasResting and syncWaitingText(w) then
+        syncGlowUntil = now + SYNC_GLOW_SECONDS
+    end
+    syncWasResting = resting
+end
+
+local function syncSavePosition()
+    local point, _, relPoint, x, y = syncBtn:GetPoint(1)
+    local s = syncSettings()
+    s.point, s.relPoint, s.x, s.y = point, relPoint, x, y
+end
+
+local function createSyncButton()
+    if syncBtn then
+        return
+    end
+    local s = syncSettings()
+    local b = CreateFrame("Button", "WFTSyncButton", UIParent)
+    b:SetSize(84, 22)
+    b:SetFrameStrata("MEDIUM")
+    b:SetClampedToScreen(true)
+    b:SetMovable(true)
+    b:EnableMouse(true)
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    b:RegisterForDrag("LeftButton")
+    if s.point then
+        b:SetPoint(s.point, UIParent, s.relPoint or s.point, s.x or 0, s.y or 0)
+    else
+        b:SetPoint("TOP", UIParent, "TOP", 0, -12)
+    end
+
+    local border = b:CreateTexture(nil, "BACKGROUND")
+    border:SetAllPoints()
+    border:SetColorTexture(0.55, 0.42, 0.15, 1)
+    b.bg = b:CreateTexture(nil, "BORDER")
+    b.bg:SetPoint("TOPLEFT", 1, -1)
+    b.bg:SetPoint("BOTTOMRIGHT", -1, 1)
+    b.glow = b:CreateTexture(nil, "ARTWORK")
+    b.glow:SetPoint("TOPLEFT", -3, 3)
+    b.glow:SetPoint("BOTTOMRIGHT", 3, -3)
+    b.glow:SetColorTexture(1, 0.85, 0.3, 0.35)
+    b.glow:SetBlendMode("ADD")
+    b.glow:Hide()
+    b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    b.label:SetPoint("CENTER")
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.12)
+
+    b:SetScript("OnDragStart", function(self)
+        if not syncSettings().locked then
+            self.dragging = true
+            self:StartMoving()
+        end
+    end)
+    b:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        pcall(syncSavePosition)
+        -- Letting go after a drag can also count as a click - never reload
+        -- because the button was moved
+        self.droppedAt = GetTime()
+        self.dragging = false
+    end)
+    b:SetScript("OnClick", function(self, button)
+        if button == "RightButton" then
+            local st = syncSettings()
+            st.locked = not st.locked
+            print("|cffffcc00WFT:|r Sync button " .. (st.locked and "locked." or "unlocked - drag it to move."))
+            if GameTooltip:IsOwned(self) then
+                syncShowTooltip(self)
+            end
+        elseif not self.dragging and GetTime() - (self.droppedAt or 0) > 0.3 then
+            doSync()
+        end
+    end)
+    b:SetScript("OnEnter", syncShowTooltip)
+    b:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+
+    -- Pulse when due, glow after a highlight; cheap enough to run every frame
+    local acc = 0
+    b:SetScript("OnUpdate", function(self, elapsed)
+        acc = acc + elapsed
+        local t = GetTime()
+        if self.due and self.due > 0 then
+            local speed = self.due == 2 and 4 or 2
+            self.bg:SetAlpha(0.65 + 0.35 * math.abs(math.sin(t * speed)))
+        else
+            self.bg:SetAlpha(1)
+        end
+        if t < syncGlowUntil then
+            self.glow:Show()
+            self.glow:SetAlpha(0.4 + 0.6 * math.abs(math.sin(t * 3)))
+        else
+            self.glow:Hide()
+        end
+        if acc >= 2 then
+            acc = 0
+            pcall(syncRefresh)
+        end
+    end)
+
+    syncBtn = b
+    syncRefresh()
+    if s.hidden then
+        b:Hide()
+    end
+end
+
+-- /wft sync [now|hide|show|lock|unlock|reset|remind <minutes>]
+function cmdSync(arg, value)
+    local s = syncSettings()
+    if arg == nil or arg == "" or arg == "now" then
+        doSync()
+    elseif arg == "hide" then
+        s.hidden = true
+        if syncBtn then syncBtn:Hide() end
+        print("|cffffcc00WFT:|r Sync button hidden. /wft sync show to bring it back.")
+    elseif arg == "show" then
+        s.hidden = false
+        createSyncButton()
+        syncBtn:Show()
+        print("|cffffcc00WFT:|r Sync button shown.")
+    elseif arg == "lock" or arg == "unlock" then
+        s.locked = arg == "lock"
+        print("|cffffcc00WFT:|r Sync button " .. (s.locked and "locked." or "unlocked - drag it to move."))
+    elseif arg == "reset" then
+        s.point, s.relPoint, s.x, s.y = nil, nil, nil, nil
+        if syncBtn then
+            syncBtn:ClearAllPoints()
+            syncBtn:SetPoint("TOP", UIParent, "TOP", 0, -12)
+        end
+        print("|cffffcc00WFT:|r Sync button moved back to the top of the screen.")
+    elseif arg == "remind" then
+        local n = tonumber(value)
+        if n and n >= 1 then
+            s.remind = math.floor(n)
+            pcall(syncRefresh)
+            print(("|cffffcc00WFT:|r Sync reminder set to %d minutes."):format(s.remind))
+        else
+            print("|cffffcc00WFT:|r Usage: /wft sync remind 15 (minutes)")
+        end
+    else
+        print("|cffffcc00WFT:|r /wft sync - reload to sync now")
+        print("  /wft sync hide | show | lock | unlock | reset")
+        print("  /wft sync remind <minutes> - when the button turns amber (red at double)")
+    end
+end
+
+local syncFrame = CreateFrame("Frame")
+pcall(syncFrame.RegisterEvent, syncFrame, "PLAYER_LOGIN")
+pcall(syncFrame.RegisterEvent, syncFrame, "PLAYER_REGEN_DISABLED")
+pcall(syncFrame.RegisterEvent, syncFrame, "PLAYER_REGEN_ENABLED")
+pcall(syncFrame.RegisterEvent, syncFrame, "PLAYER_UPDATE_RESTING")
+syncFrame:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_LOGIN" then
+        pcall(createSyncButton)
+    else
+        pcall(syncRefresh)
+    end
+end)
+end
+
 SLASH_WFT1 = "/wft"
 SlashCmdList["WFT"] = function(rawMsg)
     -- Kept in its original case (profession names are case-sensitive, e.g.
@@ -4623,6 +4999,8 @@ SlashCmdList["WFT"] = function(rawMsg)
     elseif msg:match("^recipedump%s") then
         local profession = raw:match("^%S+%s+(.+)$")
         cmdRecipeDump(profession)
+    elseif msg == "sync" or msg:match("^sync%s") then
+        cmdSync(msg:match("^sync%s+(%S+)"), msg:match("^sync%s+%S+%s+(%S+)"))
     elseif msg == "scan" then
         cmdProbe()
         cmdTraits()
@@ -4655,6 +5033,7 @@ SlashCmdList["WFT"] = function(rawMsg)
         print("  /wft recipeschema - check whether this client can give back a recipe's reagents/description too, not just its name (diagnostic, for me to look at - run /wft recipescan at least once first)")
         print("  /wft recipescan [profession name] - with a profession window open, try reading its known recipes right now; pass a name (e.g. /wft recipescan Blacksmithing) if it can't tell which one is open")
         print("  /wft recipedump <profession name> - dump everything recorded for one profession's recipes, reagents included (diagnostic, for me to look at)")
+        print("  /wft sync - reload to sync now; /wft sync help for the sync button's options")
         print("  /wft scan - run probe, traits and export together")
     end
 end
