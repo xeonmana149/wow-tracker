@@ -25,6 +25,7 @@ import { applyLiveObservation, ensureItemsExist } from "./items";
 // the SAME `events` array that table has always been built from, rather than
 // recomputing anything.
 import { logActivity } from "./activityLog";
+import { BOSS_KILLS_CATEGORY, logFirstBossKills, logPvpEvents, type PvpLogEntry } from "./activityExtras";
 
 export type ParsedTraitNode = {
   entryID?: number;
@@ -220,6 +221,8 @@ export type ParsedExport = {
   }[];
   // Honor and lifetime kill counts (addon 1.9.2+). Any of these can be
   // missing when this client doesn't answer the API.
+  // PvP kill/death log (addon 1.9.5+) - see lib/activityExtras.ts
+  pvpEvents?: PvpLogEntry[];
   pvp?: {
     honor?: number;
     honorMax?: number;
@@ -1001,6 +1004,19 @@ export async function applyImport(
     }
   }
 
+  // PvP kills and deaths (addon 1.9.5+) - only entries not posted yet
+  if (Array.isArray(parsed.pvpEvents) && parsed.pvpEvents.length > 0) {
+    try {
+      await logPvpEvents(
+        supabase,
+        { id: characterId, userId: before.user_id, name: before.name },
+        parsed.pvpEvents
+      );
+    } catch (err) {
+      console.warn("logPvpEvents failed:", err);
+    }
+  }
+
   // Reputations (addon 1.9.2+) - the export is the whole pane, so it
   // replaces what's on file: upsert every faction, then drop any that
   // are no longer listed.
@@ -1039,6 +1055,18 @@ export async function applyImport(
   //    replaces what's on file for those stat IDs, one upsert per exported
   //    stat, keyed on (character_id, stat_id).
   if (parsed.statistics && parsed.statistics.length > 0) {
+    // Boss Kills counters as they stood BEFORE this sync, for first
+    // dungeon/raid clears (lib/activityExtras.ts) - read before the upsert
+    // below overwrites them
+    const { data: previousBossRows } = await supabase
+      .from("character_statistics")
+      .select("stat_id, value")
+      .eq("character_id", characterId)
+      .eq("category", BOSS_KILLS_CATEGORY);
+    const previousBossKills = new Map<number, string>(
+      (previousBossRows ?? []).map((r: { stat_id: number; value: string }) => [r.stat_id, r.value])
+    );
+
     const statisticRows = parsed.statistics.map((s) => ({
       character_id: characterId,
       user_id: before.user_id,
@@ -1052,6 +1080,17 @@ export async function applyImport(
       .from("character_statistics")
       .upsert(statisticRows, { onConflict: "character_id,stat_id" });
     if (error) throw new Error(error.message);
+
+    try {
+      await logFirstBossKills(
+        supabase,
+        { id: characterId, userId: before.user_id, name: before.name },
+        previousBossKills,
+        parsed.statistics
+      );
+    } catch (err) {
+      console.warn("logFirstBossKills failed:", err);
+    }
 
     // Statistics-based badges (2026-09-25 rework, expanded 2026-09-25) - the
     // tiered achievements that used to be sourced from ad-hoc fields this

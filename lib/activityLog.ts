@@ -105,6 +105,8 @@ export const ACTIVITY_TYPES: Record<string, { label: string; kinds: string[] }> 
   achievements: { label: "Achievements", kinds: ["achievement_earned", "account_achievement_earned"] },
   levels: { label: "Level ups", kinds: ["level_up"] },
   legacy: { label: "Legacy Challenges", kinds: ["legacy_completed"] },
+  dungeons: { label: "First dungeon/raid clears", kinds: ["boss_first_kill"] },
+  pvp: { label: "PvP kills & deaths", kinds: ["pvp_kill", "pvp_death"] },
   characters: { label: "New characters", kinds: ["character_created"] },
 };
 
