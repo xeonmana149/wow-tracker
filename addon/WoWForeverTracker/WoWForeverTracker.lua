@@ -4681,32 +4681,79 @@ local function isResting()
     return ok and v
 end
 
+-- The "Sync now?" box inside dungeons is the addon's own frame, NOT
+-- Blizzard's StaticPopup (1.9.9 fix). 1.9.7 wrote to the shared
+-- StaticPopupDialogs table, which tainted it: Blizzard code that reads it
+-- (the Escape menu, the character window) then ran as "addon code" and was
+-- blocked - "tried to call the protected function SpellStopCasting()" and
+-- "attempt to compare a secret number value". Nothing here touches a
+-- Blizzard global.
+local syncConfirm
+
+local function syncConfirmButton(parent, text, x, onClick)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(90, 22)
+    b:SetPoint("BOTTOM", parent, "BOTTOM", x, 12)
+    local border = b:CreateTexture(nil, "BACKGROUND")
+    border:SetAllPoints()
+    border:SetColorTexture(0.55, 0.42, 0.15, 1)
+    local bg = b:CreateTexture(nil, "BORDER")
+    bg:SetPoint("TOPLEFT", 1, -1)
+    bg:SetPoint("BOTTOMRIGHT", -1, 1)
+    bg:SetColorTexture(0.15, 0.15, 0.15, 1)
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.12)
+    local label = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("CENTER")
+    label:SetText(text)
+    b:SetScript("OnClick", onClick)
+    return b
+end
+
+local function showSyncConfirm()
+    if not syncConfirm then
+        local f = CreateFrame("Frame", nil, UIParent)
+        f:SetSize(300, 110)
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+        f:SetFrameStrata("DIALOG")
+        f:EnableMouse(true)
+        local border = f:CreateTexture(nil, "BACKGROUND")
+        border:SetAllPoints()
+        border:SetColorTexture(0.55, 0.42, 0.15, 1)
+        local bg = f:CreateTexture(nil, "BORDER")
+        bg:SetPoint("TOPLEFT", 1, -1)
+        bg:SetPoint("BOTTOMRIGHT", -1, 1)
+        bg:SetColorTexture(0.06, 0.06, 0.06, 0.95)
+        local text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        text:SetPoint("TOP", f, "TOP", 0, -14)
+        text:SetWidth(270)
+        text:SetText("Sync now?\n\nThis reloads your game - you'll get a short loading screen inside the dungeon.")
+        syncConfirmButton(f, "Sync", -50, function()
+            f:Hide()
+            if not inCombat() then
+                ReloadUI()
+            end
+        end)
+        syncConfirmButton(f, "Not now", 50, function()
+            f:Hide()
+        end)
+        syncConfirm = f
+    end
+    syncConfirm:Show()
+end
+
 local function doSync()
     if inCombat() then
         print("|cffffcc00WFT:|r Can't sync in combat - try again once you're out.")
         return
     end
     if inInstance() then
-        StaticPopup_Show("WFT_SYNC_CONFIRM")
+        showSyncConfirm()
         return
     end
     ReloadUI()
 end
-
-StaticPopupDialogs = StaticPopupDialogs or {}
-StaticPopupDialogs["WFT_SYNC_CONFIRM"] = {
-    text = "Sync now?\n\nThis reloads your game - you'll get a short loading screen inside the dungeon.",
-    button1 = "Sync",
-    button2 = "Not now",
-    OnAccept = function()
-        if not inCombat() then
-            ReloadUI()
-        end
-    end,
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-}
 
 local function syncShowTooltip(self)
     GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
