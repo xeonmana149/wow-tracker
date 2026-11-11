@@ -8,8 +8,8 @@
 // it does mean a typo'd or reverted number here won't be caught, just
 // treated as "different, so out of date" by whoever's checking.
 export const LATEST_VERSIONS = {
-  addon: "1.9.11",
-  tray: "2.2.17",
+  addon: "1.9.12",
+  tray: "2.2.18",
 };
 
 // Wherever people should go to grab the update. Both now point at GitHub
