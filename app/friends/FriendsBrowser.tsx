@@ -179,10 +179,10 @@ function CharacterDetail({ c }: { c: CardCharacter }) {
   );
 }
 
-// One mini character chip inside a player's row. Mains render larger and
-// with a gold-tinted border - everything else stays a plain dark/grey
-// border, so gold reads as "this one's important" instead of "everything
-// on this page has a gold border."
+// One character chip inside a player's section. Mains are a bigger gold
+// card on their own row (2026-11-11, "have main character larger and more
+// defined than alts so they stand out"); alts are small, dimmed chips
+// underneath that brighten on hover.
 function CharacterChip({
   c,
   active,
@@ -193,31 +193,44 @@ function CharacterChip({
   onClick: () => void;
 }) {
   const main = isMain(c);
+  if (main) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={`flex min-w-[220px] shrink-0 items-center gap-3 rounded-xl border-2 bg-gradient-to-br from-amber-500/15 via-neutral-800 to-neutral-800 px-4 py-3 text-left shadow-lg shadow-amber-900/20 transition-colors ${
+          active ? "border-amber-400 ring-2 ring-amber-400/40" : "border-amber-600/70 hover:border-amber-400"
+        }`}
+      >
+        <GameIcon name={classIcon(c.class)} label={c.class} size={56} round />
+        <span className="min-w-0">
+          <span className="flex items-center gap-2">
+            <span className="truncate text-lg font-bold text-white">{c.name}</span>
+            <span className="shrink-0 rounded bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-amber-300 ring-1 ring-amber-500/50">
+              MAIN
+            </span>
+          </span>
+          <span className="block text-sm text-amber-100/80">
+            Level {c.level} {c.class}
+          </span>
+        </span>
+      </button>
+    );
+  }
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex shrink-0 items-center gap-2 rounded-lg border text-left transition-colors ${
-        main ? "px-3 py-2" : "px-2 py-1.5"
-      } ${
+      className={`flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-left transition-colors ${
         active
-          ? "border-amber-500 bg-amber-500/10"
-          : main
-            ? "border-amber-700/50 bg-neutral-800 hover:border-amber-600"
-            : "border-neutral-700 bg-neutral-800 hover:border-neutral-500"
+          ? "border-amber-500 bg-amber-500/10 opacity-100"
+          : "border-neutral-700 bg-neutral-800/60 opacity-75 hover:border-neutral-500 hover:opacity-100"
       }`}
     >
-      <GameIcon name={classIcon(c.class)} label={c.class} size={main ? 40 : 28} round />
+      <GameIcon name={classIcon(c.class)} label={c.class} size={24} round />
       <span className="min-w-0">
-        <span className="flex items-center gap-1.5">
-          <span className={`truncate font-semibold ${main ? "text-white" : "text-gray-200"}`}>{c.name}</span>
-          {main && (
-            <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
-              MAIN
-            </span>
-          )}
-        </span>
-        <span className="block text-xs text-gray-400">
+        <span className="block truncate text-sm font-medium text-gray-300">{c.name}</span>
+        <span className="block text-[11px] text-gray-500">
           Lv {c.level} {c.class}
         </span>
       </span>
@@ -246,6 +259,8 @@ function PlayerSection({
     .slice()
     .sort((a, b) => (isMain(b) ? 1 : 0) - (isMain(a) ? 1 : 0) || b.level - a.level);
   const expandedChar = ordered.find((c) => c.id === expandedCharId) ?? null;
+  const mains = ordered.filter(isMain);
+  const alts = ordered.filter((c) => !isMain(c));
 
   return (
     <div className="rounded-lg border border-neutral-700 bg-neutral-800/60 p-3">
@@ -258,11 +273,21 @@ function PlayerSection({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {ordered.map((c) => (
-          <CharacterChip key={c.id} c={c} active={expandedCharId === c.id} onClick={() => onToggleChar(c.id)} />
-        ))}
-      </div>
+      {mains.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {mains.map((c) => (
+            <CharacterChip key={c.id} c={c} active={expandedCharId === c.id} onClick={() => onToggleChar(c.id)} />
+          ))}
+        </div>
+      )}
+      {alts.length > 0 && (
+        <div className={`flex flex-wrap items-center gap-1.5 ${mains.length > 0 ? "mt-2" : ""}`}>
+          {mains.length > 0 && <span className="mr-1 text-[11px] uppercase tracking-wide text-gray-500">Alts</span>}
+          {alts.map((c) => (
+            <CharacterChip key={c.id} c={c} active={expandedCharId === c.id} onClick={() => onToggleChar(c.id)} />
+          ))}
+        </div>
+      )}
 
       {expandedChar && (
         <div className="mt-3">
