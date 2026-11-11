@@ -82,7 +82,7 @@ export default function LeaderboardsPage() {
 
   const [mode, setMode] = useState<Mode>("overall");
   const [scope, setScope] = useState<Scope>("characters");
-  const [mainsOnly, setMainsOnly] = useState(false);
+  const [mainsOnly, setMainsOnly] = useState(true);
   const [achievementKind, setAchievementKind] = useState<TieredAchievementKind>(
     TIERED_ACHIEVEMENT_KINDS[0]
   );
