@@ -626,7 +626,7 @@ local function collectGear()
             -- MISSING on a /wft probe, the website falls back to matching
             -- by name instead.
             local itemID = safeGet("GetInventoryItemID", "player", slotID)
-            gear[slotName] = {
+            local entry = {
                 link = link,
                 id = itemID,
                 name = extractItemName(link),
@@ -634,6 +634,29 @@ local function collectGear()
                 tooltip = #tooltip > 0 and tooltip or nil,
                 icon = icon,
             }
+            -- 1.9.12: an item the game hasn't loaded yet reads as "[]" with a
+            -- "Retrieving item information" tooltip - seen at logout. Each
+            -- slot's last full read is kept in WFTSyncDB.gearCache and used
+            -- instead when it's the same item.
+            local cache = type(WFTSyncDB) == "table" and WFTSyncDB.gearCache
+            if type(WFTSyncDB) == "table" and type(cache) ~= "table" then
+                cache = {}
+                WFTSyncDB.gearCache = cache
+            end
+            local first = tooltip[1]
+            local unloaded = (entry.name == nil or entry.name == "")
+                or (type(first) == "string" and first:find("^Retrieving item information") ~= nil)
+            if not unloaded then
+                if cache then
+                    cache[slotName] = entry
+                end
+            elseif cache and type(cache[slotName]) == "table" and cache[slotName].id == itemID then
+                entry = cache[slotName]
+            elseif itemID and type(_G.C_Item) == "table" and type(_G.C_Item.RequestLoadItemDataByID) == "function" then
+                -- Ask the game to load it, so the next read has it
+                pcall(_G.C_Item.RequestLoadItemDataByID, itemID)
+            end
+            gear[slotName] = entry
         end
     end
     return gear
@@ -4204,13 +4227,26 @@ pvpLogFrame.onHonor = function(msg)
     if type(msg) ~= "string" then
         return
     end
+    -- 1.9.12: honor was counted but no kill logged on WoW Forever, so the
+    -- message isn't the plain template there. Color codes and player links
+    -- are stripped first, and the last 10 raw messages are kept for
+    -- /wft pvplog to show.
+    local db = ensureSyncDB()
+    db.honorMsgs = type(db.honorMsgs) == "table" and db.honorMsgs or {}
+    table.insert(db.honorMsgs, msg)
+    while #db.honorMsgs > 10 do
+        table.remove(db.honorMsgs, 1)
+    end
+    msg = msg:gsub("|c[nN][^:]*:", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    msg = msg:gsub("|H.-|h(.-)|h", "%1"):gsub("^%[(.-)%]", "%1")
     local name, rank, honor
-    local matched = false
+    local matched, award = false, false
     for _, global in ipairs(pvpLogFrame.HONOR_GLOBALS) do
         local p = pattern(global)
         local caps = p and { msg:match(p) } or {}
         if #caps > 0 then
             matched = true
+            award = global == "COMBATLOG_HONORAWARD"
             for _, c in ipairs(caps) do
                 if c:match("^%d+$") then
                     honor = tonumber(c)
@@ -4226,18 +4262,25 @@ pvpLogFrame.onHonor = function(msg)
         end
     end
     if not matched then
-        -- Older/odd wording: the name before " dies", the last number is the honor
-        name = msg:match("^(.-) dies")
+        -- Other wording: the name before " dies" / " has died" / the first
+        -- comma, the last number is the honor. "You ..." is bonus honor.
+        award = msg:find("^You ") ~= nil
+        if not award then
+            name = msg:match("^(.-) dies") or msg:match("^(.-) has died") or msg:match("^([^,]+),")
+        end
         honor = tonumber(msg:match("(%d+)%D*$"))
     end
-    local db = ensureSyncDB()
     if honor then
         db.honorTracked = (db.honorTracked or 0) + honor
     end
-    if not name or db.pvpLogOff then
+    if award or db.pvpLogOff then
         return
     end
-    local seen = pvpLogFrame.players[pvpLogFrame.shortName(name)] or {}
+    -- A kill whose name couldn't be read is still logged ("an unknown player")
+    if name and (name == "" or #name > 40) then
+        name = nil
+    end
+    local seen = name and pvpLogFrame.players[pvpLogFrame.shortName(name)] or {}
     recordPvp("kill", seen.guid, name, { honor = honor, hkRank = rank })
 end
 
@@ -4754,6 +4797,11 @@ local function cmdPvpLog(arg)
             e.t and date("%d %b %H:%M", e.t) or "?", verbs[e.kind] or tostring(e.kind),
             tostring(e.name or e.env or ""), e.level == -1 and "??" or tostring(e.level or "?"),
             tostring(e.race or ""), tostring(e.class or ""), e.honor and (" +" .. e.honor .. " honor") or ""))
+    end
+    -- The game's own last honor message, escaped so color codes show as text
+    local msgs = type(db.honorMsgs) == "table" and db.honorMsgs or {}
+    if #msgs > 0 then
+        print("  last honor message: " .. tostring(msgs[#msgs]):gsub("|", "||"))
     end
 end
 
@@ -5394,9 +5442,26 @@ end)
 -- required first.
 local logoutFrame = CreateFrame("Frame")
 pcall(logoutFrame.RegisterEvent, logoutFrame, "PLAYER_LOGOUT")
+-- 1.9.12: gear is also read while playing - 10s into the world and on
+-- every equipment change - so collectGear's gearCache has each item's full
+-- details for a logout read that comes back half-loaded
+pcall(logoutFrame.RegisterEvent, logoutFrame, "PLAYER_ENTERING_WORLD")
+pcall(logoutFrame.RegisterEvent, logoutFrame, "PLAYER_EQUIPMENT_CHANGED")
 logoutFrame:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_LOGOUT" then
         writeSyncExport()
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
+            pcall(_G.C_Timer.After, 10, function()
+                pcall(collectGear)
+            end)
+        end
+    elseif event == "PLAYER_EQUIPMENT_CHANGED" then
+        if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
+            pcall(_G.C_Timer.After, 2, function()
+                pcall(collectGear)
+            end)
+        end
     end
 end)
 

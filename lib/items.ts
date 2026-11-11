@@ -175,6 +175,15 @@ const QUALITY_BY_COLOR: Record<string, string> = Object.fromEntries(
   Object.entries(QUALITY_COLORS).map(([quality, color]) => [color, quality])
 );
 
+// An item the game hadn't finished loading when the addon read it: the
+// link has an empty name ("[]") and the tooltip is just the red
+// "Retrieving item information" placeholder. Its id and icon are still
+// right, but the name, quality color (that red, ff2020) and stats aren't -
+// seen 2026-11-11 on two characters synced right after logging in.
+export function isUnloadedItem(o: { name?: string | null; tooltip?: string[] | null }): boolean {
+  return !o.name || /^Retrieving item information/i.test(o.tooltip?.[0] ?? "");
+}
+
 // 2026-09-24 correction: the weapon damage/speed fields below used to be
 // named weapon_damage/weapon_attack_speed, which don't actually exist
 // anywhere in Blizzard's real response - a guess that was never checked
@@ -596,6 +605,8 @@ export async function applyLiveObservation(
   observation: { name: string; color?: string | null; icon?: number | null; tooltip?: string[] | null }
 ): Promise<void> {
   if (!observation.tooltip || observation.tooltip.length === 0) return;
+  // A half-loaded read would blank the item's name and stats
+  if (isUnloadedItem(observation)) return;
 
   const parsed = parseLiveTooltip(observation.tooltip);
   const color = observation.color?.toLowerCase() ?? null;

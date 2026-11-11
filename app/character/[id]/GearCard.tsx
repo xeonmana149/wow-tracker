@@ -419,7 +419,11 @@ export default function GearCard({
     supabase.auth.getUser().then(({ data }) => setIsOwner(data.user?.id === ownerId));
   }, [ownerId]);
   const bySlot: Record<string, Item> = {};
-  for (const i of items) bySlot[i.slot] = i;
+  for (const i of items) {
+    // The game hadn't loaded this item's name when the addon read it (a
+    // brand-new Forever item no one has synced yet) - still show its icon
+    bySlot[i.slot] = !i.item_name && i.item_icon ? { ...i, item_name: "Unknown item - shows next sync" } : i;
+  }
 
   const filled = Object.values(bySlot).filter((i) => i.item_name).length;
   const faction = RACE_FACTION[race];

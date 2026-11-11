@@ -17,7 +17,7 @@ import {
   type AchievementTier,
 } from "./achievements";
 import { checkAccountAchievements } from "./accountAchievements";
-import { applyLiveObservation, ensureItemsExist } from "./items";
+import { applyLiveObservation, ensureItemsExist, isUnloadedItem } from "./items";
 // Site-wide Activity Log mirroring (2026-10-03, "basic version... toggles
 // that control which events the Activity feed highlights" - the Settings
 // page's Notifications tab) - see the big comment down by the
@@ -857,13 +857,34 @@ export async function applyImport(
   //    logged to the activity feed.
   const { data: previousGear } = await supabase
     .from("equipped_gear")
-    .select("slot, item_link, item_quality")
+    .select("slot, item_link, item_quality, item_id, item_name")
     .eq("character_id", characterId);
   const previousBySlot = new Map(
-    ((previousGear ?? []) as { slot: string; item_link: string; item_quality: string | null }[]).map(
-      (g) => [g.slot, g]
-    )
+    (
+      (previousGear ?? []) as {
+        slot: string;
+        item_link: string;
+        item_quality: string | null;
+        item_id: number | null;
+        item_name: string | null;
+      }[]
+    ).map((g) => [g.slot, g])
   );
+
+  // Items the game hadn't loaded yet when the addon read them (blank name,
+  // "Retrieving item information" tooltip): their names come from the item
+  // database instead, so the slot doesn't show up empty
+  const unloadedIds = Object.keys(GEAR_SLOT_MAP)
+    .map((s) => parsed.gear?.[s])
+    .filter((item) => item && item.id != null && isUnloadedItem(item))
+    .map((item) => item!.id as number);
+  const knownItems = new Map<number, { name: string | null; quality_color: string | null; tooltip: string[] | null }>();
+  if (unloadedIds.length > 0) {
+    const { data } = await supabase.from("items").select("id, name, quality_color, tooltip").in("id", unloadedIds);
+    for (const row of (data ?? []) as { id: number; name: string | null; quality_color: string | null; tooltip: string[] | null }[]) {
+      knownItems.set(row.id, row);
+    }
+  }
 
   const gearRows: {
     character_id: string;
@@ -890,10 +911,24 @@ export async function applyImport(
   // already on file alone, rather than wiping it.
   const gearReported = !!parsed.gear && Object.keys(parsed.gear).length > 0;
   for (const [addonSlot, siteSlot] of Object.entries(GEAR_SLOT_MAP)) {
-    const item = parsed.gear?.[addonSlot];
+    let item = parsed.gear?.[addonSlot];
     if (!item) {
       if (gearReported) emptySlots.push(siteSlot);
       continue;
+    }
+    if (isUnloadedItem(item)) {
+      const prev = previousBySlot.get(siteSlot);
+      // Same item already on file with its real name - keep that row
+      if (prev && prev.item_name && item.id != null && prev.item_id === item.id) continue;
+      const known = item.id != null ? knownItems.get(item.id) : undefined;
+      const knownName = known?.name && !isUnloadedItem({ name: known.name, tooltip: known.tooltip }) ? known.name : null;
+      item = {
+        ...item,
+        name: knownName ?? "",
+        // Not the link's quality tag - a half-loaded link always says common
+        color: (knownName ? known?.quality_color : null) ?? undefined,
+        tooltip: knownName && known?.tooltip ? known.tooltip : [],
+      };
     }
     gearRows.push({
       character_id: characterId,
@@ -909,8 +944,11 @@ export async function applyImport(
 
     const quality = item.color?.toLowerCase();
     const prev = previousBySlot.get(siteSlot);
-    const isNewItem = prev?.item_link !== item.link;
-    if (quality && NOTABLE_GEAR_COLORS.has(quality) && isNewItem) {
+    // By item id where both are known - a half-loaded read has a different
+    // link ("[]") for the same item
+    const isNewItem =
+      prev?.item_id != null && item.id != null ? prev.item_id !== item.id : prev?.item_link !== item.link;
+    if (quality && NOTABLE_GEAR_COLORS.has(quality) && isNewItem && item.name) {
       events.push({
         character_id: characterId,
         user_id: before.user_id,
