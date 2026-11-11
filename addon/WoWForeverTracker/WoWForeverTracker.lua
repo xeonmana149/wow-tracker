@@ -4135,8 +4135,87 @@ pvpLogFrame.onDeath = function()
     end
 end
 
+-- 1.9.13: enemy players seen dying as your target or on a nameplate, by
+-- guid: { name, guid, at, mine, used }. An honor message whose name can't
+-- be read takes it from here, and a kill with no honor message (a grey
+-- player) is logged when the one dying was your own target mid-fight.
+pvpLogFrame.deaths = {}
+pvpLogFrame.onUnitHealth = function(unit)
+    if type(unit) ~= "string" or (unit ~= "target" and not unit:find("^nameplate%d")) then
+        return
+    end
+    local okP, isPlayer = safeCall(_G.UnitIsPlayer, unit)
+    if not okP or isPlayer ~= true then
+        return
+    end
+    local okE, enemy = safeCall(_G.UnitIsEnemy, "player", unit)
+    local okD, dead = safeCall(_G.UnitIsDead, unit)
+    if not okE or enemy ~= true or not okD or dead ~= true then
+        return
+    end
+    local okG, guid = safeCall(_G.UnitGUID, unit)
+    if not okG or type(guid) ~= "string" then
+        return
+    end
+    local okT, now = safeCall(_G.GetTime)
+    now = (okT and type(now) == "number") and now or 0
+    local deaths = pvpLogFrame.deaths
+    if deaths[guid] and now - deaths[guid].at < 30 then
+        return -- this death is already noted
+    end
+    for g, old in pairs(deaths) do
+        if now - old.at > 60 then
+            deaths[g] = nil
+        end
+    end
+    pcall(rememberLevel, unit)
+    local okN, name = safeCall(_G.UnitName, unit)
+    local okC, inCombat = safeCall(_G.UnitAffectingCombat, "player")
+    local d = {
+        name = (okN and type(name) == "string" and name ~= "") and name or nil,
+        guid = guid,
+        at = now,
+        mine = unit == "target" and okC and inCombat == true,
+    }
+    deaths[guid] = d
+    -- No honor message claimed it within 3s: still your kill if it was your
+    -- target in a fight (no honor - e.g. a grey player)
+    if d.mine and type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
+        pcall(_G.C_Timer.After, 3, function()
+            if not d.used and not pvpLogOff() then
+                d.used = true
+                pcall(recordPvp, "kill", d.guid, d.name, { noHonor = true })
+            end
+        end)
+    end
+end
+
+-- The noted death an honor message is about: the one with that name, or
+-- with no name, the most recent - within the last 5s, and only once
+pvpLogFrame.claimDeath = function(name)
+    local okT, now = safeCall(_G.GetTime)
+    now = (okT and type(now) == "number") and now or 0
+    local want = name and pvpLogFrame.shortName(name)
+    want = want and want:lower()
+    local best
+    for _, d in pairs(pvpLogFrame.deaths) do
+        if not d.used and now - d.at <= 5 then
+            local short = d.name and pvpLogFrame.shortName(d.name)
+            if want == nil or (short and short:lower() == want) then
+                if not best or d.at > best.at then
+                    best = d
+                end
+            end
+        end
+    end
+    if best then
+        best.used = true
+    end
+    return best
+end
+
 for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_DEAD", "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT",
-    "NAME_PLATE_UNIT_ADDED", "CHAT_MSG_COMBAT_HONOR_GAIN", "CHAT_MSG_COMBAT_XP_GAIN" }) do
+    "NAME_PLATE_UNIT_ADDED", "CHAT_MSG_COMBAT_HONOR_GAIN", "CHAT_MSG_COMBAT_XP_GAIN", "UNIT_HEALTH" }) do
     pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, ev)
 end
 pvpLogFrame:SetScript("OnEvent", function(_, event, arg1)
@@ -4147,6 +4226,10 @@ pvpLogFrame:SetScript("OnEvent", function(_, event, arg1)
     elseif event == "NAME_PLATE_UNIT_ADDED" then
         if type(arg1) == "string" then
             pcall(rememberLevel, arg1)
+        end
+    elseif event == "UNIT_HEALTH" then
+        if not pvpLogOff() then
+            pcall(pvpLogFrame.onUnitHealth, arg1)
         end
     elseif event == "CHAT_MSG_COMBAT_HONOR_GAIN" then
         -- onHonor/onXp are set in the items section below, where the
@@ -4276,12 +4359,31 @@ pvpLogFrame.onHonor = function(msg)
     if award or db.pvpLogOff then
         return
     end
-    -- A kill whose name couldn't be read is still logged ("an unknown player")
     if name and (name == "" or #name > 40) then
         name = nil
     end
-    local seen = name and pvpLogFrame.players[pvpLogFrame.shortName(name)] or {}
-    recordPvp("kill", seen.guid, name, { honor = honor, hkRank = rank })
+    local extra = { honor = honor, hkRank = rank }
+    -- 1.9.13: the enemy seen dying on your target or a nameplate - its guid
+    -- for level/class/race, and its name when the message's can't be read
+    local d = pvpLogFrame.claimDeath(name)
+    if name or d then
+        local seen = pvpLogFrame.players[pvpLogFrame.shortName(name or d.name) or ""] or {}
+        recordPvp("kill", (d and d.guid) or seen.guid, name or d.name, extra)
+        return
+    end
+    -- Nothing seen dying yet - the message can beat the health update, so
+    -- look once more in a second, then log "an unknown player"
+    local function later()
+        local d2 = pvpLogFrame.claimDeath(nil)
+        recordPvp("kill", d2 and d2.guid, d2 and d2.name, extra)
+    end
+    if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
+        pcall(_G.C_Timer.After, 1, function()
+            pcall(later)
+        end)
+    else
+        later()
+    end
 end
 
 -- Rares: "Mor'Ladim dies, you gain 450 experience." for a rare seen
