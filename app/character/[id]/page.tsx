@@ -19,6 +19,7 @@ import WishlistCard from "./WishlistCard";
 import PreBisCard from "./PreBisCard";
 import StatisticsCard from "./StatisticsCard";
 import PvpCard, { type PvpData } from "./PvpCard";
+import DungeonsCard from "./DungeonsCard";
 import ReputationsCard, { type ReputationRow } from "./ReputationsCard";
 import AchievementShowcase from "../../AchievementShowcase";
 import { buildAchievementItems, pickShowcaseItems } from "../../achievementBoard";
@@ -361,6 +362,8 @@ export default async function CharacterPage({
             pvp={(character.pvp ?? null) as PvpData}
             stats={statisticRows ?? []}
           />
+
+          <DungeonsCard stats={statisticRows ?? []} />
 
           <ReputationsCard reputations={(reputationRows ?? []) as ReputationRow[]} />
         </div>
