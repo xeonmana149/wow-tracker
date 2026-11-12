@@ -4146,6 +4146,14 @@ pvpLogFrame.onDeath = function()
             recordPvp("death", foe.guid, foe.name, { myLevel = myLevel })
             return
         end
+        -- 1.9.17: same for creatures - a boss that blinks away or drops
+        -- you as its target (Arugal) was still the killer
+        local na, nf = pvpLogFrame.lastNpcAttacker, pvpLogFrame.lastNpc
+        local npc = (na and now - na.at <= 15 and na) or (nf and now - nf.at <= 15 and nf) or nil
+        if npc and npc.name then
+            addToPvpLog({ kind = "death_pve", name = npc.name, level = npc.level, myLevel = myLevel })
+            return
+        end
         -- Nothing on screen was after you: lava, fire, or something gone
         -- from view - a plain "died in <zone>"
         addToPvpLog({ kind = "death_env", myLevel = myLevel })
@@ -4160,8 +4168,32 @@ pvpLogFrame.noteAttacker = function(unit)
         local e = pvpLogFrame.enemyAt(unit)
         if e then
             pvpLogFrame.lastAttacker = e
+        else
+            pvpLogFrame.lastNpcAttacker = pvpLogFrame.npcAt(unit) or pvpLogFrame.lastNpcAttacker
         end
     end
+end
+
+-- 1.9.17: a hostile creature (not a player) - { guid, name, level, at }
+pvpLogFrame.npcAt = function(unit)
+    local okP, isPlayer = safeCall(_G.UnitIsPlayer, unit)
+    local okA, canAttack = safeCall(_G.UnitCanAttack, "player", unit)
+    if not okP or isPlayer ~= false or not okA or canAttack ~= true then
+        return nil
+    end
+    local okN, name = safeCall(_G.UnitName, unit)
+    if not okN or type(name) ~= "string" or name == "" then
+        return nil
+    end
+    local okG, guid = safeCall(_G.UnitGUID, unit)
+    local okL, level = safeCall(_G.UnitLevel, unit)
+    local okT, now = safeCall(_G.GetTime)
+    return {
+        guid = (okG and type(guid) == "string") and guid or nil,
+        name = name,
+        level = (okL and type(level) == "number") and level or nil,
+        at = (okT and type(now) == "number") and now or 0,
+    }
 end
 pvpLogFrame.scanAttackers = function()
     local okT, now = safeCall(_G.GetTime)
@@ -4225,6 +4257,9 @@ pvpLogFrame.trackTarget = function()
     if e then
         pvpLogFrame.lastEnemy = e
         pvpLogFrame.deaths[e.guid] = nil
+    elseif okC and inCombat == true then
+        -- 1.9.17: the creature you were fighting, for "killed by" on death
+        pvpLogFrame.lastNpc = pvpLogFrame.npcAt("target") or pvpLogFrame.lastNpc
     end
 end
 
