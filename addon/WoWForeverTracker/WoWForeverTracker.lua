@@ -4182,8 +4182,9 @@ pvpLogFrame.onUnitHealth = function(unit)
     -- target in a fight (no honor - e.g. a grey player)
     if d.mine and type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
         pcall(_G.C_Timer.After, 3, function()
-            if not d.used and not pvpLogOff() then
+            if not d.used and not pvpLogFrame.usedGuid[d.guid] and not pvpLogOff() then
                 d.used = true
+                pvpLogFrame.usedGuid[d.guid] = d.at
                 pcall(recordPvp, "kill", d.guid, d.name, { noHonor = true })
             end
         end)
@@ -4214,13 +4215,86 @@ pvpLogFrame.claimDeath = function(name)
     return best
 end
 
+-- 1.9.14: on WoW Forever a PvP kill only says "You have been awarded 7
+-- Honor." - no name - and the dying-unit watch above saw nothing (2026-11-12,
+-- three kills, none logged). So the award itself is the kill, and the
+-- victim is the enemy player you were last fighting:
+--   lastEnemy: the enemy player last seen as your target (refreshed by every
+--     health change while targeted) - { guid, name, at }
+--   plateGone: an enemy player whose nameplate just went away, as dead
+--     players' nameplates do - { guid, name, at }
+--   usedGuid: guid -> time it was credited, so one victim isn't logged twice
+pvpLogFrame.usedGuid = {}
+pvpLogFrame.enemyAt = function(unit)
+    local okP, isPlayer = safeCall(_G.UnitIsPlayer, unit)
+    if not okP or isPlayer ~= true then
+        return nil
+    end
+    local okE, enemy = safeCall(_G.UnitIsEnemy, "player", unit)
+    local okA, canAttack = safeCall(_G.UnitCanAttack, "player", unit)
+    if not ((okE and enemy == true) or (okA and canAttack == true)) then
+        return nil
+    end
+    local okG, guid = safeCall(_G.UnitGUID, unit)
+    local okN, name = safeCall(_G.UnitName, unit)
+    local okT, now = safeCall(_G.GetTime)
+    if not okG or type(guid) ~= "string" then
+        return nil
+    end
+    pcall(rememberLevel, unit)
+    return {
+        guid = guid,
+        name = (okN and type(name) == "string" and name ~= "") and name or nil,
+        at = (okT and type(now) == "number") and now or 0,
+    }
+end
+
+-- The victim for an honor award with no name: a death seen in the last 5s,
+-- else the enemy you were fighting in the last 20s, else an enemy nameplate
+-- gone in the last 3s - never one already credited in the last 2 minutes
+pvpLogFrame.victimForAward = function()
+    local d = pvpLogFrame.claimDeath(nil)
+    local okT, now = safeCall(_G.GetTime)
+    now = (okT and type(now) == "number") and now or 0
+    local used = pvpLogFrame.usedGuid
+    local function fresh(e, within)
+        return e and now - e.at <= within and not (used[e.guid] and now - used[e.guid] < 120)
+    end
+    local pick = (d and fresh(d, 5) and d) or (fresh(pvpLogFrame.lastEnemy, 20) and pvpLogFrame.lastEnemy)
+        or (fresh(pvpLogFrame.plateGone, 3) and pvpLogFrame.plateGone) or nil
+    if pick then
+        used[pick.guid] = now
+    end
+    return pick
+end
+
+-- pcall that keeps the last error in WFTSyncDB.pvpErr for /wft pvplog
+pvpLogFrame.try = function(fn, ...)
+    local ok, err = pcall(fn, ...)
+    if not ok and type(WFTSyncDB) == "table" then
+        WFTSyncDB.pvpErr = tostring(err)
+    end
+end
+
 for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_DEAD", "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT",
-    "NAME_PLATE_UNIT_ADDED", "CHAT_MSG_COMBAT_HONOR_GAIN", "CHAT_MSG_COMBAT_XP_GAIN", "UNIT_HEALTH" }) do
+    "NAME_PLATE_UNIT_ADDED", "CHAT_MSG_COMBAT_HONOR_GAIN", "CHAT_MSG_COMBAT_XP_GAIN", "UNIT_HEALTH",
+    "NAME_PLATE_UNIT_REMOVED" }) do
     pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, ev)
 end
 pvpLogFrame:SetScript("OnEvent", function(_, event, arg1)
     if event == "PLAYER_TARGET_CHANGED" then
         pcall(rememberLevel, "target")
+        local ok, e = pcall(pvpLogFrame.enemyAt, "target")
+        if ok and e then
+            pvpLogFrame.lastEnemy = e
+        end
+    elseif event == "NAME_PLATE_UNIT_REMOVED" then
+        if type(arg1) == "string" then
+            local ok, e = pcall(pvpLogFrame.enemyAt, arg1)
+            if ok and e then
+                pvpLogFrame.plateGone = e
+            end
+        end
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
         pcall(rememberLevel, "mouseover")
     elseif event == "NAME_PLATE_UNIT_ADDED" then
@@ -4229,13 +4303,19 @@ pvpLogFrame:SetScript("OnEvent", function(_, event, arg1)
         end
     elseif event == "UNIT_HEALTH" then
         if not pvpLogOff() then
-            pcall(pvpLogFrame.onUnitHealth, arg1)
+            if arg1 == "target" then
+                local ok, e = pcall(pvpLogFrame.enemyAt, "target")
+                if ok and e then
+                    pvpLogFrame.lastEnemy = e
+                end
+            end
+            pvpLogFrame.try(pvpLogFrame.onUnitHealth, arg1)
         end
     elseif event == "CHAT_MSG_COMBAT_HONOR_GAIN" then
         -- onHonor/onXp are set in the items section below, where the
         -- message-template helpers live
         if pvpLogFrame.onHonor then
-            pcall(pvpLogFrame.onHonor, arg1)
+            pvpLogFrame.try(pvpLogFrame.onHonor, arg1)
         end
     elseif event == "CHAT_MSG_COMBAT_XP_GAIN" then
         if pvpLogFrame.onXp then
@@ -4356,7 +4436,17 @@ pvpLogFrame.onHonor = function(msg)
     if honor then
         db.honorTracked = (db.honorTracked or 0) + honor
     end
-    if award or db.pvpLogOff then
+    if db.pvpLogOff then
+        return
+    end
+    if award then
+        -- 1.9.14: WoW Forever's kill message is just "You have been awarded
+        -- N Honor." - a kill when you were just fighting an enemy player,
+        -- bonus honor (a quest, a battleground) otherwise
+        local victim = pvpLogFrame.victimForAward()
+        if victim then
+            recordPvp("kill", victim.guid, victim.name, { honor = honor })
+        end
         return
     end
     if name and (name == "" or #name > 40) then
@@ -4374,7 +4464,7 @@ pvpLogFrame.onHonor = function(msg)
     -- Nothing seen dying yet - the message can beat the health update, so
     -- look once more in a second, then log "an unknown player"
     local function later()
-        local d2 = pvpLogFrame.claimDeath(nil)
+        local d2 = pvpLogFrame.victimForAward()
         recordPvp("kill", d2 and d2.guid, d2 and d2.name, extra)
     end
     if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
@@ -4904,6 +4994,9 @@ local function cmdPvpLog(arg)
     local msgs = type(db.honorMsgs) == "table" and db.honorMsgs or {}
     if #msgs > 0 then
         print("  last honor message: " .. tostring(msgs[#msgs]):gsub("|", "||"))
+    end
+    if db.pvpErr then
+        print("  last error: " .. tostring(db.pvpErr):gsub("|", "||"))
     end
 end
 
