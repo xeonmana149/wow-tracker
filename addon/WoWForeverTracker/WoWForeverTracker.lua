@@ -4082,6 +4082,12 @@ pvpLogFrame.startWatch = function()
     end
     pvpLogFrame.ticker = Timer.NewTicker(0.25, function()
         pcall(pvpLogFrame.watchTick)
+        -- 1.9.16: your target checked directly too, in case the client
+        -- sends no health event for enemies
+        if pvpLogFrame.onUnitHealth then
+            pvpLogFrame.try(pvpLogFrame.onUnitHealth, "target")
+            pvpLogFrame.try(pvpLogFrame.trackTarget)
+        end
     end)
 end
 
@@ -4175,6 +4181,59 @@ end
 -- be read takes it from here, and a kill with no honor message (a grey
 -- player) is logged when the one dying was your own target mid-fight.
 pvpLogFrame.deaths = {}
+-- 1.9.16: dead by any of the checks the client will answer
+pvpLogFrame.isDead = function(unit)
+    for _, fnName in ipairs({ "UnitIsDeadOrGhost", "UnitIsDead" }) do
+        local ok, v = safeCall(_G[fnName], unit)
+        if ok then
+            local okCmp, yes = pcall(function()
+                return v == true
+            end)
+            if okCmp and yes then
+                return true
+            end
+        end
+    end
+    local okH, hp = safeCall(_G.UnitHealth, unit)
+    local okE, exists = safeCall(_G.UnitExists, unit)
+    if okH and okE and exists then
+        local okCmp, zero = pcall(function()
+            return hp == 0
+        end)
+        if okCmp and zero then
+            return true
+        end
+    end
+    return false
+end
+
+-- Every 0.25s: when you were last in combat, and your target while it's
+-- an enemy player still alive - lastEnemy, kept fresh - which also clears
+-- a noted death for them (they're back up)
+pvpLogFrame.trackTarget = function()
+    local okT, now = safeCall(_G.GetTime)
+    now = (okT and type(now) == "number") and now or 0
+    local okC, inCombat = safeCall(_G.UnitAffectingCombat, "player")
+    if okC and inCombat == true then
+        pvpLogFrame.combatAt = now
+    end
+    local okE, exists = safeCall(_G.UnitExists, "target")
+    if not okE or exists ~= true or pvpLogFrame.isDead("target") then
+        return
+    end
+    local e = pvpLogFrame.enemyAt("target")
+    if e then
+        pvpLogFrame.lastEnemy = e
+        pvpLogFrame.deaths[e.guid] = nil
+    end
+end
+
+-- The enemy you were fighting (target, 20s) or who attacked you (15s)
+pvpLogFrame.foughtRecently = function(guid, now)
+    local f, a = pvpLogFrame.lastEnemy, pvpLogFrame.lastAttacker
+    return (f and f.guid == guid and now - f.at <= 20) or (a and a.guid == guid and now - a.at <= 15) or false
+end
+
 pvpLogFrame.onUnitHealth = function(unit)
     if type(unit) ~= "string" or (unit ~= "target" and not unit:find("^nameplate%d")) then
         return
@@ -4183,9 +4242,10 @@ pvpLogFrame.onUnitHealth = function(unit)
     if not okP or isPlayer ~= true then
         return
     end
-    local okE, enemy = safeCall(_G.UnitIsEnemy, "player", unit)
-    local okD, dead = safeCall(_G.UnitIsDead, unit)
-    if not okE or enemy ~= true or not okD or dead ~= true then
+    -- 1.9.16: the death checks each in their own pcall (one may be hidden
+    -- from addons here), and the enemy check also passes for a player you
+    -- were just fighting, since a corpse can stop reading as hostile
+    if not pvpLogFrame.isDead(unit) then
         return
     end
     local okG, guid = safeCall(_G.UnitGUID, unit)
@@ -4194,23 +4254,34 @@ pvpLogFrame.onUnitHealth = function(unit)
     end
     local okT, now = safeCall(_G.GetTime)
     now = (okT and type(now) == "number") and now or 0
+    local okE, enemy = safeCall(_G.UnitIsEnemy, "player", unit)
+    local fought = pvpLogFrame.foughtRecently(guid, now)
+    if not fought and not (okE and enemy == true) then
+        return
+    end
+    -- Noted once per death: trackTarget clears it when they're seen alive
     local deaths = pvpLogFrame.deaths
-    if deaths[guid] and now - deaths[guid].at < 30 then
-        return -- this death is already noted
+    if deaths[guid] then
+        return
     end
     for g, old in pairs(deaths) do
-        if now - old.at > 60 then
+        if now - old.at > 600 then
             deaths[g] = nil
         end
     end
     pcall(rememberLevel, unit)
     local okN, name = safeCall(_G.UnitName, unit)
-    local okC, inCombat = safeCall(_G.UnitAffectingCombat, "player")
+    -- Yours if it's your target or attacked you lately - not "in combat",
+    -- which ends the moment a solo kill dies
+    local okU, isTarget = safeCall(_G.UnitIsUnit, unit, "target")
     local d = {
         name = (okN and type(name) == "string" and name ~= "") and name or nil,
         guid = guid,
         at = now,
-        mine = unit == "target" and okC and inCombat == true,
+        -- Yours: the enemy you were fighting (seen alive as your target, or
+        -- attacking you) while you were in combat in the last 5s
+        mine = fought and now - (pvpLogFrame.combatAt or 0) <= 5 and (unit == "target" or (okU and isTarget == true)
+            or (pvpLogFrame.lastAttacker and pvpLogFrame.lastAttacker.guid == guid)) or false,
     }
     deaths[guid] = d
     -- No honor message claimed it within 3s: still your kill if it was your
@@ -4319,15 +4390,17 @@ end
 pvpLogFrame:SetScript("OnEvent", function(_, event, arg1)
     if event == "PLAYER_TARGET_CHANGED" then
         pcall(rememberLevel, "target")
-        local ok, e = pcall(pvpLogFrame.enemyAt, "target")
-        if ok and e then
-            pvpLogFrame.lastEnemy = e
-        end
+        -- Only a living enemy - clicking a corpse isn't fighting it
+        pvpLogFrame.try(pvpLogFrame.trackTarget)
     elseif event == "NAME_PLATE_UNIT_REMOVED" then
         if type(arg1) == "string" then
             local ok, e = pcall(pvpLogFrame.enemyAt, arg1)
             if ok and e then
                 pvpLogFrame.plateGone = e
+            end
+            -- A dead player's nameplate goes away - check it on the way out
+            if not pvpLogOff() then
+                pvpLogFrame.try(pvpLogFrame.onUnitHealth, arg1)
             end
         end
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
@@ -4349,10 +4422,7 @@ pvpLogFrame:SetScript("OnEvent", function(_, event, arg1)
         end
         if not pvpLogOff() then
             if arg1 == "target" then
-                local ok, e = pcall(pvpLogFrame.enemyAt, "target")
-                if ok and e then
-                    pvpLogFrame.lastEnemy = e
-                end
+                pvpLogFrame.try(pvpLogFrame.trackTarget)
             end
             pvpLogFrame.try(pvpLogFrame.onUnitHealth, arg1)
         end
