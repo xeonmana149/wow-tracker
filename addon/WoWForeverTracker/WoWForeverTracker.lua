@@ -4129,9 +4129,44 @@ pvpLogFrame.onDeath = function()
             myLevel = myLevel,
         })
     else
+        -- 1.9.15: by the time you're dead the killer has usually moved on
+        -- to another target, so the enemy player last seen attacking you
+        -- (15s) - or the one you were fighting - is the killer
+        local okT, now = safeCall(_G.GetTime)
+        now = (okT and type(now) == "number") and now or 0
+        local a, f = pvpLogFrame.lastAttacker, pvpLogFrame.lastEnemy
+        local foe = (a and now - a.at <= 15 and a) or (f and now - f.at <= 15 and f) or nil
+        if foe then
+            recordPvp("death", foe.guid, foe.name, { myLevel = myLevel })
+            return
+        end
         -- Nothing on screen was after you: lava, fire, or something gone
         -- from view - a plain "died in <zone>"
         addToPvpLog({ kind = "death_env", myLevel = myLevel })
+    end
+end
+
+-- 1.9.15: an enemy player targeting you becomes lastAttacker - checked when
+-- a unit changes target and (at most twice a second) when you take damage
+pvpLogFrame.noteAttacker = function(unit)
+    local okT, onMe = safeCall(_G.UnitIsUnit, unit .. "target", "player")
+    if okT and onMe == true then
+        local e = pvpLogFrame.enemyAt(unit)
+        if e then
+            pvpLogFrame.lastAttacker = e
+        end
+    end
+end
+pvpLogFrame.scanAttackers = function()
+    local okT, now = safeCall(_G.GetTime)
+    now = (okT and type(now) == "number") and now or 0
+    if now - (pvpLogFrame.scannedAt or 0) < 0.5 then
+        return
+    end
+    pvpLogFrame.scannedAt = now
+    pvpLogFrame.noteAttacker("target")
+    for i = 1, 40 do
+        pvpLogFrame.noteAttacker("nameplate" .. i)
     end
 end
 
@@ -4278,7 +4313,7 @@ end
 
 for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_DEAD", "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT",
     "NAME_PLATE_UNIT_ADDED", "CHAT_MSG_COMBAT_HONOR_GAIN", "CHAT_MSG_COMBAT_XP_GAIN", "UNIT_HEALTH",
-    "NAME_PLATE_UNIT_REMOVED" }) do
+    "NAME_PLATE_UNIT_REMOVED", "UNIT_TARGET" }) do
     pcall(pvpLogFrame.RegisterEvent, pvpLogFrame, ev)
 end
 pvpLogFrame:SetScript("OnEvent", function(_, event, arg1)
@@ -4301,7 +4336,17 @@ pvpLogFrame:SetScript("OnEvent", function(_, event, arg1)
         if type(arg1) == "string" then
             pcall(rememberLevel, arg1)
         end
+    elseif event == "UNIT_TARGET" then
+        if type(arg1) == "string" and (arg1 == "target" or arg1:find("^nameplate%d")) and not pvpLogOff() then
+            pvpLogFrame.try(pvpLogFrame.noteAttacker, arg1)
+        end
     elseif event == "UNIT_HEALTH" then
+        if arg1 == "player" then
+            if not pvpLogOff() then
+                pvpLogFrame.try(pvpLogFrame.scanAttackers)
+            end
+            return
+        end
         if not pvpLogOff() then
             if arg1 == "target" then
                 local ok, e = pcall(pvpLogFrame.enemyAt, "target")
