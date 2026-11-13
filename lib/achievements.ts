@@ -296,10 +296,12 @@ const TIER_DEFS: Record<TieredAchievementKind, TierDef> = {
     description: "Creatures killed across Azeroth.",
     family: "combat",
     thresholds: [
-      { tier: "Platinum", value: 20000 },
-      { tier: "Gold", value: 5000 },
-      { tier: "Silver", value: 1000 },
-      { tier: "Copper", value: 250 },
+      // Raised 2026-11-13 from 250/1000/5000/20000 - about 140 kills per
+      // level, so a level-37 character was already Gold
+      { tier: "Platinum", value: 40000 },
+      { tier: "Gold", value: 15000 },
+      { tier: "Silver", value: 5000 },
+      { tier: "Copper", value: 1000 },
     ],
     format: (name, tier, value) => `${name} has slain ${value.toLocaleString()}+ creatures - ${tier} tier!`,
   },

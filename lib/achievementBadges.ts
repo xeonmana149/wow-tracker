@@ -162,7 +162,7 @@ export const HONORABLE_KILLS_TIER_BADGE = ringBadge(
 export const CREATURES_KILLED_TIER_BADGE = ringBadge(
   "inv_misc_monsterclaw_04",
   (tier) =>
-    `Monster Hunter - ${tier} tier - ${{ Copper: 250, Silver: 1000, Gold: 5000, Platinum: 20000 }[tier]}+ creatures killed`
+    `Monster Hunter - ${tier} tier - ${{ Copper: "1,000", Silver: "5,000", Gold: "15,000", Platinum: "40,000" }[tier]}+ creatures killed`
 );
 export const QUESTS_COMPLETED_TIER_BADGE = ringBadge(
   "achievement_quests_completed_08",
