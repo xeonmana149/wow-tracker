@@ -15,9 +15,9 @@
 //   2. Builds the tray installer and publishes it to a GitHub release on
 //      xeonmana149/wow-tracker, with WoWForeverTrackerAddon.zip attached
 //      (the tray's zip-addon-for-publish.js hook does the zip). Needs GH_TOKEN.
-//   3. Checks the release really has all four files friends' apps need.
-//   4. Bumps LATEST_VERSIONS in lib/versions.ts, commits it (plus the addon
-//      folder and any --include paths) and pushes main. Vercel deploys the
+//   3. Checks the release really has all five files friends' apps need.
+//   4. Bumps LATEST_VERSIONS in lib/versions.ts, commits it (plus both addon
+//      folders and any --include paths) and pushes main. Vercel deploys the
 //      push, and from then on /api/versions tells every tray app about the
 //      new addon, and the tray apps update themselves from the release.
 //
@@ -162,7 +162,7 @@ const updated = versionsText
 if (!dryRun) fs.writeFileSync(VERSIONS_TS, updated);
 log(`lib/versions.ts -> addon ${addonVersion}, tray ${trayVersion}, Forever Gold ${fgVersion}`);
 
-const toCommit = ["lib/versions.ts", "addon/WoWForeverTracker", ...includes];
+const toCommit = ["lib/versions.ts", "addon/WoWForeverTracker", "addon/ForeverGold", ...includes];
 run("git", ["add", "--", ...toCommit], SITE_DIR);
 const message = [
   `Release tray ${trayVersion}, addon ${addonVersion}, Forever Gold ${fgVersion}`,
