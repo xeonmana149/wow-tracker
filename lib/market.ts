@@ -51,13 +51,21 @@ export type AuctionColumns = {
   tl: number[];
 };
 
+// Per item per day, from every snapshot seen that day (sales or not):
+// [snapshots, sum of cheapest buyout, lowest buyout seen, sum of market
+//  price, sum of quantity listed]. Averages = sum / snapshots.
+export type PriceDay = number[];
+const PX_N = 0, PX_MIN = 1, PX_LOW = 2, PX_MKT = 3, PX_QTY = 4;
+
+export type HouseDay = { cov: number; items: Record<string, DayCounts>; px?: Record<string, PriceDay> };
+
 export type HouseState = {
   v: 1;
   house: number;
   snapT: number; // unix seconds of the snapshot this state was built from
   a: AuctionColumns;
-  // day number (unix days) -> covered seconds + per-item counts
-  days: Record<string, { cov: number; items: Record<string, DayCounts> }>;
+  // day number (unix days) -> covered seconds + per-item counts + prices
+  days: Record<string, HouseDay>;
   last?: { gap: number; counted: boolean; posted: number; sold: number; expired: number; cancelled: number };
 };
 
@@ -109,12 +117,86 @@ function bump(day: { items: Record<string, DayCounts> }, item: number, field: nu
   row[field] += by;
 }
 
+// "Market price" of one snapshot: the average price of the cheapest 15% of
+// what's listed (at least one item). Steadier than the single cheapest
+// listing, which one silly undercut can drag around.
+const MARKET_SHARE = 0.15;
+
+type ItemNow = { min: number; qty: number; mkt: number };
+
+// Cheapest buyout, quantity listed and market price for every item in a
+// snapshot. Bid-only auctions (price 0) count toward quantity only.
+export function summarizeListings(a: AuctionColumns): Map<number, ItemNow> {
+  const levels = new Map<number, [number, number][]>(); // item -> [price, qty][]
+  const out = new Map<number, ItemNow>();
+  for (let i = 0; i < a.id.length; i++) {
+    const item = a.item[i];
+    let n = out.get(item);
+    if (!n) {
+      n = { min: 0, qty: 0, mkt: 0 };
+      out.set(item, n);
+    }
+    n.qty += a.qty[i];
+    const price = a.price[i];
+    if (price > 0) {
+      if (n.min === 0 || price < n.min) n.min = price;
+      const l = levels.get(item);
+      if (l) l.push([price, a.qty[i]]);
+      else levels.set(item, [[price, a.qty[i]]]);
+    }
+  }
+  for (const [item, l] of levels) {
+    l.sort((x, y) => x[0] - y[0]);
+    let total = 0;
+    for (const [, q] of l) total += q;
+    const want = Math.max(1, Math.ceil(total * MARKET_SHARE));
+    let got = 0;
+    let value = 0;
+    for (const [price, q] of l) {
+      const take = Math.min(q, want - got);
+      got += take;
+      value += take * price;
+      if (got >= want) break;
+    }
+    out.get(item)!.mkt = Math.round(value / got);
+  }
+  return out;
+}
+
+function recordPrices(day: HouseDay, a: AuctionColumns) {
+  const px = day.px ?? (day.px = {});
+  for (const [item, n] of summarizeListings(a)) {
+    let row = px[item];
+    if (!row) {
+      row = [0, 0, 0, 0, 0];
+      px[item] = row;
+    }
+    row[PX_N] += 1;
+    row[PX_QTY] += n.qty;
+    if (n.min > 0) {
+      row[PX_MIN] += n.min;
+      row[PX_MKT] += n.mkt;
+      if (row[PX_LOW] === 0 || n.min < row[PX_LOW]) row[PX_LOW] = n.min;
+    }
+  }
+}
+
 // Folds one new snapshot into the house's state. Deterministic: the same
 // (state, snapshot) always gives the same result, so two callers racing on
 // the same snapshot just write identical files.
 export function applySnapshot(prev: HouseState | null, house: number, snapT: number, list: Listing[]): HouseState {
   if (!prev || prev.house !== house) {
-    return { v: 1, house, snapT, a: toColumns(list), days: {}, last: { gap: 0, counted: false, posted: 0, sold: 0, expired: 0, cancelled: 0 } };
+    const a = toColumns(list);
+    const day: HouseDay = { cov: 0, items: {} };
+    recordPrices(day, a);
+    return {
+      v: 1,
+      house,
+      snapT,
+      a,
+      days: { [String(Math.floor(snapT / 86400))]: day },
+      last: { gap: 0, counted: false, posted: 0, sold: 0, expired: 0, cancelled: 0 },
+    };
   }
   if (snapT <= prev.snapT) return prev;
 
@@ -183,11 +265,17 @@ export function applySnapshot(prev: HouseState | null, house: number, snapT: num
     }
   }
 
+  // Prices are recorded for every snapshot, even one after a long gap.
+  const a = toColumns(list);
+  const todayKey = String(Math.floor(snapT / 86400));
+  const today = days[todayKey] ?? (days[todayKey] = { cov: 0, items: {} });
+  recordPrices(today, a);
+
   const oldest = Math.floor(snapT / 86400) - KEEP_DAYS;
   for (const k of Object.keys(days)) {
     if (Number(k) < oldest) delete days[k];
   }
-  return { v: 1, house, snapT, a: toColumns(list), days, last: stats };
+  return { v: 1, house, snapT, a, days, last: stats };
 }
 
 // What the game gets, per item:
@@ -249,4 +337,106 @@ export function computeRates(state: HouseState): HouseRates {
     ];
   }
   return { house: state.house, snapT: state.snapT, hours: Math.round(cov / 360) / 10, items };
+}
+
+// ---------------------------------------------------------------------
+// What the website shows
+// ---------------------------------------------------------------------
+
+// One day of one item:
+// [unix day, sold qty, avg sold price, avg cheapest buyout, lowest buyout,
+//  avg market price, avg qty listed, new auctions, expired qty, reposts]
+export type HistDay = number[];
+export const H_DAY = 0;
+export const H_SOLD = 1;
+export const H_SOLDP = 2;
+export const H_MIN = 3;
+export const H_LOW = 4;
+export const H_MKT = 5;
+export const H_QTY = 6;
+export const H_POSTS = 7;
+export const H_EXP = 8;
+export const H_REPOST = 9;
+
+export type SiteItem = {
+  r: ItemRate;
+  mkt: number; // market price in the latest snapshot (0 = no buyouts listed)
+  h: HistDay[]; // oldest first
+};
+
+export type SiteData = {
+  v: 1;
+  house: number;
+  snapT: number;
+  hours: number;
+  days: number[]; // unix days covered, oldest first
+  cover: number[]; // share of each day that was watched for sales (0..1)
+  items: Record<string, SiteItem>;
+};
+
+export function computeSite(state: HouseState, rates: HouseRates = computeRates(state)): SiteData {
+  const dayKeys = Object.keys(state.days).map(Number).sort((x, y) => x - y);
+  const now = summarizeListings(state.a);
+  const items: Record<string, SiteItem> = {};
+  for (const [key, r] of Object.entries(rates.items)) {
+    const h: HistDay[] = [];
+    for (const d of dayKeys) {
+      const day = state.days[String(d)];
+      const c = day.items[key];
+      const p = day.px?.[key];
+      if (!c && !p) continue;
+      const n = p ? p[PX_N] : 0;
+      h.push([
+        d,
+        c ? c[SOLD_Q] : 0,
+        c && c[SOLD_Q] > 0 ? Math.round(c[SOLD_V] / c[SOLD_Q]) : 0,
+        p && n > 0 ? Math.round(p[PX_MIN] / n) : 0,
+        p ? p[PX_LOW] : 0,
+        p && n > 0 ? Math.round(p[PX_MKT] / n) : 0,
+        p && n > 0 ? Math.round(p[PX_QTY] / n) : 0,
+        c ? c[POST_N] : 0,
+        c ? c[EXP_Q] : 0,
+        c ? c[CANC_N] : 0,
+      ]);
+    }
+    items[key] = { r, mkt: now.get(Number(key))?.mkt ?? 0, h };
+  }
+  return {
+    v: 1,
+    house: state.house,
+    snapT: state.snapT,
+    hours: rates.hours,
+    days: dayKeys,
+    cover: dayKeys.map((d) => Math.min(1, state.days[String(d)].cov / 86400)),
+    items,
+  };
+}
+
+// Everything listed right now, grouped by price, cheapest first:
+// item -> [[price each, quantity, auctions], ...]. Price 0 = bid only (last).
+export type LadderRow = [number, number, number];
+export type Ladder = Record<string, LadderRow[]>;
+export const LADDER_LEVELS = 40;
+
+export function buildLadder(a: AuctionColumns, levels = LADDER_LEVELS): Ladder {
+  const by = new Map<number, Map<number, LadderRow>>();
+  for (let i = 0; i < a.id.length; i++) {
+    let m = by.get(a.item[i]);
+    if (!m) {
+      m = new Map();
+      by.set(a.item[i], m);
+    }
+    const price = a.price[i];
+    const row = m.get(price);
+    if (row) {
+      row[1] += a.qty[i];
+      row[2] += 1;
+    } else m.set(price, [price, a.qty[i], 1]);
+  }
+  const out: Ladder = {};
+  for (const [item, m] of by) {
+    const rows = [...m.values()].sort((x, y) => (x[0] === 0 ? 1 : y[0] === 0 ? -1 : x[0] - y[0]));
+    out[item] = rows.slice(0, levels);
+  }
+  return out;
 }

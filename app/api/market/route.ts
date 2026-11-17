@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { collectHouse, marketHouses, readRates, MARKET_REGION, type CollectResult } from "../../../lib/marketCollector";
+import { topUpItemInfo } from "../../../lib/marketItems";
 
 // Auction house sale rates for the Forever Gold addon. Public on purpose:
 // it's only auction data anyone can see in game, nothing account-specific.
@@ -29,8 +30,17 @@ export async function GET(req: NextRequest) {
     if (r) out.push(r);
   }
 
+  // ?names=500 looks up that many missing item names in one go (the
+  // collector otherwise adds ~120 an hour). Only ever fills in public data.
+  let named: number | undefined;
+  const names = Number(req.nextUrl.searchParams.get("names"));
+  if (names > 0) {
+    const ids = [...new Set(out.flatMap((r) => Object.keys(r.items).map(Number)))];
+    named = await topUpItemInfo(ids, Math.min(600, names), 12);
+  }
+
   return NextResponse.json(
-    { v: 1, region: MARKET_REGION, made: Math.floor(Date.now() / 1000), houses: out, collected },
+    { v: 1, region: MARKET_REGION, made: Math.floor(Date.now() / 1000), houses: out, collected, named },
     { headers: { "Cache-Control": "no-store" } }
   );
 }

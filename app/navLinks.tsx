@@ -85,6 +85,17 @@ const account = (
   </Icon>
 );
 
+// A pair of scales for the Auction House pages.
+const scales = (
+  <Icon>
+    <path d="M12 4v16" />
+    <path d="M8 20h8" />
+    <path d="M5 7h14" />
+    <path d="M5 7l-3 6a3 3 0 0 0 6 0z" />
+    <path d="M19 7l-3 6a3 3 0 0 0 6 0z" />
+  </Icon>
+);
+
 // Real routes only (per Jordan's "don't invent functionality" rule on the
 // layout rework) - Account is the new page from Stage 3; the rest are the
 // same destinations the old horizontal SiteNav had, just now the sidebar's
@@ -94,6 +105,7 @@ export const NAV_LINKS = [
   { href: "/", label: "Dashboard", icon: shield },
   { href: "/account", label: "Account", icon: account },
   { href: "/items", label: "Items", icon: items },
+  { href: "/auction", label: "Auction House", icon: scales },
   { href: "/friends", label: "Friends", icon: people },
   { href: "/leaderboards", label: "Leaderboards", icon: trophy },
   { href: "/legacy", label: "Legacy", icon: medal },
