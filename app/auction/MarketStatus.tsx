@@ -6,7 +6,7 @@ import { ago, Empty } from "./ui";
 // Auction House tab, plus a house picker when more than one is tracked.
 export default function MarketStatus({ m, path }: { m: Market; path: string }) {
   const days = m.hours / 24;
-  const span = days >= 2 ? `${Math.round(days)} days` : `${Math.round(m.hours)} hours`;
+  const span = days >= 2 ? `${Math.round(days)} days` : Math.round(m.hours) === 1 ? "1 hour" : `${Math.round(m.hours)} hours`;
   return (
     <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-400">
       {m.houses.length > 1 ? (
