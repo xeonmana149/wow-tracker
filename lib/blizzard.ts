@@ -73,3 +73,24 @@ export async function blizzardGet(
 
   return { ok: res.ok, status: res.status, body };
 }
+
+// Same as blizzardGet but hands back the raw Response, and takes extra
+// headers - the auction collector (lib/marketCollector.ts) needs
+// If-Modified-Since (Blizzard answers 304 when the hourly snapshot hasn't
+// changed, which costs nothing) and the Last-Modified header back.
+export async function blizzardFetch(
+  region: string,
+  path: string,
+  params: Record<string, string>,
+  headers: Record<string, string> = {}
+): Promise<Response> {
+  const token = await getAccessToken();
+  const url = new URL(`https://${region}.api.blizzard.com${path}`);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+  return fetch(url.toString(), {
+    headers: { ...headers, Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+}
