@@ -14,7 +14,7 @@ import {
   type Ladder,
 } from "./market";
 import { houseName, marketHouses, readLadder, readSite } from "./marketCollector";
-import { iconUrl, loadItemInfo, QUALITY_COLOR, type ItemInfo } from "./marketItems";
+import { iconUrl, loadItemInfo, QUALITY_COLOR, vendorTrusted, type ItemInfo } from "./marketItems";
 import { VENDOR_SUPPLIES } from "./marketVendor";
 import { supabase } from "./supabase";
 
@@ -38,7 +38,7 @@ export type Row = {
   cls: string;
   sub: string;
   vendor: number; // what a vendor pays for one (0 = nothing)
-  vendorSure: boolean; // vendor price is from Forever's own data
+  vendorSure: boolean; // vendor price is from Forever's own data or the game client
   perDay: number; // sold per day (an upper estimate)
   through: number; // % of listings that sell, -1 = not enough data
   avgSold: number; // average price it actually sold for, each
@@ -97,14 +97,14 @@ export function itemBasics(m: Market, id: number) {
   const quality = inf?.[1] || "COMMON";
   return {
     id,
-    name: (inf?.[0] && !/^Item \d+$/.test(inf[0]) ? inf[0] : madeBy.get(id)?.[0]?.name) || `Item ${id}`,
+    name: (inf?.[0] && !/^Item \d+$|^Retrieving item/i.test(inf[0]) ? inf[0] : madeBy.get(id)?.[0]?.name) || `Item ${id}`,
     quality,
     color: QUALITY_COLOR[quality] ?? "#ffffff",
     icon: iconUrl(inf?.[5]),
     cls: inf?.[2] ?? "",
     sub: inf?.[3] ?? "",
     vendor: inf?.[4] ?? 0,
-    vendorSure: inf?.[6] === 1,
+    vendorSure: vendorTrusted(inf),
   };
 }
 
@@ -218,15 +218,19 @@ export function flipDeals(m: Market, limit = 60): FlipDeal[] {
 }
 
 // Listings cheaper than a vendor pays for them: buy, walk to a vendor, sell.
+// Only vendor prices from Forever's own data or the game client count. The old classic table
+// is often wrong (it had Iron Bar at 14s; the game pays 2s), and even
+// Forever's data is a few percent off now and then, so a listing has to be
+// at least 10% under the vendor price.
 export function vendorDeals(m: Market, limit = 60): VendorDeal[] {
   const out: VendorDeal[] = [];
   for (const id of Object.keys(m.ladder)) {
     const b = itemBasics(m, Number(id));
-    if (b.vendor <= 0) continue;
+    if (b.vendor <= 0 || !b.vendorSure) continue;
     let qty = 0;
     let cost = 0;
     for (const [price, q] of m.ladder[id]) {
-      if (price <= 0 || price >= b.vendor) break;
+      if (price <= 0 || price > b.vendor * 0.9) break;
       qty += q;
       cost += price * q;
     }

@@ -79,8 +79,8 @@ export default async function DealsPage({ searchParams }: { searchParams: Promis
       <section>
         <h2 className="text-lg font-semibold text-gray-100">Cheaper than a vendor pays</h2>
         <p className="mb-2 max-w-3xl text-sm text-gray-400">
-          Buy these and sell them straight to any vendor. No risk, as long as the vendor price is right. Prices marked
-          &quot;check&quot; come from old classic data, so look at the tooltip in game first.
+          Buy these and sell them straight to any vendor. Vendor prices come from the game itself, and only listings at least
+          10% under them are counted. Someone may beat you to it, so check the price in game before you buy.
         </p>
         {vendor.length === 0 ? (
           <Empty>Nothing listed below vendor price right now.</Empty>
@@ -109,7 +109,7 @@ export default async function DealsPage({ searchParams }: { searchParams: Promis
                     <td className={`${TD} text-right`}>
                       <Money c={v.vendorTotal} />{" "}
                       <span className="text-xs text-gray-500">
-                        (<Money c={v.row.vendor} /> each{v.row.vendorSure ? "" : ", check"})
+                        (<Money c={v.row.vendor} /> each)
                       </span>
                     </td>
                     <td className={`${TD} text-right font-semibold text-emerald-300`}>

@@ -39,8 +39,10 @@ export function Money({ c, sign = false }: { c: number; sign?: boolean }) {
 export function ItemIcon({ src, size = 28 }: { src: string | null; size?: number }) {
   if (!src) return <span className="inline-block shrink-0 rounded border border-neutral-700 bg-neutral-800" style={{ width: size, height: size }} />;
   return (
+    // Not loading="lazy": inside this layout the browser never starts lazy
+    // images, and the icons are tiny (2-3 KB) anyway.
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt="" width={size} height={size} loading="lazy" className="shrink-0 rounded border border-neutral-700" />
+    <img src={src} alt="" width={size} height={size} decoding="async" className="shrink-0 rounded border border-neutral-700" />
   );
 }
 
