@@ -1,0 +1,27 @@
+## Interface: 16001
+## Title: |cffffd100Forever Gold|r
+## Notes: Plain-English gold making. Scans the auction house and tells you what to craft, farm, sell and flip with your own characters and professions. Type /gold.
+## Author: Jordan
+## Version: 1.5.0
+## IconTexture: Interface\Icons\INV_Misc_Coin_01
+## SavedVariables: ForeverGoldDB
+## AddonCompartmentFunc: ForeverGold_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: ForeverGold_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: ForeverGold_OnAddonCompartmentLeave
+
+MarketData.lua
+RecipeData.lua
+Core.lua
+Data.lua
+Prices.lua
+Market.lua
+Scan.lua
+Chars.lua
+Tracker.lua
+Advisor.lua
+Recipes.lua
+Route.lua
+Sell.lua
+Web.lua
+UI.lua
+TrackerUI.lua
