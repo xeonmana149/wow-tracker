@@ -36,12 +36,15 @@ const ADDON_DIR = path.join(SITE_DIR, "addon", "WoWForeverTracker");
 const TOC = path.join(ADDON_DIR, "WoWForeverTracker.toc");
 const LUA = path.join(ADDON_DIR, "WoWForeverTracker.lua");
 const VERSIONS_TS = path.join(SITE_DIR, "lib", "versions.ts");
+// Forever Gold: zipped into every release by the tray's hook; not tracked in git.
+const FG_DIR = path.join(SITE_DIR, "addon", "ForeverGold");
 const TRAY_PKG = path.join(TRAY_DIR, "package.json");
 const REQUIRED_ASSETS = [
   "latest.yml",
   "WoWForeverTrackerSetup.exe",
   "WoWForeverTrackerSetup.exe.blockmap",
   "WoWForeverTrackerAddon.zip",
+  "ForeverGoldAddon.zip",
 ];
 
 // ---- args ----
@@ -114,6 +117,13 @@ if (newAddon) {
   log(`Addon: ${addonVersion} (unchanged)`);
 }
 
+// Forever Gold's version: its .toc and Core.lua's ns.VERSION must agree.
+const fgToc = fs.readFileSync(path.join(FG_DIR, "ForeverGold.toc"), "utf8").match(/^## Version:\s*(\S+)/m)?.[1];
+const fgLua = fs.readFileSync(path.join(FG_DIR, "Core.lua"), "utf8").match(/ns\.VERSION = "([^"]+)"/)?.[1];
+if (!fgToc || fgToc !== fgLua) fail(`Forever Gold versions disagree: .toc says ${fgToc}, Core.lua says ${fgLua}.`);
+const fgVersion = fgToc;
+log(`Forever Gold: ${fgVersion}`);
+
 const trayPkgText = fs.readFileSync(TRAY_PKG, "utf8");
 const trayPkg = JSON.parse(trayPkgText);
 let trayVersion = trayPkg.version;
@@ -147,14 +157,15 @@ if (!dryRun) {
 const versionsText = fs.readFileSync(VERSIONS_TS, "utf8");
 const updated = versionsText
   .replace(/(addon:\s*")[^"]+(")/, `$1${addonVersion}$2`)
-  .replace(/(tray:\s*")[^"]+(")/, `$1${trayVersion}$2`);
+  .replace(/(tray:\s*")[^"]+(")/, `$1${trayVersion}$2`)
+  .replace(/(foreverGold:\s*")[^"]+(")/, `$1${fgVersion}$2`);
 if (!dryRun) fs.writeFileSync(VERSIONS_TS, updated);
-log(`lib/versions.ts -> addon ${addonVersion}, tray ${trayVersion}`);
+log(`lib/versions.ts -> addon ${addonVersion}, tray ${trayVersion}, Forever Gold ${fgVersion}`);
 
 const toCommit = ["lib/versions.ts", "addon/WoWForeverTracker", ...includes];
 run("git", ["add", "--", ...toCommit], SITE_DIR);
 const message = [
-  `Release tray ${trayVersion}, addon ${addonVersion}`,
+  `Release tray ${trayVersion}, addon ${addonVersion}, Forever Gold ${fgVersion}`,
   "",
   "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
 ].join("\n");
