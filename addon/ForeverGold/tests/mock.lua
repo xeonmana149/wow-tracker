@@ -29,7 +29,8 @@ for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_LEVEL_UP", "GET_ITE
     "OWNED_AUCTIONS_UPDATED", "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED",
     "BAG_UPDATE_DELAYED", "PLAYER_MONEY", "SKILL_LINES_CHANGED", "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_SUCCEEDED",
     "LOOT_READY", "LOOT_OPENED", "NEW_RECIPE_LEARNED", "UNIT_HEALTH", "LOOT_SLOT_CLEARED", "LOOT_CLOSED",
-    "MAIL_SHOW", "MAIL_CLOSED", "MERCHANT_CLOSED", "PLAYER_LOGOUT", "AUCTION_HOUSE_AUCTION_CREATED", "PLAYER_DEAD" }) do
+    "MAIL_SHOW", "MAIL_CLOSED", "MERCHANT_CLOSED", "PLAYER_LOGOUT", "AUCTION_HOUSE_AUCTION_CREATED", "PLAYER_DEAD",
+    "QUEST_COMPLETE", "QUEST_FINISHED", "QUEST_TURNED_IN" }) do
     KNOWN_EVENTS[e] = true
 end
 
@@ -72,6 +73,8 @@ function methods:GetHeight() return self._h end
 function methods:GetSize() return self._w, self._h end
 function methods:GetStringHeight() return 12 * math.max(1, math.ceil(#self._text / 110)) end
 function methods:GetCenter() return 100, 100 end
+function methods:GetLeft() return 900 end
+function methods:GetTop() return 700 end
 function methods:GetEffectiveScale() return 1 end
 function methods:GetFrameLevel() return 1 end
 function methods:GetParent() return self._parent end
@@ -513,7 +516,7 @@ M.loot = {}
 function GetNumLootItems() return #M.loot end
 function GetLootSlotType(i) local l = M.loot[i]; return l and l.type or 0 end
 function GetLootSlotLink(i) local l = M.loot[i]; return l and l.id and ("|cffffffff|Hitem:" .. l.id .. "::::|h[x]|h|r") or nil end
-function GetLootSlotInfo(i) local l = M.loot[i]; return 134400, "x", l and l.qty or 0, nil, l and l.quality or 1 end
+function GetLootSlotInfo(i) local l = M.loot[i]; return 134400, "x", l and l.qty or 0, nil, l and l.quality or 1, false, l and l.quest or false end
 function GetLootSourceInfo(i) local l = M.loot[i]; return l and l.src, 1 end
 -- M.units[unit] = { guid =, name =, dead =, tapDenied =, player = }
 M.units = {}

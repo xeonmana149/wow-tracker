@@ -193,7 +193,7 @@ end
 -- unknown (a price is missing), bound (can't be sold at all).
 function ns.CraftList()
     return cached("craft", function()
-        local out = { good = {}, untapped = {}, bad = {}, unknown = {}, bound = {}, total = 0 }
+        local out = { good = {}, slow = {}, untapped = {}, bad = {}, unknown = {}, bound = {}, total = 0 }
         for _, rec in ipairs(recipeBook().list) do
             out.total = out.total + 1
             local e = ns.EvalRecipe(rec)
@@ -203,6 +203,9 @@ function ns.CraftList()
                 out.unknown[#out.unknown + 1] = e
             elseif not e.price then
                 out.untapped[#out.untapped + 1] = e
+            elseif e.profit > 0 and e.demand == "rarely" and e.measured then
+                -- Profitable on paper, but the sale data says it hardly sells.
+                out.slow[#out.slow + 1] = e
             elseif e.profit > 0 then
                 out.good[#out.good + 1] = e
             else
@@ -215,6 +218,7 @@ function ns.CraftList()
             end
             return a.profit > b.profit
         end)
+        table.sort(out.slow, function(a, b) return a.profit > b.profit end)
         table.sort(out.bad, function(a, b) return a.profit > b.profit end)
         table.sort(out.untapped, function(a, b) return a.cost < b.cost end)
         table.sort(out.unknown, function(a, b) return (a.rec.name or "") < (b.rec.name or "") end)
@@ -303,7 +307,12 @@ function ns.BagAdvice()
                 end
             end
         end
-        table.sort(out.ah, function(a, b) return a.total > b.total end)
+        -- Most money you'll actually see first: the total weighted by how
+        -- often that item really sells.
+        local function expect(row)
+            return row.total * (ns.SpeedWeight and ns.SpeedWeight(row.id) or 1)
+        end
+        table.sort(out.ah, function(a, b) return expect(a) > expect(b) end)
         table.sort(out.vendor, function(a, b) return a.total > b.total end)
         table.sort(out.unlisted, function(a, b) return (a.last or 0) > (b.last or 0) end)
 
@@ -364,7 +373,8 @@ function ns.VendorDeals()
                 local price, listed = ns.AHPrice(id)
                 local sure = how == "sold" or (v.lim and true or false)
                 out[#out + 1] = { id = id, buy = v.p, price = net / (1 - CUT), net = net, profit = net - v.p,
-                    listed = listed or 0, limited = v.lim, npc = v.npc, zone = v.zone, sure = sure, how = how }
+                    listed = listed or 0, limited = v.lim, npc = v.npc, zone = v.zone, sure = sure, how = how,
+                    map = v.m, x = v.x, y = v.y }
                 if sure then
                     out.sure = out.sure + 1
                 end

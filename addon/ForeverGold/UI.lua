@@ -1,19 +1,41 @@
 -- Forever Gold - the window
 --
--- One window, seven tabs, every row a plain sentence with a number on the
--- right. Built from bare frames and textures only (no Blizzard templates),
+-- One window: To do, Sell, Buy and Make, plus a Settings page. Every row is
+-- a plain sentence with a number on the right. Built from bare frames and textures only (no Blizzard templates),
 -- so there is nothing here that depends on which templates this client has.
 
 local _, ns = ...
 local floor, max, min = math.floor, math.max, math.min
 
-local UI = {}
+local UI = { sel = {} }
 ns.UI = UI
 
-local W, H = 860, 560
+local W, H = 860, 480
+local MIN_H, MAX_H = 360, 640
+local PANE_W = 330
 local COIN = "Interface\\Icons\\INV_Misc_Coin_01"
+-- Forever Gold's own round badge (Icon.tga next to this file).
+local LOGO = "Interface\\AddOns\\ForeverGold\\Icon"
 local GREY = "|cff9a9a9a"
 local CUT = ns.AH_CUT
+
+-- The look: a merchant's ledger. Charcoal panels, aged brass edges, and
+-- gold kept for the selected tab and the main action only.
+local C = {
+    bg = { 0.071, 0.067, 0.062, 1 },
+    edge = { 0.34, 0.28, 0.16 },
+    panel = { 0.098, 0.094, 0.086, 1 },
+    panelEdge = { 0.24, 0.21, 0.16 },
+    btn = { 0.145, 0.137, 0.125 },
+    btnEdge = { 0.30, 0.27, 0.22 },
+    btnText = { 0.87, 0.85, 0.80 },
+    gold = { 0.40, 0.30, 0.10 },
+    goldEdge = { 0.82, 0.64, 0.28 },
+    goldText = { 1, 0.87, 0.50 },
+    head = { 0.86, 0.78, 0.60 },
+    text = { 0.93, 0.91, 0.87 },
+}
+ns.THEME = C
 
 ----------------------------------------------------------------------
 -- Small building blocks
@@ -25,11 +47,23 @@ local function tex(parent, layer, r, g, b, a)
     return t
 end
 
+local function setEdge(f, r, g, b, a)
+    for _, e in ipairs(f.edges or {}) do
+        e:SetColorTexture(r, g, b, a or 1)
+    end
+end
+
 local function skin(f, r, g, b, a, er, eg, eb, ea)
+    if not r then
+        r, g, b, a = C.bg[1], C.bg[2], C.bg[3], C.bg[4]
+    end
     local bg = tex(f, "BACKGROUND", r, g, b, a)
     bg:SetAllPoints()
     f.bg = bg
-    er, eg, eb, ea = er or 0.45, eg or 0.36, eb or 0.12, ea or 1
+    if not er then
+        er, eg, eb = C.edge[1], C.edge[2], C.edge[3]
+    end
+    ea = ea or 1
     local top = tex(f, "BORDER", er, eg, eb, ea)
     top:SetPoint("TOPLEFT")
     top:SetPoint("TOPRIGHT")
@@ -46,6 +80,42 @@ local function skin(f, r, g, b, a, er, eg, eb, ea)
     right:SetPoint("TOPRIGHT")
     right:SetPoint("BOTTOMRIGHT")
     right:SetWidth(1)
+    f.edges = { top, bottom, left, right }
+end
+
+-- Serif headings (the game's own Morpheus face), falling back to the
+-- standard fonts if this client won't make one.
+local function makeFont(name, size, fallback)
+    if _G[name] then
+        return name
+    end
+    if not CreateFont then
+        return fallback
+    end
+    local ok, font = pcall(CreateFont, name)
+    if not ok or not font then
+        return fallback
+    end
+    if not pcall(font.SetFont, font, "Fonts\\MORPHEUS.TTF", size, "") then
+        return fallback
+    end
+    return name
+end
+local SERIF_L = makeFont("ForeverGoldSerifLarge", 19, "GameFontNormalLarge")
+-- Only the window title is decorative; everything you read is the plain face.
+
+-- Quality as an icon border, so item names can stay one quiet colour.
+local QUALITY_RGB = { [2] = { 0.12, 1, 0 }, [3] = { 0, 0.44, 0.87 }, [4] = { 0.64, 0.21, 0.93 },
+    [5] = { 1, 0.5, 0 }, [6] = { 0.9, 0.8, 0.5 }, [7] = { 0, 0.8, 1 } }
+
+local function edgeFor(texture, id)
+    local it = id and ns.Item(id)
+    local c = it and QUALITY_RGB[it.q or 1]
+    if c then
+        texture:SetColorTexture(c[1], c[2], c[3], 0.9)
+    else
+        texture:SetColorTexture(0.32, 0.30, 0.27, 1)
+    end
 end
 
 local function label(parent, font, text)
@@ -60,11 +130,12 @@ end
 local function button(parent, text, w, h, onClick)
     local b = CreateFrame("Button", nil, parent)
     b:SetSize(w, h or 24)
-    skin(b, 0.20, 0.16, 0.07, 1, 0.55, 0.44, 0.15, 1)
-    local hl = tex(b, "HIGHLIGHT", 1, 0.82, 0, 0.18)
+    skin(b, C.btn[1], C.btn[2], C.btn[3], 1, C.btnEdge[1], C.btnEdge[2], C.btnEdge[3], 1)
+    local hl = tex(b, "HIGHLIGHT", 1, 0.92, 0.7, 0.10)
     hl:SetAllPoints()
     b.text = label(b, "GameFontNormalSmall", text)
     b.text:SetPoint("CENTER")
+    b.text:SetTextColor(C.btnText[1], C.btnText[2], C.btnText[3])
     b.onClick = onClick
     b:SetScript("OnClick", function(self)
         if self.disabled or not self.onClick then
@@ -78,20 +149,35 @@ local function button(parent, text, w, h, onClick)
     function b:SetLabel(t)
         self.text:SetText(t or "")
     end
-    function b:SetOn(on)
-        if on then
-            self.bg:SetColorTexture(0.42, 0.33, 0.08, 1)
+    -- Gold when selected (a tab) or when it's the main thing to press.
+    local function paint(self)
+        local gold = self.on or self.primary
+        if gold then
+            self.bg:SetColorTexture(C.gold[1], C.gold[2], C.gold[3], 1)
+            setEdge(self, C.goldEdge[1], C.goldEdge[2], C.goldEdge[3])
         else
-            self.bg:SetColorTexture(0.20, 0.16, 0.07, 1)
+            self.bg:SetColorTexture(C.btn[1], C.btn[2], C.btn[3], 1)
+            setEdge(self, C.btnEdge[1], C.btnEdge[2], C.btnEdge[3])
         end
+        if self.disabled then
+            self.text:SetTextColor(0.48, 0.47, 0.45)
+        elseif gold then
+            self.text:SetTextColor(C.goldText[1], C.goldText[2], C.goldText[3])
+        else
+            self.text:SetTextColor(C.btnText[1], C.btnText[2], C.btnText[3])
+        end
+    end
+    function b:SetOn(on)
+        self.on = on and true or false
+        paint(self)
+    end
+    function b:SetPrimary(p)
+        self.primary = p and true or false
+        paint(self)
     end
     function b:SetDisabled(d)
         self.disabled = d and true or false
-        if d then
-            self.text:SetTextColor(0.5, 0.5, 0.5)
-        else
-            self.text:SetTextColor(1, 0.82, 0)
-        end
+        paint(self)
     end
     return b
 end
@@ -144,6 +230,17 @@ local function rowEnter(self)
     if not pcall(GameTooltip.SetOwner, GameTooltip, self, "ANCHOR_CURSOR_RIGHT") then
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     end
+    -- With a details pane beside the list, the numbers are there already;
+    -- hovering only shows the game's own item tooltip.
+    if self.list and self.list.onSelect then
+        if d.id then
+            pcall(GameTooltip.SetItemByID, GameTooltip, d.id)
+            GameTooltip:Show()
+        else
+            GameTooltip:Hide()
+        end
+        return
+    end
     local tip = d.tip
     if type(tip) == "function" then
         local ok, result = pcall(tip)
@@ -183,6 +280,21 @@ local function rowClick(self)
     if not d then
         return
     end
+    if self.list and self.list.onSelect and not d.type then
+        -- Click picks the row for the details pane; the pane holds the action.
+        if d.id and IsShiftKeyDown and IsShiftKeyDown() then
+            insertLink(d.id)
+            return
+        end
+        if d.id and ns.ahOpen then
+            ns.SearchAH(ns.ItemName(d.id))
+        end
+        local ok, err = pcall(self.list.onSelect, d)
+        if not ok then
+            ns.Err("row", err)
+        end
+        return
+    end
     if d.onClick then
         local ok, err = pcall(d.onClick, d)
         if not ok then
@@ -201,14 +313,21 @@ end
 
 local function newRow(list)
     local r = CreateFrame("Button", nil, list.content)
-    r.hl = tex(r, "HIGHLIGHT", 1, 1, 1, 0.07)
+    r.hl = tex(r, "HIGHLIGHT", 1, 1, 1, 0.05)
     r.hl:SetAllPoints()
-    r.band = tex(r, "BACKGROUND", 1, 0.82, 0, 0.10)
+    r.band = tex(r, "BACKGROUND", 1, 1, 1, 0.025)
     r.band:SetAllPoints()
-    r.sep = tex(r, "BORDER", 1, 1, 1, 0.06)
+    r.selBg = tex(r, "BACKGROUND", 1, 0.92, 0.75, 0.07)
+    r.selBg:SetAllPoints()
+    r.selBar = tex(r, "ARTWORK", C.goldEdge[1], C.goldEdge[2], C.goldEdge[3], 1)
+    r.selBar:SetPoint("TOPLEFT")
+    r.selBar:SetPoint("BOTTOMLEFT")
+    r.selBar:SetWidth(2)
+    r.sep = tex(r, "BORDER", 1, 1, 1, 0.045)
     r.sep:SetPoint("BOTTOMLEFT")
     r.sep:SetPoint("BOTTOMRIGHT")
     r.sep:SetHeight(1)
+    r.iconEdge = r:CreateTexture(nil, "BORDER")
     r.icon = r:CreateTexture(nil, "ARTWORK")
     r.icon:SetSize(30, 30)
     r.icon:SetPoint("TOPLEFT", 6, -6)
@@ -232,13 +351,240 @@ local function newRow(list)
     return r
 end
 
+-- A strip of small item icons with a label each ("35%"), hovered one at a
+-- time: { type = "chips", chips = { { id =, text =, tip = { lines } }, ... }, more = "+3" }
+local function chipEnter(self)
+    local c = self.c
+    if not c or not GameTooltip then
+        return
+    end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    if c.id then
+        pcall(GameTooltip.SetItemByID, GameTooltip, c.id)
+    end
+    for _, line in ipairs(c.tip or {}) do
+        GameTooltip:AddLine(line, 0.9, 0.9, 0.9, true)
+    end
+    GameTooltip:Show()
+end
+
+local function chip(r, i)
+    r.chips = r.chips or {}
+    local c = r.chips[i]
+    if not c then
+        c = CreateFrame("Button", nil, r)
+        c.icon = c:CreateTexture(nil, "ARTWORK")
+        c.icon:SetSize(14, 14)
+        c.icon:SetPoint("LEFT", 0, 0)
+        c.text = label(c, "GameFontHighlightSmall")
+        c.text:SetPoint("LEFT", c.icon, "RIGHT", 3, 0)
+        c:SetScript("OnEnter", chipEnter)
+        c:SetScript("OnLeave", rowLeave)
+        r.chips[i] = c
+    end
+    return c
+end
+
+local function renderChips(r, d, width, compact)
+    local x = d.indent or (compact and 24 or 44)
+    local w = d.chipW or 56
+    local n = 0
+    for i, cd in ipairs(d.chips or {}) do
+        if x + w > width - 4 then
+            break
+        end
+        local c = chip(r, i)
+        c.c = cd
+        setIcon(c.icon, cd.id and ns.Icon(cd.id) or cd.icon)
+        c.text:SetText(cd.text or "")
+        c:SetSize(w - 4, 16)
+        c:ClearAllPoints()
+        c:SetPoint("LEFT", r, "LEFT", x, 0)
+        c:Show()
+        x = x + w
+        n = i
+    end
+    if n < #(d.chips or {}) then
+        r.r1:SetPoint("RIGHT", -6, 0)
+        r.r1:SetWidth(40)
+        r.r1:SetText(GREY .. "+" .. (#d.chips - n) .. "|r")
+    end
+    r:EnableMouse(false)
+    return compact and 20 or 24
+end
+
+-- A line graph of { {time, copper}, ... }: account gold over time.
+local function shortGold(v)
+    local neg = v < 0 and "-" or ""
+    v = math.abs(v)
+    if v >= 10000000 then
+        return neg .. floor(v / 10000000 + 0.5) .. "k g"
+    elseif v >= 10000 then
+        local g = v / 10000
+        return neg .. (g >= 100 and floor(g + 0.5) or floor(g * 10 + 0.5) / 10) .. "g"
+    elseif v >= 100 then
+        return neg .. floor(v / 100 + 0.5) .. "s"
+    end
+    return neg .. floor(v + 0.5) .. "c"
+end
+
+local GRAPH_LEFT, GRAPH_BOTTOM, GRAPH_MAX_POINTS = 54, 16, 240
+
+local function newGraph(parent)
+    local g = CreateFrame("Frame", nil, parent)
+    g.bg = tex(g, "BACKGROUND", 0, 0, 0, 0.22)
+    g.bg:SetAllPoints()
+    g.lines, g.grid, g.ylabels, g.xlabels = {}, {}, {}, {}
+    g.empty = label(g, "GameFontDisableSmall")
+    g.empty:SetPoint("CENTER")
+    g.dot = tex(g, "OVERLAY", C.goldText[1], C.goldText[2], C.goldText[3], 1)
+    g.dot:SetSize(6, 6)
+    g.dot:Hide()
+    g:EnableMouse(true)
+    g:SetScript("OnEnter", function(self) self.hovering = true end)
+    g:SetScript("OnLeave", function(self)
+        self.hovering = false
+        self.dot:Hide()
+        rowLeave()
+    end)
+    g:SetScript("OnUpdate", function(self)
+        if not self.hovering or not self.drawn or #self.drawn == 0 or not GameTooltip then
+            return
+        end
+        local cx = GetCursorPosition() / (self:GetEffectiveScale() or 1) - (self:GetLeft() or 0)
+        local best, bestD
+        for _, p in ipairs(self.drawn) do
+            local dist = math.abs(p.x - cx)
+            if not bestD or dist < bestD then
+                best, bestD = p, dist
+            end
+        end
+        if best and best ~= self.shown then
+            self.shown = best
+            self.dot:ClearAllPoints()
+            self.dot:SetPoint("CENTER", self, "BOTTOMLEFT", best.x, best.y)
+            self.dot:Show()
+            GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+            GameTooltip:SetText(date("%a %d %b, %H:%M", best.t), 1, 1, 1)
+            GameTooltip:AddLine(ns.Money(best.v), 1, 1, 1)
+            GameTooltip:Show()
+        end
+    end)
+
+    local function line(list, i, layer)
+        local l = list[i]
+        if not l then
+            l = g:CreateLine(nil, layer or "ARTWORK")
+            list[i] = l
+        end
+        l:Show()
+        return l
+    end
+    local function text(list, i)
+        local t = list[i]
+        if not t then
+            t = label(g, "GameFontDisableSmall")
+            list[i] = t
+        end
+        t:ClearAllPoints()
+        t:Show()
+        return t
+    end
+
+    function g:Draw(points, span)
+        for _, l in ipairs(self.lines) do l:Hide() end
+        for _, l in ipairs(self.grid) do l:Hide() end
+        for _, t in ipairs(self.ylabels) do t:Hide() end
+        for _, t in ipairs(self.xlabels) do t:Hide() end
+        self.dot:Hide()
+        self.drawn, self.shown = {}, nil
+        local w, h = self:GetWidth() or 300, self:GetHeight() or 150
+        if #points < 2 then
+            self.empty:SetText("Not enough history yet")
+            return
+        end
+        self.empty:SetText("")
+        -- Thin very long histories so there are never more than a few hundred segments.
+        local step = math.ceil(#points / GRAPH_MAX_POINTS)
+        local pts = {}
+        for i = 1, #points, step do
+            pts[#pts + 1] = points[i]
+        end
+        if pts[#pts] ~= points[#points] then
+            pts[#pts + 1] = points[#points]
+        end
+        local t0, t1 = pts[1][1], pts[#pts][1]
+        local vmin, vmax = pts[1][2], pts[1][2]
+        for _, p in ipairs(pts) do
+            vmin, vmax = min(vmin, p[2]), max(vmax, p[2])
+        end
+        local spread = max(vmax - vmin, max(100, vmax * 0.02))
+        local mid = (vmax + vmin) / 2
+        vmin, vmax = max(0, mid - spread * 0.6), mid + spread * 0.6
+        local pw, ph = w - GRAPH_LEFT - 8, h - GRAPH_BOTTOM - 8
+        local function X(t) return GRAPH_LEFT + (t1 > t0 and (t - t0) / (t1 - t0) or 1) * pw end
+        local function Y(v) return GRAPH_BOTTOM + (v - vmin) / (vmax - vmin) * ph end
+        for i = 0, 2 do
+            local v = vmin + (vmax - vmin) * (0.1 + 0.4 * i)
+            local y = Y(v)
+            local gl = line(self.grid, i + 1, "BORDER")
+            gl:SetThickness(1)
+            gl:SetColorTexture(1, 1, 1, 0.07)
+            gl:SetStartPoint("BOTTOMLEFT", self, GRAPH_LEFT, y)
+            gl:SetEndPoint("BOTTOMLEFT", self, w - 8, y)
+            local t = text(self.ylabels, i + 1)
+            t:SetJustifyH("RIGHT")
+            t:SetWidth(GRAPH_LEFT - 8)
+            t:SetPoint("RIGHT", self, "BOTTOMLEFT", GRAPH_LEFT - 6, y)
+            t:SetText(shortGold(v))
+        end
+        local fmt = (t1 - t0) <= 2 * 86400 and "%H:%M" or "%d %b"
+        for i, t in ipairs({ t0, t1 }) do
+            local xl = text(self.xlabels, i)
+            xl:SetJustifyH(i == 1 and "LEFT" or "RIGHT")
+            xl:SetWidth(80)
+            xl:SetPoint(i == 1 and "BOTTOMLEFT" or "BOTTOMRIGHT", self, "BOTTOMLEFT", i == 1 and GRAPH_LEFT or (w - 8), 2)
+            xl:SetText(date(fmt, t))
+        end
+        local up = pts[#pts][2] >= pts[1][2]
+        local cr, cg, cb = C.goldEdge[1], C.goldEdge[2], C.goldEdge[3]
+        if not up then
+            cr, cg, cb = 0.85, 0.42, 0.36
+        end
+        for i, p in ipairs(pts) do
+            local x, y = X(p[1]), Y(p[2])
+            self.drawn[i] = { x = x, y = y, t = p[1], v = p[2] }
+            if i > 1 then
+                local prev = self.drawn[i - 1]
+                local l = line(self.lines, i - 1)
+                l:SetThickness(2)
+                l:SetColorTexture(cr, cg, cb, 1)
+                l:SetStartPoint("BOTTOMLEFT", self, prev.x, prev.y)
+                l:SetEndPoint("BOTTOMLEFT", self, x, y)
+            end
+        end
+    end
+    return g
+end
+
 -- Fills a row from its description and returns the height it needs.
 local function renderRow(r, d, width)
     local RIGHT_W = (r.list and r.list.rightW) or RIGHT_W
+    local compact = r.list and r.list.compact
     r.d = d
     r:SetWidth(width)
     r.icon:Hide()
+    r.iconEdge:Hide()
     r.band:Hide()
+    local selected = r.list and r.list.selected == d and not d.type
+    r.selBg:SetShown(selected)
+    r.selBar:SetShown(selected)
+    r.sep:SetShown(d.type ~= "text")
+    r.sep:SetColorTexture(1, 1, 1, 0.045)
+    r.title:SetTextColor(C.text[1], C.text[2], C.text[3])
+    for _, c in ipairs(r.chips or {}) do
+        c:Hide()
+    end
     r.sub:SetText("")
     r.r1:SetText("")
     r.r2:SetText("")
@@ -252,19 +598,41 @@ local function renderRow(r, d, width)
     r.title:SetWordWrap(false)
     r.sub:SetWordWrap(false)
 
-    if d.type == "header" then
+    if r.graph then
+        r.graph:Hide()
+    end
+    if d.type == "graph" then
+        r.title:SetText("")
+        r:EnableMouse(false)
+        r.sep:Hide()
+        local h = d.height or 160
+        r.graph = r.graph or newGraph(r)
+        r.graph:ClearAllPoints()
+        r.graph:SetPoint("TOPLEFT", 8, -6)
+        r.graph:SetSize(width - 16, h - 12)
+        r.graph:Show()
+        r.graph:Draw(d.points or {}, d.span)
+        return h
+    elseif d.type == "chips" then
+        r.title:SetText("")
+        return renderChips(r, d, width, compact)
+    elseif d.type == "header" then
+        -- A heading on a thin brass rule, no fill.
         r.band:Show()
-        setFont(r.title, "GameFontNormal")
-        r.title:SetPoint("LEFT", 8, 0)
+        r.sep:Show()
+        r.sep:SetColorTexture(C.edge[1], C.edge[2], C.edge[3], 0.8)
+        setFont(r.title, compact and "GameFontNormalSmall" or "GameFontNormal")
+        r.title:SetTextColor(C.head[1], C.head[2], C.head[3])
+        r.title:SetPoint("BOTTOMLEFT", compact and 6 or 8, compact and 3 or 5)
         r.title:SetWidth(width - RIGHT_W - 20)
         r.title:SetText(d.text or "")
-        r.r1:SetPoint("RIGHT", -10, 0)
-        r.r1:SetWidth(RIGHT_W)
-        r.r1:SetText(d.right or "")
+        r.r1:SetPoint("BOTTOMRIGHT", compact and -6 or -10, compact and 3 or 6)
+        r.r1:SetWidth(RIGHT_W + 60)
+        r.r1:SetText(d.right and (GREY .. d.right .. "|r") or "")
         r:EnableMouse(false)
-        return 26
+        return compact and 18 or 30
     elseif d.type == "text" then
-        local y = -8
+        local y = compact and -4 or -8
         setFont(r.title, "GameFontNormal")
         if d.title and d.title ~= "" then
             r.title:SetPoint("TOPLEFT", 8, y)
@@ -282,17 +650,55 @@ local function renderRow(r, d, width)
         r.body:SetText(d.text or "")
         local h = r.body:GetStringHeight() or 14
         r:EnableMouse(false)
-        return floor(-y + h + 10)
+        return floor(-y + h + (compact and 6 or 10))
     end
 
     r:EnableMouse(true)
     r.icon:Show()
     setIcon(r.icon, d.icon or (d.id and ns.Icon(d.id)))
+    if d.iconCoords then
+        r.icon:SetTexCoord(d.iconCoords[1], d.iconCoords[2], d.iconCoords[3], d.iconCoords[4])
+    end
     if d.dim then
         r.icon:SetAlpha(0.45)
+        r.title:SetTextColor(0.62, 0.61, 0.58)
     else
         r.icon:SetAlpha(1)
     end
+    local function placeEdge()
+        if d.noIcon then
+            r.icon:Hide()
+            return
+        end
+        r.iconEdge:ClearAllPoints()
+        r.iconEdge:SetPoint("TOPLEFT", r.icon, "TOPLEFT", -1, 1)
+        r.iconEdge:SetPoint("BOTTOMRIGHT", r.icon, "BOTTOMRIGHT", 1, -1)
+        edgeFor(r.iconEdge, d.id)
+        r.iconEdge:Show()
+    end
+    if compact then
+        -- One line: small icon, name, then two numbers on the right.
+        r.icon:SetSize(16, 16)
+        r.icon:ClearAllPoints()
+        r.icon:SetPoint("LEFT", 4, 0)
+        placeEdge()
+        local w1, w2 = RIGHT_W, r.list.right2W or 70
+        setFont(r.title, "GameFontHighlightSmall")
+        r.title:SetPoint("LEFT", 24, 0)
+        r.title:SetWidth(max(40, width - 24 - w1 - w2 - 10))
+        r.title:SetText(d.title or "")
+        r.r1:SetPoint("RIGHT", -4, 0)
+        r.r1:SetWidth(w1)
+        r.r1:SetText(d.r1 or "")
+        r.r2:SetPoint("RIGHT", -(6 + w1), 0)
+        r.r2:SetWidth(w2)
+        r.r2:SetText(d.r2 or "")
+        return 22
+    end
+    r.icon:SetSize(30, 30)
+    r.icon:ClearAllPoints()
+    r.icon:SetPoint("TOPLEFT", 7, -6)
+    placeEdge()
     -- An optional action button (for example "Sell") sits at the far right
     -- and pushes the numbers left.
     local pad, rightW = 10, RIGHT_W
@@ -302,12 +708,13 @@ local function renderRow(r, d, width)
         r.btn.onClick = function() d.btn.onClick(d) end
         r.btn:Show()
     end
+    local tx = d.noIcon and 12 or 46
     setFont(r.title, "GameFontHighlight")
-    r.title:SetPoint("TOPLEFT", 44, -6)
-    r.title:SetWidth(width - 44 - rightW - pad - 4)
+    r.title:SetPoint("TOPLEFT", tx, -6)
+    r.title:SetWidth(width - tx - rightW - pad - 4)
     r.title:SetText(d.title or "")
-    r.sub:SetPoint("TOPLEFT", 44, -23)
-    r.sub:SetWidth(width - 44 - rightW - pad - 4)
+    r.sub:SetPoint("TOPLEFT", tx, -23)
+    r.sub:SetWidth(width - tx - rightW - pad - 4)
     r.sub:SetText(d.sub and (GREY .. d.sub .. "|r") or "")
     r.r1:SetPoint("TOPRIGHT", -pad, -6)
     r.r1:SetWidth(rightW)
@@ -329,7 +736,7 @@ local function createList(parent)
     content:SetSize(10, 10)
     content:SetPoint("TOPLEFT", 0, 0)
     list.content = content
-    list.thumb = tex(clip, "OVERLAY", 1, 0.82, 0, 0.45)
+    list.thumb = tex(clip, "OVERLAY", C.edge[1], C.edge[2], C.edge[3], 0.9)
     list.thumb:SetWidth(3)
 
     function list:Apply()
@@ -390,6 +797,255 @@ local function createList(parent)
 end
 
 ----------------------------------------------------------------------
+-- Details pane: the selected row's sums and the thing to do about it
+----------------------------------------------------------------------
+
+-- What the pane shows for a row. A row can give d.detail (a table, or a
+-- function returning one):
+--   { lines = { {label, value}, {label, value, total = true}, "a sentence", " ", ... },
+--     note = "small print", action = { label =, onClick =, disabled = }, action2 = {...} }
+-- Without one, its hover lines (d.tip) and its click or Sell button are used.
+local function detailFor(d)
+    local det = d.detail
+    if type(det) == "function" then
+        local ok, result = pcall(det, d)
+        det = ok and result or nil
+    end
+    det = det or {}
+    if not det.lines then
+        local tip = d.tip
+        if type(tip) == "function" then
+            local ok, result = pcall(tip)
+            tip = ok and result or nil
+        end
+        det.lines = tip or {}
+    end
+    if det.action == nil then
+        if d.btn then
+            det.action = { label = d.btn.label, onClick = function() d.btn.onClick(d) end }
+        elseif d.onClick then
+            det.action = { label = d.actionLabel or "Show me", onClick = function() d.onClick(d) end }
+        elseif d.id and ns.ahOpen then
+            det.action = { label = "Search the auction house", onClick = function() ns.SearchAH(ns.ItemName(d.id)) end }
+        end
+    end
+    if det.action2 == nil and d.id then
+        det.action2 = { label = "Link in chat", onClick = function() insertLink(d.id) end }
+    end
+    return det
+end
+
+local function createPane(parent)
+    local p = CreateFrame("Frame", nil, parent)
+    p:SetWidth(PANE_W)
+    skin(p, C.panel[1], C.panel[2], C.panel[3], C.panel[4], C.panelEdge[1], C.panelEdge[2], C.panelEdge[3], 1)
+    p:SetClipsChildren(true)
+    p.iconEdge = p:CreateTexture(nil, "BORDER")
+    p.icon = p:CreateTexture(nil, "ARTWORK")
+    p.icon:SetSize(36, 36)
+    p.icon:SetPoint("TOPLEFT", 14, -14)
+    p.iconEdge:SetPoint("TOPLEFT", p.icon, "TOPLEFT", -1, 1)
+    p.iconEdge:SetPoint("BOTTOMRIGHT", p.icon, "BOTTOMRIGHT", 1, -1)
+    p.title = label(p, "GameFontHighlightLarge")
+    p.title:SetTextColor(C.text[1], C.text[2], C.text[3])
+    p.title:SetWordWrap(true)
+    p.sub = label(p, "GameFontHighlightSmall")
+    p.sub:SetJustifyV("TOP")
+    p.sub:SetWordWrap(true)
+    p.caption = label(p, "GameFontDisableSmall")
+    p.value = label(p, "GameFontHighlightLarge")
+    p.value:SetJustifyH("RIGHT")
+    p.rule = tex(p, "BORDER", C.edge[1], C.edge[2], C.edge[3], 0.6)
+    p.rule:SetHeight(1)
+    p.note = label(p, "GameFontDisableSmall")
+    p.note:SetJustifyV("TOP")
+    p.note:SetWordWrap(true)
+    p.fs, p.rules = {}, {}
+    p.primary = button(p, "", PANE_W - 28, 26)
+    p.primary:SetPrimary(true)
+    p.secondary = button(p, "", PANE_W - 28, 22)
+
+    local function fs(i)
+        local f = p.fs[i]
+        if not f then
+            f = label(p, "GameFontHighlightSmall")
+            f:SetJustifyV("TOP")
+            p.fs[i] = f
+        end
+        f:ClearAllPoints()
+        f:SetWordWrap(false)
+        f:SetJustifyH("LEFT")
+        f:Show()
+        return f
+    end
+    local function rule(i)
+        local t = p.rules[i]
+        if not t then
+            t = tex(p, "BORDER", 1, 1, 1, 0.08)
+            t:SetHeight(1)
+            p.rules[i] = t
+        end
+        t:ClearAllPoints()
+        t:Show()
+        return t
+    end
+    local function setAction(b, a)
+        if not a then
+            b:Hide()
+            return false
+        end
+        b:SetLabel(a.label or "")
+        b.onClick = a.onClick
+        b:SetDisabled(a.disabled or not a.onClick)
+        b:Show()
+        return true
+    end
+
+    -- Fills the pane for row d and returns the height it needs.
+    function p:SetRow(d)
+        for _, f in ipairs(self.fs) do f:Hide() end
+        for _, t in ipairs(self.rules) do t:Hide() end
+        local inner = PANE_W - 28
+        if not d then
+            self.icon:Hide()
+            self.iconEdge:Hide()
+            self.title:ClearAllPoints()
+            self.title:SetPoint("TOPLEFT", 14, -16)
+            self.title:SetWidth(inner)
+            self.title:SetText("Nothing picked")
+            self.sub:ClearAllPoints()
+            self.sub:SetPoint("TOPLEFT", 14, -40)
+            self.sub:SetWidth(inner)
+            self.sub:SetText(GREY .. "Click a row on the left to see its numbers here.|r")
+            for _, w in ipairs({ self.caption, self.value, self.note }) do w:SetText("") end
+            self.rule:Hide()
+            self.primary:Hide()
+            self.secondary:Hide()
+            return 90
+        end
+        local det = detailFor(d)
+        local hasIcon = (not d.noIcon and (d.icon or d.id)) and true or false
+        local tx = hasIcon and 60 or 14
+        self.icon:SetShown(hasIcon)
+        self.iconEdge:SetShown(hasIcon)
+        if hasIcon then
+            setIcon(self.icon, d.icon or ns.Icon(d.id))
+            if d.iconCoords then
+                self.icon:SetTexCoord(d.iconCoords[1], d.iconCoords[2], d.iconCoords[3], d.iconCoords[4])
+            end
+            edgeFor(self.iconEdge, d.id)
+        end
+        self.title:ClearAllPoints()
+        self.title:SetPoint("TOPLEFT", tx, -15)
+        self.title:SetWidth(PANE_W - tx - 14)
+        self.title:SetText(det.title or d.tipTitle or d.title or "")
+        local y = -15 - max(18, self.title:GetStringHeight() or 18) - 4
+        self.sub:ClearAllPoints()
+        self.sub:SetPoint("TOPLEFT", tx, y)
+        self.sub:SetWidth(PANE_W - tx - 14)
+        local sub = det.sub or d.sub
+        self.sub:SetText(sub and (GREY .. sub .. "|r") or "")
+        if sub then
+            y = y - (self.sub:GetStringHeight() or 12) - 4
+        end
+        y = min(y, hasIcon and -56 or y) - 6
+
+        -- The headline number (what the row shows on the right, bigger),
+        -- unless the sums below already end in a total: profit shows once.
+        local hasTotal = false
+        for _, line in ipairs(det.lines or {}) do
+            if type(line) == "table" and line.total then
+                hasTotal = true
+            end
+        end
+        local value = not hasTotal and (det.value or d.r1)
+        if value and value ~= "" then
+            self.value:ClearAllPoints()
+            self.value:SetPoint("TOPRIGHT", -14, y)
+            self.value:SetWidth(inner)
+            self.value:SetText(value)
+            self.caption:ClearAllPoints()
+            self.caption:SetPoint("TOPLEFT", 14, y - 4)
+            self.caption:SetWidth(inner - 110)
+            self.caption:SetWordWrap(false)
+            self.caption:SetText(det.caption or d.r2 or "")
+            y = y - 26
+        else
+            self.value:SetText("")
+            self.caption:SetText("")
+        end
+        self.rule:ClearAllPoints()
+        self.rule:SetPoint("TOPLEFT", 14, y)
+        self.rule:SetPoint("TOPRIGHT", -14, y)
+        self.rule:Show()
+        y = y - 8
+
+        local n, nr = 0, 0
+        for _, line in ipairs(det.lines or {}) do
+            if type(line) == "table" then
+                if line.total then
+                    nr = nr + 1
+                    local t = rule(nr)
+                    t:SetPoint("TOPLEFT", 14, y - 1)
+                    t:SetPoint("TOPRIGHT", -14, y - 1)
+                    y = y - 4
+                end
+                n = n + 1
+                local l = fs(n)
+                setFont(l, line.total and "GameFontHighlight" or "GameFontHighlightSmall")
+                l:SetPoint("TOPLEFT", 14, y)
+                l:SetWidth(inner - 120)
+                l:SetText(line[1] or "")
+                n = n + 1
+                local v = fs(n)
+                setFont(v, line.total and "GameFontHighlight" or "GameFontHighlightSmall")
+                v:SetJustifyH("RIGHT")
+                v:SetPoint("TOPRIGHT", -14, y)
+                v:SetWidth(120)
+                v:SetText(line[2] or "")
+                y = y - (line.total and 18 or 15)
+            elseif line == " " or line == "" then
+                y = y - 6
+            else
+                n = n + 1
+                local l = fs(n)
+                setFont(l, "GameFontHighlightSmall")
+                l:SetWordWrap(true)
+                l:SetPoint("TOPLEFT", 14, y)
+                l:SetWidth(inner)
+                l:SetText(line)
+                y = y - (l:GetStringHeight() or 12) - 3
+            end
+        end
+        if det.note then
+            y = y - 4
+            self.note:ClearAllPoints()
+            self.note:SetPoint("TOPLEFT", 14, y)
+            self.note:SetWidth(inner)
+            self.note:SetText(det.note)
+            y = y - (self.note:GetStringHeight() or 12) - 2
+        else
+            self.note:SetText("")
+        end
+        y = y - 10
+        self.primary:ClearAllPoints()
+        if setAction(self.primary, det.action) then
+            self.primary:SetPoint("TOPLEFT", 14, y)
+            y = y - 30
+        end
+        self.secondary:ClearAllPoints()
+        if setAction(self.secondary, det.action2) then
+            self.secondary:SetPoint("TOPLEFT", 14, y)
+            y = y - 26
+        end
+        return floor(-y + 8)
+    end
+    return p
+end
+
+local ESTIMATE = "Estimates from today's prices, before any deposit you lose on auctions that don't sell. A listing is not a guaranteed sale."
+
+----------------------------------------------------------------------
 -- Row helpers used by the tab builders
 ----------------------------------------------------------------------
 
@@ -403,7 +1059,8 @@ end
 
 -- The same building blocks, for the other windows (TrackerUI.lua).
 ns.UIKit = { tex = tex, skin = skin, label = label, button = button, setIcon = setIcon,
-    createList = createList, Hd = Hd, Tx = Tx, GREY = GREY, COIN = COIN, rowLeave = rowLeave }
+    createList = createList, Hd = Hd, Tx = Tx, GREY = GREY, COIN = COIN, LOGO = LOGO, rowLeave = rowLeave,
+    C = C, SERIF_L = SERIF_L, edgeFor = edgeFor }
 
 local SRC = { vendor = "from a vendor", ah = "auction house", craft = "you make it", old = "last price seen" }
 
@@ -423,15 +1080,16 @@ local function craftTip(e)
                 ns.Money(p.each * p.qty) .. "  " .. GREY .. (SRC[p.src] or "") .. "|r" }
         end
         lines[#lines + 1] = { "Cost to make one", ns.Money(e.cost) }
+        lines[#lines + 1] = " "
     elseif e.missing then
         lines[#lines + 1] = "I don't have a price for " .. ns.ItemName(e.missing)
             .. " yet, so I can't work out the cost. It may not be on the auction house."
     end
     if e.price then
         lines[#lines + 1] = { "Lowest auction price", ns.Money(e.price) }
-        lines[#lines + 1] = { "Auction house keeps 5%", "-" .. ns.Money(e.price * CUT) }
+        lines[#lines + 1] = { "Auction house cut (5%)", "-" .. ns.Money(e.price * CUT) }
         if e.profit then
-            lines[#lines + 1] = { "Profit on each one", ns.Profit(e.profit) }
+            lines[#lines + 1] = { "Potential profit each", ns.Profit(e.profit), total = true }
         end
     elseif e.last then
         lines[#lines + 1] = { "None for sale now. Last seen at", ns.Money(e.last) }
@@ -472,7 +1130,9 @@ local function craftTip(e)
                 lines[#lines + 1] = "|cffff7070Hardly any of these sell|r, whatever the price says. Make one to test before making more."
             end
         elseif e.demand == "slow" then
-            lines[#lines + 1] = "Weapons and armour sell slowly. You may need to relist a few times."
+            lines[#lines + 1] = "Demand unknown, and weapons and armour sell slowly. You may need to relist a few times."
+        else
+            lines[#lines + 1] = GREY .. "Demand unknown: no sale data for this yet, only what it's listed at.|r"
         end
     end
     if e.approx then
@@ -486,18 +1146,27 @@ end
 
 local function craftRow(e, mode)
     local rec = e.rec
-    local d = { id = rec.out, title = ns.ItemText(rec.out), tipTitle = ns.ItemName(rec.out),
-        tip = function() return craftTip(e) end }
+    local d = { id = rec.out, title = ns.ItemName(rec.out), tipTitle = ns.ItemName(rec.out),
+        tip = function() return craftTip(e) end,
+        detail = function() return { lines = craftTip(e), note = e.profit and ESTIMATE or nil } end }
     local who = rec.mine and rec.prof or (rec.prof .. " on " .. (rec.chars[1] or "an alt"))
-    if mode == "good" or mode == "bad" then
-        local speed = ns.SaleText and ns.SaleText(rec.out, true)
+    if mode == "good" or mode == "bad" or mode == "slow" then
+        local speed = ns.SaleText and ns.SaleText(rec.out, "mid")
         d.sub = "Costs " .. ns.Money(e.cost) .. GREY .. " to make, sells for |r" .. ns.Money(e.price) .. GREY
-            .. "  -  " .. (e.listed or 0) .. " listed  -  " .. (speed and (speed .. GREY .. "  -  ") or "") .. who
+            .. "  -  " .. (speed and (speed .. GREY .. "  -  ") or ((e.listed or 0) .. " listed  -  ")) .. who
         d.r1 = ns.Profit(e.profit)
-        d.r2 = mode == "good" and (e.margin and (floor(e.margin * 100 + 0.5) .. "% margin, each") or "profit each")
+        d.r2 = mode ~= "bad" and (e.margin and (floor(e.margin * 100 + 0.5) .. "% margin, each") or "profit each")
             or "loss on each one"
         if mode == "good" and e.canMake and e.canMake > 0 then
             d.r2 = "each  -  you can make " .. e.canMake
+        end
+        local verdict = mode ~= "bad" and ns.SaleVerdict and ns.SaleVerdict(rec.out)
+        if verdict then
+            d.r2 = verdict .. GREY .. "  -  " .. ((mode == "good" and e.canMake and e.canMake > 0)
+                and ("you can make " .. e.canMake) or "each") .. "|r"
+        end
+        if mode == "slow" then
+            d.dim = true
         end
     elseif mode == "untapped" then
         d.sub = "Costs " .. ns.Money(e.cost) .. GREY .. " to make  -  " .. (e.last and ("last seen at |r"
@@ -518,42 +1187,51 @@ end
 -- Tab: To do - every quick win, best first, with one click to act
 ----------------------------------------------------------------------
 
-local function charactersRow(rows)
-    local chars = {}
-    for _, ch in pairs(ns.db.chars) do
-        chars[#chars + 1] = ch
-    end
-    table.sort(chars, function(a, b) return (a.seen or 0) > (b.seen or 0) end)
-    local names = {}
-    for i = 1, min(4, #chars) do
-        names[i] = chars[i].name or "?"
-    end
-    rows[#rows + 1] = { icon = COIN,
-        title = table.concat(names, ", ") .. (#chars > 4 and (" and " .. (#chars - 4) .. " more") or ""),
-        sub = "Hover for each one's gold, level and professions",
-        onClick = false, tipTitle = "Your characters",
-        tip = function()
-            local lines = {}
-            for _, ch in ipairs(chars) do
-                local profs = {}
-                for pname, p in pairs(ch.profs or {}) do
-                    profs[#profs + 1] = pname .. " " .. (p.skill or 0)
-                end
-                table.sort(profs)
-                lines[#lines + 1] = { (ch.name or "?") .. "  level " .. (ch.level or "?"), ns.Money(ch.money or 0) }
-                lines[#lines + 1] = GREY .. "    " .. (#profs > 0 and table.concat(profs, ", ") or "no professions seen yet")
-                    .. ", seen " .. ns.Ago(ch.seen) .. "|r"
-            end
-            return lines
-        end }
-end
-
 local function firstNames(list, n, getId)
     local names = {}
     for i = 1, min(n, #list) do
         names[i] = ns.ItemName(getId(list[i]))
     end
-    return table.concat(names, ", ") .. (#list > n and " and more" or "")
+    return table.concat(names, ", ") .. (#list > n and (" +" .. (#list - n)) or "")
+end
+
+local farmTip
+
+-- Pane lines for a list of items: "8 x Copper Bar   7s 20c".
+local function itemLines(list, value, n)
+    local lines = {}
+    for i = 1, min(n or 8, #list) do
+        local e = list[i]
+        lines[#lines + 1] = { (e.count and (e.count .. " x ") or "") .. ns.ItemName(e.id), value(e) }
+    end
+    if #list > (n or 8) then
+        lines[#lines + 1] = GREY .. "and " .. (#list - (n or 8)) .. " more|r"
+    end
+    return lines
+end
+
+-- How sure we are that something will sell. With sale data: its verdict
+-- ("worth listing") and a weight from how much of it sells. Without: a
+-- plain "demand unknown" and a low weight, so an expensive listing alone
+-- never tops the list.
+local function demand(id)
+    local verdict = ns.SaleVerdict and ns.SaleVerdict(id)
+    if verdict then
+        return verdict, ns.SpeedWeight and ns.SpeedWeight(id) or 0.6, true
+    end
+    return GREY .. "demand unknown|r", 0.3, false
+end
+
+local function searchAction(id)
+    return ns.ahOpen and { label = "Open auction search", onClick = function() ns.SearchAH(ns.ItemName(id)) end } or false
+end
+
+-- Make > Craft with this recipe picked, so the pane shows its materials.
+local function viewMaterials(out)
+    return { label = "View materials", onClick = function()
+        UI.sel["make:craft"] = "item:" .. out
+        ns.ShowTab("craft")
+    end }
 end
 
 local function buildTodo()
@@ -579,39 +1257,57 @@ local function buildTodo()
     if R.lastScan then
         local bag = ns.BagAdvice()
         if #bag.undercut > 0 then
-            rows[#rows + 1] = { icon = ns.Icon(bag.undercut[1].id),
-                title = "|cffff7070Relist " .. plural(#bag.undercut, "auction") .. "|r - someone undercut you",
-                sub = firstNames(bag.undercut, 3, function(u) return u.id end) .. ". Theirs sells first. Click to see them.",
-                onClick = function() ns.ShowTab("sell") end }
+            rows[#rows + 1] = { icon = ns.Icon(bag.undercut[1].id), key = "todo:undercut",
+                title = "|cffff7070Relist " .. plural(#bag.undercut, "auction") .. "|r",
+                sub = "Undercut  ·  " .. firstNames(bag.undercut, 2, function(u) return u.id end),
+                onClick = function() ns.ShowTab("sell") end,
+                detail = { sub = "Someone listed under you, so theirs sells first. Cancel yours and relist a little under the lowest price.",
+                    lines = itemLines(bag.undercut, function(u) return ns.Money(u.price) end),
+                    caption = "the lowest prices now",
+                    action = { label = "See undercut auctions", onClick = function() ns.ShowTab("sell") end } } }
         end
 
-        -- Quick wins: gold you can have in the next few minutes.
+        -- Quick wins, ranked by what they're worth times how sure they are.
         local todo = {}
-        local function add(value, d)
+        local function add(value, weight, d)
             if value and value > 0 then
-                todo[#todo + 1] = { value = value, d = d }
+                todo[#todo + 1] = { value = value * (weight or 1), d = d }
             end
         end
 
         local flips = ns.VendorFlips()
         if #flips > 0 then
-            add(flips.total, { icon = ns.Icon(flips[1].id),
-                title = "Buy " .. plural(#flips, "auction") .. " and sell " .. (#flips == 1 and "it" or "them") .. " to a vendor",
-                sub = "Listed for less than any shopkeeper pays: " .. firstNames(flips, 2, function(f) return f.id end)
-                    .. ". No risk. Click to see them.",
-                r1 = ns.Profit(flips.total), r2 = "profit, no risk", onClick = function() ns.ShowTab("buy") end })
+            local one = #flips == 1
+            add(flips.total, 1, { icon = ns.Icon(flips[1].id), key = "todo:flips",
+                title = one and ns.ItemName(flips[1].id) or (#flips .. " auctions under vendor price"),
+                sub = "Auction  >  vendor  ·  no risk",
+                r1 = ns.Profit(flips.total), r2 = "profit, no risk",
+                detail = { sub = "Listed for less than any shopkeeper pays. Buy, sell to a vendor, keep the difference.",
+                    lines = itemLines(flips, function(f) return ns.Profit(f.profit) end),
+                    note = "Profit each: the vendor price minus the cheapest listing. Later listings may cost more, so check before buying several.",
+                    action = ns.ahOpen and { label = "Open auction search", onClick = function() ns.SearchAH(ns.ItemName(flips[1].id)) end }
+                        or { label = "See all " .. plural(#flips, "flip"), onClick = function() ns.ShowTab("buy") end } } })
         end
         if #bag.ah > 0 then
-            add(bag.ahTotal, { icon = ns.Icon(bag.ah[1].id),
-                title = "Post " .. plural(#bag.ah, "item") .. " from your bags at auction",
-                sub = firstNames(bag.ah, 3, function(b) return b.id end) .. ". Click, then press Sell on each.",
-                r1 = ns.Money(bag.ahTotal), r2 = "after the 5% cut", onClick = function() ns.ShowTab("sell") end })
+            add(bag.ahTotal, 0.8, { icon = ns.Icon(bag.ah[1].id), key = "todo:post",
+                title = "Post " .. plural(#bag.ah, "item") .. " from your bags",
+                sub = "Bags  >  auction house  ·  " .. firstNames(bag.ah, 2, function(b) return b.id end),
+                r1 = ns.Money(bag.ahTotal), r2 = "after the 5% cut",
+                detail = function()
+                    return { lines = itemLines(bag.ah, function(b) return ns.Money(b.total) end), note = ESTIMATE,
+                        action = ns.ahOpen and { label = "Post all (" .. #bag.ah .. ")", onClick = function() ns.StartPostAll() end }
+                            or { label = "See items to post", onClick = function() ns.ShowTab("sell") end },
+                        action2 = ns.ahOpen and { label = "See items to post", onClick = function() ns.ShowTab("sell") end } or false }
+                end })
         end
         if #bag.vendor > 0 then
-            add(bag.vendorTotal, { icon = ns.Icon(bag.vendor[1].id),
-                title = "Sell " .. plural(#bag.vendor, "thing") .. " to any vendor",
-                sub = firstNames(bag.vendor, 3, function(b) return b.id end) .. ". The auction house wouldn't pay more.",
-                r1 = ns.Money(bag.vendorTotal), r2 = "at any vendor", onClick = function() ns.ShowTab("sell") end })
+            add(bag.vendorTotal, 1, { icon = ns.Icon(bag.vendor[1].id), key = "todo:vendor",
+                title = "Vendor " .. plural(#bag.vendor, "item"),
+                sub = "Bags  >  vendor  ·  " .. firstNames(bag.vendor, 2, function(b) return b.id end),
+                r1 = ns.Money(bag.vendorTotal), r2 = "at any vendor",
+                detail = { sub = "The auction house wouldn't pay more than a shopkeeper for these.",
+                    lines = itemLines(bag.vendor, function(b) return ns.Money(b.total) end),
+                    action = { label = "See items to vendor", onClick = function() ns.ShowTab("sell") end } } })
         end
 
         local craft = ns.CraftList()
@@ -628,25 +1324,54 @@ local function buildTodo()
         end)
         for i = 1, min(3, #picks) do
             local e = picks[i]
-            local d = craftRow(e, "good")
+            local out = e.rec.out
             local n = (e.canMake and e.canMake > 0) and e.canMake or nil
-            d.title = "Craft " .. (n and (n .. " x ") or "") .. d.title
-            d.sub = (n and "You have the materials. " or "Buy the materials first. ") .. "Costs " .. ns.Money(e.cost)
-                .. GREY .. " each to make, sells for |r" .. ns.Money(e.price) .. GREY .. "."
-            d.r1 = ns.Profit(e.profit * (n or 1))
-            d.r2 = n and "for all of them" or "profit each"
-            d.onClick = function() ns.ShowTab("craft") end
-            add(e.profit * (n or 1), d)
+            local verdict, weight = demand(out)
+            add(e.profit * (n or 1), weight, { id = out, key = "todo:craft:" .. out,
+                title = ns.ItemName(out) .. (n and (GREY .. "  x" .. n .. "|r") or ""),
+                sub = "Craft  ·  " .. (n and "materials in your bags" or "buy the materials") .. "  ·  " .. e.rec.prof,
+                r1 = ns.Profit(e.profit * (n or 1)), r2 = verdict,
+                detail = function()
+                    local lines = craftTip(e)
+                    if n then
+                        lines[#lines + 1] = { "Potential profit, all " .. n, ns.Profit(e.profit * n), total = true }
+                    end
+                    return { lines = lines, note = ESTIMATE, action = viewMaterials(out), action2 = searchAction(out) }
+                end })
         end
 
         local deals = ns.VendorDeals()
         if deals.sure > 0 then
             local v = deals[1]
-            add(v.profit, { icon = ns.Icon(v.id),
-                title = "Buy " .. ns.ItemName(v.id) .. " from " .. (v.npc or "a vendor") .. ", resell at auction",
-                sub = (v.zone and v.zone ~= "" and ("In " .. v.zone .. ". ") or "")
-                    .. (deals.sure > 1 and (plural(deals.sure - 1, "more like it") .. ". ") or "") .. "Click to see them.",
-                r1 = ns.Profit(v.profit), r2 = "each, after the cut", onClick = function() ns.ShowTab("buy") end })
+            local verdict, weight, known = demand(v.id)
+            add(v.profit, weight, { id = v.id, key = "todo:deal:" .. v.id,
+                title = ns.ItemName(v.id),
+                sub = "Vendor  >  auction house" .. (v.zone and v.zone ~= "" and ("  ·  " .. v.zone) or ""),
+                r1 = ns.Profit(v.profit), r2 = known and verdict or ("potential  ·  " .. verdict),
+                detail = function()
+                    local lines = { { "Vendor sells it for", ns.Money(v.buy) },
+                        { v.how == "sold" and "Has sold for" or "Cheapest listing", ns.Money(v.price) },
+                        { "Auction house cut (5%)", "-" .. ns.Money(v.price * CUT) },
+                        { "Potential profit each", ns.Profit(v.profit), total = true }, " ",
+                        { "Vendor", v.npc or "?" }, { "Where", v.zone or "?" },
+                        { "Listed on the auction house", tostring(v.listed or 0) }, { "Demand", verdict } }
+                    if v.limited then
+                        lines[#lines + 1] = "This vendor only stocks a few at a time."
+                    end
+                    if not known then
+                        lines[#lines + 1] = "No sale data yet: that's only what people are asking. Try one before buying more."
+                    end
+                    local hasSpot = v.map and v.x
+                    return { lines = lines, note = ESTIMATE,
+                        action = hasSpot and { label = "View vendor location", onClick = function()
+                            if ns.SetWaypoint(v.map, v.x, v.y) then
+                                ns.Print("map pin set on " .. (v.npc or "the vendor") .. ".")
+                            else
+                                ns.Print((v.npc or "The vendor") .. " is in " .. (v.zone or "?") .. ".")
+                            end
+                        end } or { label = "See all vendor deals", onClick = function() ns.ShowTab("buy") end },
+                        action2 = searchAction(v.id) }
+                end })
         end
 
         table.sort(todo, function(a, b) return a.value > b.value end)
@@ -670,22 +1395,128 @@ local function buildTodo()
             Hd(rows, "Got an hour? Go farm")
             for _, f in ipairs(farms) do
                 rows[#rows + 1] = { icon = f.items[1] and f.items[1].id and ns.Icon(f.items[1].id) or COIN,
-                    title = f.farm.title, sub = f.where,
-                    r1 = "~" .. ns.Money(f.perHour), r2 = "an hour (rough guess)",
-                    onClick = function() ns.ShowTab("farm") end }
+                    key = "todo:farm:" .. f.farm.title, title = f.farm.title, sub = "Farm  ·  " .. (f.where or ""),
+                    r1 = "~" .. ns.Money(f.perHour), r2 = "an hour, rough guess",
+                    detail = function()
+                        return { sub = f.farm.how, lines = farmTip(f),
+                            action = { label = "See farming spots", onClick = function() ns.ShowTab("farm") end } }
+                    end }
             end
         end
         if #craft.untapped > 0 then
-            rows[#rows + 1] = { icon = ns.Icon(craft.untapped[1].rec.out),
-                title = "Worth a try: " .. plural(#craft.untapped, "recipe") .. " of yours nobody is selling",
-                sub = "List one or two and see what sells. Click to see them.",
-                onClick = function() ns.ShowTab("craft") end }
+            rows[#rows + 1] = { icon = ns.Icon(craft.untapped[1].rec.out), key = "todo:untapped",
+                title = plural(#craft.untapped, "recipe") .. " nobody is selling",
+                sub = "Craft  ·  list one or two and see",
+                detail = { lines = itemLines(craft.untapped, function(e) return ns.Money(e.cost) end),
+                    caption = "cost to make each",
+                    note = "Nobody sells these right now: either an open niche or something nobody wants. Demand unknown.",
+                    action = { label = "See untried recipes", onClick = function() ns.ShowTab("craft") end } } }
         end
     end
 
-    Hd(rows, "Your characters", ns.Money(ns.TotalGold()) .. " in total")
-    charactersRow(rows)
+    -- A one-line account summary; the full roster is on Characters.
+    local n = 0
+    for _ in pairs(ns.db.chars) do
+        n = n + 1
+    end
+    local _, change = ns.GoldHistory(86400)
+    Hd(rows, "Account")
+    rows[#rows + 1] = { icon = LOGO, key = "todo:account", title = plural(n, "character"),
+        sub = "Gold today  " .. (change ~= 0 and ns.Profit(change) or "no change yet"),
+        r1 = ns.Money(ns.TotalGold()), r2 = "in total",
+        detail = { lines = {}, caption = "all your characters",
+            action = { label = "Open Characters", onClick = function() ns.ShowTab("chars") end } } }
     return rows
+end
+
+----------------------------------------------------------------------
+-- Tab: Characters - gold over time, and everyone on the account
+----------------------------------------------------------------------
+
+local PRIMARY = { Alchemy = true, Blacksmithing = true, Enchanting = true, Engineering = true, Herbalism = true,
+    Leatherworking = true, Mining = true, Skinning = true, Tailoring = true, Jewelcrafting = true, Inscription = true }
+
+-- Primary professions first, then the rest (cooking, first aid, fishing).
+local function profList(ch)
+    local list = {}
+    for pname, p in pairs(ch.profs or {}) do
+        list[#list + 1] = { name = pname, skill = p.skill or 0, primary = PRIMARY[pname] or false }
+    end
+    table.sort(list, function(a, b)
+        if a.primary ~= b.primary then
+            return a.primary
+        end
+        return a.skill > b.skill
+    end)
+    return list
+end
+
+local GRAPH_RANGES = { { "day", "24 hours", 86400 }, { "week", "7 days", 7 * 86400 },
+    { "month", "30 days", 30 * 86400 }, { "all", "All", nil } }
+
+local function graphRange()
+    for _, r in ipairs(GRAPH_RANGES) do
+        if r[1] == UI.graphRange then
+            return r
+        end
+    end
+    return GRAPH_RANGES[2]
+end
+
+local function buildChars()
+    local rows = {}
+    local range = graphRange()
+    local pts, change = ns.GoldHistory(range[3])
+    Hd(rows, "Gold over time", range[2] .. ":  " .. (#pts > 1 and ns.Profit(change) or "no change yet"))
+    rows[#rows + 1] = { type = "graph", points = pts, span = range[3], height = 170 }
+    if #pts < 3 then
+        Tx(rows, nil, GREY .. "Your gold is recorded from now on, every time it changes, across all your characters. The graph fills in as you play.|r")
+    end
+
+    local chars = {}
+    for _, ch in pairs(ns.db.chars) do
+        chars[#chars + 1] = ch
+    end
+    table.sort(chars, function(a, b) return (a.money or 0) > (b.money or 0) end)
+    Hd(rows, "Characters", ns.Money(ns.TotalGold()) .. " in total")
+    local CLASS_ICONS = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
+    for _, ch in ipairs(chars) do
+        local profs = profList(ch)
+        local main, lines = {}, {}
+        for _, p in ipairs(profs) do
+            if p.primary then
+                main[#main + 1] = p.name .. " " .. p.skill
+            end
+            lines[#lines + 1] = { p.name .. (p.primary and "" or (GREY .. "  secondary|r")), tostring(p.skill) }
+        end
+        local coords = ch.class and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[ch.class]
+        local className = ch.class and LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[ch.class]
+        if #lines == 0 then
+            lines[1] = "No professions seen yet. Log in on this character and open its profession windows."
+        end
+        lines[#lines + 1] = " "
+        lines[#lines + 1] = { "Last seen", ns.Ago(ch.seen) }
+        rows[#rows + 1] = { icon = coords and CLASS_ICONS or COIN, iconCoords = coords,
+            key = "char:" .. (ch.name or "?"),
+            title = (ch.name or "?") .. GREY .. "  " .. (ch.level or "?") .. (className and ("  " .. className) or "") .. "|r",
+            sub = #main > 0 and table.concat(main, ", ") or (#profs > 0 and "Secondary professions only" or "No professions seen yet"),
+            r1 = ns.Money(ch.money or 0), r2 = "gold",
+            detail = { lines = lines, caption = "gold on this character", action = false } }
+    end
+    return rows
+end
+
+local function charsToolbar()
+    local bar = {}
+    for _, r in ipairs(GRAPH_RANGES) do
+        local key = r[1]
+        bar[#bar + 1] = { label = r[2], width = 70, on = graphRange()[1] == key, onClick = function()
+            UI.graphRange = key
+            ns.RefreshUI(true)
+        end }
+    end
+    bar.text = "Gold across all your characters."
+    return bar
 end
 
 ----------------------------------------------------------------------
@@ -704,12 +1535,19 @@ local function buildCraft()
         Tx(rows, "No prices yet", "I know your recipes, but I need auction prices to judge them. Visit an auctioneer.")
     end
     Tx(rows, nil,
-        "Profit = lowest auction price, minus the auction house's 5%, minus the cheapest way to get the materials. Hover a row for the full sum.")
+        "Profit = lowest auction price, minus the auction house's 5%, minus the cheapest way to get the materials. "
+        .. "Ranked by profit times how often it actually sells, so a big margin nobody buys sits below a small one that sells every day. Hover a row for the full sum.")
 
     if #craft.good > 0 then
-        Hd(rows, "Worth making to sell", plural(#craft.good, "recipe"))
+        Hd(rows, "Worth making to sell", plural(#craft.good, "recipe") .. ", best bet first")
         for _, e in ipairs(craft.good) do
             rows[#rows + 1] = craftRow(e, "good")
+        end
+    end
+    if #craft.slow > 0 then
+        Hd(rows, "Profitable on paper, but they hardly sell", plural(#craft.slow, "recipe"))
+        for _, e in ipairs(craft.slow) do
+            rows[#rows + 1] = craftRow(e, "slow")
         end
     end
     if #craft.untapped > 0 then
@@ -743,7 +1581,7 @@ end
 -- Tab: Farm
 ----------------------------------------------------------------------
 
-local function farmTip(f)
+function farmTip(f)
     local lines = { f.farm.how or "", " ", "Where: " .. (f.where or ""), " ", "What you get (rough amounts per hour):" }
     for _, it in ipairs(f.items) do
         local right
@@ -756,7 +1594,7 @@ local function farmTip(f)
         lines[#lines + 1] = { "  " .. rate .. " x " .. it.name, right }
     end
     lines[#lines + 1] = " "
-    lines[#lines + 1] = GREY .. "The per-hour figure is a rough guess, only for comparing farms. The Kills & Loot window (right-click the minimap button) measures your real gold per hour.|r"
+    lines[#lines + 1] = GREY .. "The per-hour figure is a rough guess, only for comparing farms. The Farming Session window (right-click the minimap button) measures your real gold per hour.|r"
     return lines
 end
 
@@ -825,7 +1663,7 @@ local function buildBags()
     if #bag.undercut > 0 then
         Hd(rows, "Your auctions that have been undercut")
         for _, u in ipairs(bag.undercut) do
-            rows[#rows + 1] = { id = u.id, title = u.count .. " x " .. ns.ItemText(u.id),
+            rows[#rows + 1] = { id = u.id, key = "undercut:" .. u.id, title = u.count .. " x " .. ns.ItemName(u.id),
                 sub = "You listed at " .. ns.Money(u.mine) .. GREY .. " each, the lowest is now |r" .. ns.Money(u.price)
                     .. GREY .. ". Cancel and relist a little under that if you want it to sell.",
                 r1 = ns.Money(u.price), r2 = "lowest price now" }
@@ -840,9 +1678,9 @@ local function buildBags()
             or "At an auctioneer, the Sell button on each row prices and posts it for you in two clicks.")
     end
     for _, b in ipairs(bag.ah) do
-        local speed = ns.SaleText and ns.SaleText(b.id, true)
-        local sub = "Lowest price " .. ns.Money(b.price) .. GREY .. " each  -  " .. (b.listed or 0) .. " listed"
-            .. (speed and ("  -  |r" .. speed .. GREY) or "")
+        local speed = ns.SaleText and ns.SaleText(b.id, "mid")
+        local sub = "Lowest price " .. ns.Money(b.price) .. GREY .. " each  -  "
+            .. (speed and ("|r" .. speed .. GREY) or ((b.listed or 0) .. " listed"))
         if b.craft then
             sub = sub .. "  -  |r|cff40e060worth more made into " .. ns.ItemName(b.craft.rec.out) .. "|r" .. GREY
         else
@@ -861,14 +1699,37 @@ local function buildBags()
             tip[#tip + 1] = "Or use them: making " .. ns.ItemName(b.craft.rec.out) .. " is profitable right now ("
                 .. ns.Profit(b.craft.profit) .. " each)."
         end
-        rows[#rows + 1] = { id = b.id, title = b.count .. " x " .. ns.ItemText(b.id), sub = sub,
-            tipTitle = ns.ItemName(b.id), tip = tip, r1 = ns.Money(b.total), r2 = "for all, after the cut",
+        local function detail()
+            local gross = b.total / (1 - CUT)
+            local lines = { { "You have", tostring(b.count) }, { "Lowest price each", ns.Money(b.price) },
+                { "All of them", ns.Money(gross) }, { "Auction house cut (5%)", "-" .. ns.Money(gross - b.total) },
+                { "Est. after the cut", ns.Money(b.total), total = true }, " " }
+            if not b.craft and b.vendor and b.vendor > 0 then
+                lines[#lines + 1] = { "A vendor would pay", ns.Money(b.vendor * b.count) }
+            end
+            local r = ns.SaleRate and ns.SaleRate(b.id)
+            if r and r.perDay then
+                lines[#lines + 1] = { "Sold a day, region", "~" .. floor(r.perDay + 0.5) }
+                if r.through and r.through >= 0 then
+                    lines[#lines + 1] = { "Listings that sold", r.through .. "%" }
+                end
+            end
+            for i = 2, #tip do
+                lines[#lines + 1] = tip[i]
+            end
+            return { lines = lines, note = ESTIMATE,
+                action = ns.ahOpen and { label = "Sell " .. ns.ItemName(b.id), onClick = function() ns.OpenSell(b.id) end }
+                    or { label = "Sell (at an auctioneer)", disabled = true } }
+        end
+        rows[#rows + 1] = { id = b.id, title = b.count .. " x " .. ns.ItemName(b.id), sub = sub,
+            tipTitle = ns.ItemName(b.id), tip = tip, detail = detail, r1 = ns.Money(b.total),
+            r2 = (ns.SaleVerdict and ns.SaleVerdict(b.id)) or "for all, after the cut",
             btn = sellButton(b.id) }
     end
     if #bag.unlisted > 0 then
         Hd(rows, "Nobody is selling these - you'd be the only seller")
         for _, b in ipairs(bag.unlisted) do
-            rows[#rows + 1] = { id = b.id, title = b.count .. " x " .. ns.ItemText(b.id),
+            rows[#rows + 1] = { id = b.id, title = b.count .. " x " .. ns.ItemName(b.id),
                 sub = b.last and ("Last seen at " .. ns.Money(b.last) .. GREY .. " each. With no competition you can ask a bit more.")
                     or "Never seen for sale. Try one at a price you'd be happy with.",
                 r1 = b.last and ns.Money(b.last) or "", r2 = b.last and "last price seen" or "",
@@ -878,7 +1739,7 @@ local function buildBags()
     if #bag.vendor > 0 then
         Hd(rows, "Just sell these to a vendor", ns.Money(bag.vendorTotal))
         for _, b in ipairs(bag.vendor) do
-            rows[#rows + 1] = { id = b.id, title = b.count .. " x " .. ns.ItemText(b.id),
+            rows[#rows + 1] = { id = b.id, title = b.count .. " x " .. ns.ItemName(b.id),
                 sub = "A vendor pays " .. ns.Money(b.vendor) .. GREY .. " each"
                     .. (b.speed == "rarely" and "  -  listed for more at auction, but hardly any sell"
                         or (b.price and "  -  the auction house wouldn't beat that" or "")),
@@ -923,7 +1784,7 @@ local function buildDeals()
     end
     for i = 1, min(40, #flips) do
         local f = flips[i]
-        rows[#rows + 1] = { id = f.id, title = ns.ItemText(f.id), tipTitle = ns.ItemName(f.id),
+        rows[#rows + 1] = { id = f.id, title = ns.ItemName(f.id), tipTitle = ns.ItemName(f.id),
             sub = "Listed for " .. ns.Money(f.price) .. GREY .. "  -  any vendor pays |r" .. ns.Money(f.vendor) .. GREY
                 .. "  -  " .. f.listed .. " listed",
             tip = { "Buy it for " .. ns.Money(f.price) .. " and sell it to any vendor for " .. ns.Money(f.vendor) .. ".",
@@ -958,7 +1819,7 @@ local function buildDeals()
         else
             tip[#tip + 1] = "|cffff7070Not proven:|r that's only what people are asking. Try ONE before buying more."
         end
-        rows[#rows + 1] = { id = v.id, title = ns.ItemText(v.id), tipTitle = ns.ItemName(v.id), dim = not v.sure,
+        rows[#rows + 1] = { id = v.id, title = ns.ItemName(v.id), tipTitle = ns.ItemName(v.id), dim = not v.sure,
             sub = "Costs " .. ns.Money(v.buy) .. GREY .. " from " .. (v.npc or "a vendor")
                 .. (v.zone and v.zone ~= "" and (" in " .. v.zone) or "") .. (v.limited and "  -  limited stock" or "")
                 .. (v.how == "sold" and "  -  has sold for |r" or "  -  listed at |r") .. ns.Money(v.price),
@@ -976,7 +1837,7 @@ local function buildDeals()
     end
     for i = 1, min(30, #bargains) do
         local b = bargains[i]
-        rows[#rows + 1] = { id = b.id, title = ns.ItemText(b.id), tipTitle = ns.ItemName(b.id),
+        rows[#rows + 1] = { id = b.id, title = ns.ItemName(b.id), tipTitle = ns.ItemName(b.id),
             sub = "Now " .. ns.Money(b.price) .. GREY .. "  -  usually |r" .. ns.Money(b.usual) .. GREY .. "  ("
                 .. b.days .. " days of prices)  -  " .. b.listed .. " listed",
             tip = { "If the price returns to its usual level, buying now and relisting would earn about "
@@ -1046,7 +1907,7 @@ end
 
 local function optionRow(rows, key, text)
     local on = ns.db.opts[key]
-    rows[#rows + 1] = { icon = COIN, title = (on and "|cff40e060[on]|r  " or "|cffff7070[off]|r  ") .. text,
+    rows[#rows + 1] = { noIcon = true, title = (on and "|cff40e060[on]|r  " or "|cffff7070[off]|r  ") .. text,
         sub = "Click to turn " .. (on and "off" or "on"),
         onClick = function()
             ns.db.opts[key] = not ns.db.opts[key]
@@ -1058,7 +1919,7 @@ local DEAL_STEPS = { 100, 500, 2500, 10000 }
 
 local function dealMinRow(rows)
     local cur = ns.db.opts.dealMin or 500
-    rows[#rows + 1] = { icon = COIN, title = "Smallest profit worth showing on the Buy tab: " .. ns.Money(cur),
+    rows[#rows + 1] = { noIcon = true, title = "Smallest profit worth showing on the Buy tab: " .. ns.Money(cur),
         sub = "Click to change (1s, 5s, 25s or 1g)",
         onClick = function()
             local nextStep = DEAL_STEPS[1]
@@ -1077,7 +1938,7 @@ local AGE_STEPS = { 300, 900, 1800, 3600 }
 
 local function autoAgeRow(rows)
     local cur = ns.db.opts.autoAge or 300
-    rows[#rows + 1] = { icon = COIN,
+    rows[#rows + 1] = { noIcon = true,
         title = "Rescan when I open the auction house if prices are older than: " .. floor(cur / 60) .. " minutes",
         sub = "Click to change (5, 15, 30 or 60 minutes). The fast scan itself is limited by the game to once every 15 minutes.",
         onClick = function()
@@ -1092,8 +1953,34 @@ local function autoAgeRow(rows)
         end }
 end
 
+-- A setting that steps through a few choices each click.
+local function cycleRow(rows, key, steps, default, title, labels, sub)
+    local cur = ns.db.opts[key] or default
+    rows[#rows + 1] = { noIcon = true, title = title .. ": |cffffd100" .. (labels[cur] or cur) .. "|r",
+        sub = sub, onClick = function()
+            local nextStep = steps[1]
+            for i, v in ipairs(steps) do
+                if v == cur then
+                    nextStep = steps[(i % #steps) + 1]
+                end
+            end
+            ns.db.opts[key] = nextStep
+            ns.RefreshUI(true)
+        end }
+end
+
 local function buildTips()
     local rows = {}
+    Hd(rows, "Selling")
+    cycleRow(rows, "postUndercut", ns.UNDERCUT_STEPS, "copper", "Undercut the cheapest listing by",
+        { copper = "1 copper", ["1%"] = "1%", ["5%"] = "5%" },
+        "Click to change. Never goes below your floor, and never undercuts your own auctions.")
+    cycleRow(rows, "postQty", ns.POST_QTY_STEPS, "stack", "Each listing holds",
+        { stack = "one full stack", all = "everything you have", one = "one item" },
+        "Click to change. With one full stack, Post all lists your stacks one at a time.")
+    cycleRow(rows, "sellDuration", { 1, 2, 3 }, 2, "Auctions last",
+        { [1] = ns.SellDurationLabel(1), [2] = ns.SellDurationLabel(2), [3] = ns.SellDurationLabel(3) },
+        "Click to change. Longer costs a bigger deposit.")
     Hd(rows, "Settings")
     optionRow(rows, "autoScan", "Read prices automatically when I open the auction house")
     autoAgeRow(rows)
@@ -1113,7 +2000,7 @@ local function buildTips()
                 if id then
                     local price, listed = ns.AHPrice(id)
                     local last = ns.LastPrice(id)
-                    rows[#rows + 1] = { id = id, title = ns.ItemText(id),
+                    rows[#rows + 1] = { id = id, title = ns.ItemName(id),
                         sub = price and (listed .. " listed") or (last and "None for sale right now" or "Never seen for sale"),
                         r1 = price and ns.Money(price) or (last and (GREY .. "was|r " .. ns.Money(last)) or ""),
                         r2 = price and "lowest price" or "" }
@@ -1160,7 +2047,7 @@ local function makeToolbar()
     bar[#bar].gap = 24
     local mode = makeMode()
     if mode == "farm" then
-        bar[#bar + 1] = { label = "Kills & Loot window", width = 150, on = ns.TrackerWindowShown and ns.TrackerWindowShown(),
+        bar[#bar + 1] = { label = "Farming Session", width = 130, on = ns.TrackerWindowShown and ns.TrackerWindowShown(),
             onClick = function() ns.ToggleTrackerWindow() end }
         bar.text = "Measures your real gold per hour."
     elseif mode == "routes" then
@@ -1204,16 +2091,27 @@ end
 
 local TABS = {
     { key = "todo", label = "To do", build = buildTodo },
-    { key = "sell", label = "Sell", build = buildBags },
+    { key = "sell", label = "Sell", build = buildBags,
+        toolbar = function()
+            if not ns.ahOpen or not ns.R().lastScan then
+                return nil
+            end
+            local n = #ns.BagAdvice().ah
+            local busy = ns.PostQueue and ns.PostQueue() ~= nil
+            return { { label = busy and "Posting..." or ("Post all (" .. n .. ")"), width = 110,
+                onClick = function() ns.StartPostAll() end },
+                text = "One click per listing. Undercut and stack size are under Settings." }
+        end },
     { key = "buy", label = "Buy", build = buildDeals },
     { key = "make", label = "Make", build = buildMake, toolbar = makeToolbar,
         plot = function() return makeMode() == "routes" end },
+    { key = "chars", label = "Characters", build = buildChars, toolbar = charsToolbar },
 }
 -- Opened with the Settings button at the top right, not a tab of its own.
 local SETTINGS = { key = "settings", label = "Settings", build = buildTips }
 
 -- Older names for the tabs, still used in a few places.
-local TAB_ALIAS = { today = { "todo" }, bags = { "sell" }, deals = { "buy" }, tips = { "settings" },
+local TAB_ALIAS = { characters = { "chars" }, today = { "todo" }, bags = { "sell" }, deals = { "buy" }, tips = { "settings" },
     craft = { "make", "craft" }, farm = { "make", "farm" }, routes = { "make", "routes" } }
 
 ----------------------------------------------------------------------
@@ -1290,30 +2188,65 @@ function ns.RefreshUI(keepScroll)
     end
     main.settingsButton:SetOn(tab == SETTINGS)
     local barH = refreshToolbar(tab)
-    local clip = main.list.clip
-    clip:ClearAllPoints()
-    clip:SetPoint("TOPLEFT", main, "TOPLEFT", 12, -(72 + barH))
+    local top = 76 + barH
+    local list = main.list
     local plot = tab.plot
     if type(plot) == "function" then
         plot = plot()
     end
-    if plot then
-        clip:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -(12 + 410), 40)
-        main.list.viewW = W - 24 - 410
-        main.plot:Show()
-    else
-        clip:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -12, 40)
-        main.list.viewW = W - 24
-        main.plot:Hide()
-    end
-    main.list.viewH = H - (72 + barH) - 40
+    -- List on the left; on the right the route map, or the details of the
+    -- picked row. Settings use the whole width.
+    local withPane = not plot and tab ~= SETTINGS
+    local right = plot and 410 or (withPane and (PANE_W + 10) or 0)
+    list.viewW = W - 24 - right
+    list.rightW = withPane and 150 or nil
+    list.onSelect = withPane and function(d)
+        UI.sel[UI.selKey] = d.key or (d.id and ("item:" .. d.id)) or d.title
+        ns.RefreshUI(true)
+    end or nil
+    main.plot:SetShown(plot and true or false)
     local ok, rows = pcall(tab.build)
     if not ok then
         ns.Err("tab-" .. tab.key, rows)
         rows = { { type = "text", title = "Something went wrong on this tab",
             text = "The other tabs still work. Type /gold debug to see the details." } }
     end
-    main.list:SetRows(rows, keepScroll)
+
+    -- Keep the picked row picked across refreshes; otherwise the first one.
+    UI.selKey = tab.key .. (tab.key == "make" and (":" .. makeMode()) or "")
+    local want, first, picked = UI.sel[UI.selKey], nil, nil
+    if withPane then
+        for _, d in ipairs(rows) do
+            if not d.type then
+                first = first or d
+                local key = d.key or (d.id and ("item:" .. d.id)) or d.title
+                if want and key == want then
+                    picked = d
+                    break
+                end
+            end
+        end
+    end
+    list.selected = picked or first
+    list:SetRows(rows, keepScroll)
+
+    -- The window is as tall as what's in it, between MIN_H and MAX_H.
+    local paneH = withPane and main.pane:SetRow(list.selected) or 0
+    local body = max(list.contentH, paneH, plot and 360 or 0, 120)
+    H = max(MIN_H, min(MAX_H, top + body + 46))
+    main:SetHeight(H)
+    list.viewH = H - top - 46
+    local clip = list.clip
+    clip:ClearAllPoints()
+    clip:SetPoint("TOPLEFT", main, "TOPLEFT", 12, -top)
+    clip:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -(12 + right), 46)
+    main.pane:SetShown(withPane)
+    if withPane then
+        main.pane:ClearAllPoints()
+        main.pane:SetPoint("TOPRIGHT", main, "TOPRIGHT", -12, -top)
+        main.pane:SetHeight(min(paneH, list.viewH))
+    end
+    list:Apply()
     refreshFooter()
     drawPlot()
 end
@@ -1333,7 +2266,8 @@ end
 local function createMain()
     local f = CreateFrame("Frame", "ForeverGoldFrame", UIParent)
     f:SetSize(W, H)
-    f:SetPoint("CENTER")
+    -- Pinned by its top edge so it grows and shrinks downward.
+    f:SetPoint("TOP", UIParent, "TOP", 0, -100)
     f:SetFrameStrata("HIGH")
     f:SetToplevel(true)
     f:EnableMouse(true)
@@ -1341,50 +2275,64 @@ local function createMain()
     f:SetClampedToScreen(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    skin(f, 0.055, 0.055, 0.07, 0.97)
+    f:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        local left, topY = self:GetLeft(), self:GetTop()
+        if left and topY then
+            self:ClearAllPoints()
+            self:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, topY)
+        end
+    end)
+    skin(f)
     if UISpecialFrames then
         table.insert(UISpecialFrames, "ForeverGoldFrame")
     end
 
     local titleIcon = f:CreateTexture(nil, "ARTWORK")
-    titleIcon:SetSize(22, 22)
-    titleIcon:SetPoint("TOPLEFT", 12, -9)
-    setIcon(titleIcon, COIN)
-    local title = label(f, "GameFontNormalLarge", "Forever Gold")
+    titleIcon:SetSize(30, 30)
+    titleIcon:SetPoint("TOPLEFT", 10, -5)
+    titleIcon:SetTexture(LOGO)
+    local title = label(f, SERIF_L, "Forever Gold")
+    title:SetTextColor(C.goldText[1], C.goldText[2], C.goldText[3])
     title:SetPoint("LEFT", titleIcon, "RIGHT", 8, 0)
     f.money = label(f, "GameFontHighlight")
-    f.money:SetPoint("TOPRIGHT", -44, -13)
+    f.money:SetPoint("TOPRIGHT", -44, -14)
     local close = button(f, "X", 24, 22, function() f:Hide() end)
     close:SetPoint("TOPRIGHT", -8, -8)
 
+    -- Tabs sit on a brass rule that runs the width of the window.
+    local tabRule = tex(f, "BORDER", C.edge[1], C.edge[2], C.edge[3], 0.7)
+    tabRule:SetHeight(1)
+    tabRule:SetPoint("TOPLEFT", 12, -66)
+    tabRule:SetPoint("TOPRIGHT", -12, -66)
     local x = 12
     for _, t in ipairs(TABS) do
         local key = t.key
         local b = button(f, t.label, 92, 24, function() ns.ShowTab(key) end)
-        b:SetPoint("TOPLEFT", x, -40)
+        b:SetPoint("TOPLEFT", x, -42)
         t.button = b
         x = x + 96
     end
     f.settingsButton = button(f, "Settings", 80, 24, function()
         ns.ShowTab(UI.tab == "settings" and "todo" or "settings")
     end)
-    f.settingsButton:SetPoint("TOPRIGHT", -12, -40)
+    f.settingsButton:SetPoint("TOPRIGHT", -12, -42)
 
     local bar = CreateFrame("Frame", nil, f)
-    bar:SetPoint("TOPLEFT", 12, -70)
-    bar:SetPoint("TOPRIGHT", -12, -70)
+    bar:SetPoint("TOPLEFT", 12, -74)
+    bar:SetPoint("TOPRIGHT", -12, -74)
     bar:SetHeight(26)
     bar.buttons = {}
     bar.text = label(bar, "GameFontHighlightSmall")
     f.toolbar = bar
 
     f.list = createList(f)
+    f.pane = createPane(f)
 
     local plot = CreateFrame("Frame", nil, f)
     plot:SetSize(396, 264)
-    plot:SetPoint("TOPRIGHT", -12, -128)
-    skin(plot, 0.02, 0.03, 0.04, 1, 0.3, 0.3, 0.3, 1)
+    plot:SetPoint("TOPRIGHT", -12, -132)
+    skin(plot, 0.03, 0.03, 0.03, 1, C.panelEdge[1], C.panelEdge[2], C.panelEdge[3], 1)
     f.plot = plot
     f.plotter = ns.NewPlotter(plot)
     f.plotTitle = label(f, "GameFontNormal")
@@ -1410,8 +2358,12 @@ local function createMain()
         end
     end)
 
+    local footRule = tex(f, "BORDER", C.edge[1], C.edge[2], C.edge[3], 0.5)
+    footRule:SetHeight(1)
+    footRule:SetPoint("BOTTOMLEFT", 12, 40)
+    footRule:SetPoint("BOTTOMRIGHT", -12, 40)
     f.status = label(f, "GameFontHighlightSmall")
-    f.status:SetPoint("BOTTOMLEFT", 14, 14)
+    f.status:SetPoint("BOTTOMLEFT", 14, 15)
     f.scanButton = button(f, "Scan now", 100, 24, function() ns.StartScan() end)
     f.scanButton:SetPoint("BOTTOMRIGHT", -12, 9)
     f.scanButton:SetScript("OnEnter", function(self)
@@ -1571,12 +2523,15 @@ local function createSellPanel()
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    skin(f, 0.05, 0.05, 0.065, 0.99, 1, 0.82, 0, 0.9)
+    skin(f)
 
+    f.iconEdge = f:CreateTexture(nil, "BORDER")
     f.icon = f:CreateTexture(nil, "ARTWORK")
     f.icon:SetSize(34, 34)
     f.icon:SetPoint("TOPLEFT", 14, -14)
-    f.title = label(f, "GameFontNormalLarge")
+    f.iconEdge:SetPoint("TOPLEFT", f.icon, "TOPLEFT", -1, 1)
+    f.iconEdge:SetPoint("BOTTOMRIGHT", f.icon, "BOTTOMRIGHT", 1, -1)
+    f.title = label(f, "GameFontHighlightLarge")
     f.title:SetPoint("TOPLEFT", 58, -14)
     f.title:SetWidth(360)
     f.title:SetWordWrap(false)
@@ -1633,8 +2588,13 @@ local function createSellPanel()
         end
     end)
     f.post:SetPoint("BOTTOMRIGHT", -14, 14)
+    f.post:SetPrimary(true)
     f.close = button(f, "Cancel", 90, 28, function() ns.CloseSell() end)
     f.close:SetPoint("BOTTOMLEFT", 14, 14)
+    -- Post all: skip this item and go to the next one.
+    f.skip = button(f, "Skip", 70, 28, function() ns.SkipPostAll("skipped") end)
+    f.skip:SetPoint("RIGHT", f.post, "LEFT", -8, 0)
+    f.skip:Hide()
     return f
 end
 
@@ -1651,9 +2611,13 @@ local function refreshSellPanel()
     end
     local f = sellPanel
     f:Show()
+    local q = ns.PostQueue and ns.PostQueue()
     setIcon(f.icon, ns.Icon(job.id))
-    f.title:SetText(ns.ItemText(job.id))
-    f.have:SetText(GREY .. "You have " .. job.have .. " to sell|r")
+    edgeFor(f.iconEdge, job.id)
+    f.title:SetText(ns.ItemName(job.id))
+    f.have:SetText(GREY .. "You have " .. job.have .. " to sell"
+        .. (q and ("  -  Post all: item " .. q.i .. " of " .. #q.ids .. ", " .. q.posted .. " posted") or "") .. "|r")
+    f.skip:SetShown(q ~= nil and job.state ~= "posting")
 
     local d = job.decision
     local parts = ns.SellExplain()
@@ -1690,14 +2654,14 @@ local function refreshSellPanel()
     end
 
     f.post:Show()
-    f.close:SetLabel("Cancel")
+    f.close:SetLabel(q and "Stop" or "Cancel")
     if job.state == "checking" then
         f.post:SetLabel("Checking...")
         f.post:SetDisabled(true)
     elseif job.state == "ready" then
-        f.post:SetLabel("Post")
+        f.post:SetLabel(q and "Post, then next" or "Post")
         f.post:SetDisabled(not canPost)
-        if not canPost then
+        if not canPost and not q then
             f.close:SetLabel("Close")
         end
     elseif job.state == "confirm" then
@@ -1729,6 +2693,9 @@ local function refreshAHPanel()
     ahPanel.text:SetText(text)
     ahPanel.scan:SetDisabled(active)
     ahPanel.scan:SetLabel(active and "Scanning..." or "Scan prices")
+    local n = ns.R().lastScan and #ns.BagAdvice().ah or 0
+    ahPanel.postAll:SetLabel(n > 0 and ("Post all (" .. n .. ")") or "Post all")
+    ahPanel.postAll:SetDisabled(active or n == 0 or (ns.PostQueue and ns.PostQueue() ~= nil))
 end
 
 local function createAHPanel()
@@ -1739,14 +2706,14 @@ local function createAHPanel()
     end
     local parent = AuctionHouseFrame or UIParent
     local p = CreateFrame("Frame", "ForeverGoldAuctionStrip", parent)
-    p:SetSize(520, 32)
+    p:SetSize(620, 32)
     if AuctionHouseFrame then
         p:SetPoint("BOTTOMRIGHT", AuctionHouseFrame, "TOPRIGHT", 0, 3)
     else
         p:SetPoint("TOP", UIParent, "TOP", 0, -70)
     end
     p:SetFrameStrata("HIGH")
-    skin(p, 0.055, 0.055, 0.07, 0.95)
+    skin(p)
     local icon = p:CreateTexture(nil, "ARTWORK")
     icon:SetSize(20, 20)
     icon:SetPoint("LEFT", 6, 0)
@@ -1759,6 +2726,18 @@ local function createAHPanel()
     p.open:SetPoint("RIGHT", -6, 0)
     p.scan = button(p, "Scan prices", 96, 22, function() ns.StartScan() end)
     p.scan:SetPoint("RIGHT", p.open, "LEFT", -6, 0)
+    p.postAll = button(p, "Post all", 96, 22, function() ns.StartPostAll() end)
+    p.postAll:SetPoint("RIGHT", p.scan, "LEFT", -6, 0)
+    p.postAll:SetPrimary(true)
+    p.postAll:SetScript("OnEnter", function(self)
+        if GameTooltip then
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("Post everything the Sell tab says to auction", 1, 0.82, 0)
+            GameTooltip:AddLine("Each item is price-checked, then you press Post once per listing (the game needs a click for every post). Anything under your floor is skipped. Undercut and stack size are under Settings.", 0.9, 0.9, 0.9, true)
+            GameTooltip:Show()
+        end
+    end)
+    p.postAll:SetScript("OnLeave", rowLeave)
     ahPanel = p
     refreshAHPanel()
 end
@@ -1779,16 +2758,17 @@ local function createMinimapButton()
         return
     end
     local b = CreateFrame("Button", "ForeverGoldMinimapButton", Minimap)
-    b:SetSize(24, 24)
+    b:SetSize(30, 30)
     b:SetFrameStrata("MEDIUM")
     b:SetFrameLevel((Minimap:GetFrameLevel() or 1) + 10)
-    skin(b, 0, 0, 0, 1, 1, 0.82, 0, 1)
     local icon = b:CreateTexture(nil, "ARTWORK")
-    icon:SetPoint("TOPLEFT", 2, -2)
-    icon:SetPoint("BOTTOMRIGHT", -2, 2)
-    setIcon(icon, COIN)
-    local hl = tex(b, "HIGHLIGHT", 1, 1, 1, 0.25)
+    icon:SetAllPoints()
+    icon:SetTexture(LOGO)
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints()
+    hl:SetTexture(LOGO)
+    hl:SetBlendMode("ADD")
+    hl:SetAlpha(0.35)
     b:RegisterForDrag("LeftButton")
     b:SetScript("OnDragStart", function(self)
         self:SetScript("OnUpdate", function()
@@ -1816,7 +2796,7 @@ local function createMinimapButton()
         if GameTooltip then
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             GameTooltip:SetText("Forever Gold", 1, 0.82, 0)
-            GameTooltip:AddLine("Click for gold-making advice. Right-click: Kills & Loot. Drag to move.", 1, 1, 1)
+            GameTooltip:AddLine("Click for gold-making advice. Right-click: Farming Session. Drag to move.", 1, 1, 1)
             GameTooltip:AddLine(ns.ScanStatus(), 0.7, 0.7, 0.7)
             GameTooltip:Show()
         end
@@ -1954,8 +2934,22 @@ local function addTooltipLines(tooltip, data)
         if e.cost then
             tooltip:AddDoubleLine("|cffffd100Costs you to make|r", ns.Money(e.cost))
             if e.profit then
-                tooltip:AddDoubleLine("|cffffd100Profit if you sell it|r", ns.Profit(e.profit))
+                local pct = e.cost > 0 and (GREY .. "  " .. floor(e.profit / e.cost * 100 + 0.5) .. "% margin|r") or ""
+                tooltip:AddDoubleLine("|cffffd100Profit if you craft and sell it|r", ns.Profit(e.profit) .. pct)
             end
+        end
+    end
+    -- Auction against vendor: what listing it earns over just vendoring it.
+    local ah = price or last or sp
+    local vendor = ns.VendorSell(id)
+    if ah and vendor and vendor > 0 then
+        local gain = ah * (1 - CUT) - vendor
+        local pct = floor(gain / vendor * 100 + 0.5)
+        if gain > 0 then
+            tooltip:AddDoubleLine("|cffffd100Auction over vendor|r  " .. GREY .. "after the 5% cut|r",
+                ns.Profit(gain) .. GREY .. "  +" .. pct .. "%|r")
+        else
+            tooltip:AddDoubleLine("|cffffd100Auction over vendor|r", "|cffff7070vendor pays more|r")
         end
     end
 end
@@ -2002,6 +2996,7 @@ end)
 
 ns.Listen("SELL", function()
     refreshSellPanel()
+    refreshAHPanel()
 end)
 
 ns.Listen("SCAN_PROGRESS", function()

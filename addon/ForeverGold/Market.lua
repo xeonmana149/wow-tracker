@@ -13,7 +13,7 @@
 -- comparing it with your own scan: the house whose prices match yours.
 
 local _, ns = ...
-local floor, max = math.floor, math.max
+local floor, max, min = math.floor, math.max, math.min
 
 local parsed = {} -- [house] = { [itemID] = rate table or false }
 local chosen -- house table in use, or false = checked and none matches
@@ -182,8 +182,19 @@ end
 
 -- How much to trust a profit when ranking: something that never sells is
 -- worth less than its price tag. Unknown speed counts as middling.
+-- When there's enough data this is the real share of listings that sell
+-- (a big seller counts as at least 0.9), so a 40% margin that sells 1 in 10
+-- listings ranks below a 15% margin that sells 8 in 10.
 function ns.SpeedWeight(id)
-    local s = ns.SaleSpeed(id)
+    local s, r = ns.SaleSpeed(id)
+    local info = ns.MarketInfo()
+    if r and info and info.hours >= MIN_HOURS and (r.through or -1) >= 0 then
+        local w = r.through / 100
+        if (r.perDay or 0) >= 25 then
+            w = max(w, 0.9)
+        end
+        return max(0.05, min(1, w))
+    end
     return s and SPEEDS[s].weight or 0.6
 end
 
@@ -199,6 +210,7 @@ local function perDayText(d)
 end
 
 -- One plain-English line, e.g. "sells fast - about 40 a day, 70% of listings sell".
+-- short = true: just "sells fast". short = "mid": "sells fast (~40/day, 70% sell)".
 function ns.SaleText(id, short)
     local s, r = ns.SaleSpeed(id)
     if not s then
@@ -206,7 +218,16 @@ function ns.SaleText(id, short)
     end
     local sp = SPEEDS[s]
     local text = sp.color .. sp.text .. "|r"
-    if short then
+    if short == "mid" then
+        local bits = {}
+        if r.perDay > 0 then
+            bits[#bits + 1] = "~" .. perDayText(r.perDay) .. "/day"
+        end
+        if r.through >= 0 then
+            bits[#bits + 1] = r.through .. "% sell"
+        end
+        return text .. (#bits > 0 and (" |cff9a9a9a(" .. table.concat(bits, ", ") .. ")|r") or "")
+    elseif short then
         return text
     end
     local bits = {}
@@ -220,6 +241,19 @@ function ns.SaleText(id, short)
         text = text .. " - " .. table.concat(bits, ", ")
     end
     return text
+end
+
+-- Is it worth putting up for sale at all? A short coloured verdict from the
+-- sale data, or nil while there isn't enough of it.
+local VERDICT = {
+    fast = "|cff40e060worth listing|r",
+    steady = "|cff40e060worth listing|r",
+    slow = "|cffffa040list one or two|r",
+    rarely = "|cffff7070hardly sells|r",
+}
+function ns.SaleVerdict(id)
+    local s = ns.SaleSpeed(id)
+    return s and VERDICT[s] or nil, s
 end
 
 -- What one realistically brings in at auction, after the 5% cut.

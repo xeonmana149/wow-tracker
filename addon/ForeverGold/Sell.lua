@@ -33,6 +33,10 @@ local AH = C_AuctionHouse
 
 local job -- the sale being set up, or nil
 
+local function plural(n, word)
+    return n .. " " .. word .. (n == 1 and "" or "s")
+end
+
 function ns.SellJob()
     return job
 end
@@ -108,7 +112,9 @@ function ns.DecidePrice(listings, info)
         if myLow and myLow <= competitor.p then
             target, d.reason = myLow, "match-self"
         else
-            target, d.reason = competitor.p - step, "undercut"
+            -- Undercut by one step, or by a share of the price if set.
+            local by = max(step, floor(competitor.p * (info.undercutPct or 0)))
+            target, d.reason = competitor.p - by, "undercut"
         end
     elseif myLow then
         target, d.reason = myLow, "match-self"
@@ -195,7 +201,15 @@ local function sendSearch()
     end))
 end
 
+-- How much goes in one listing, from Settings: "stack" (one full stack,
+-- the default), "all" (everything you have) or "one".
 local function defaultQuantity()
+    local mode = ns.db.opts.postQty or "stack"
+    if mode == "one" then
+        return 1
+    elseif mode == "all" then
+        return max(1, job.have)
+    end
     if job.commodity then
         local stack = (C_Item and ns.try(C_Item.GetItemMaxStackSizeByID, job.id)) or 20
         return max(1, min(job.have, stack))
@@ -203,35 +217,43 @@ local function defaultQuantity()
     return 1
 end
 
-function ns.OpenSell(id)
+-- The undercut, from Settings: 1 copper (default), 1% or 5%.
+local UNDERCUT = { copper = 0, ["1%"] = 0.01, ["5%"] = 0.05 }
+ns.UNDERCUT_STEPS = { "copper", "1%", "5%" }
+ns.POST_QTY_STEPS = { "stack", "all", "one" }
+
+local queue -- Post all: { ids, i, posted, skipped = { "name: why" } }
+
+-- Returns true if the sale was set up; otherwise prints why (unless quiet).
+function ns.OpenSell(id, quiet)
     AH = C_AuctionHouse
+    local function no(msg)
+        if not quiet then
+            ns.Print(msg)
+        end
+        return false, msg
+    end
     if not ns.ahOpen then
-        ns.Print("open the auction window at an auctioneer first, then press Sell.")
-        return
+        return no("open the auction window at an auctioneer first, then press Sell.")
     end
     if ns.scan.active then
-        ns.Print("I'm still reading prices - press Sell again when the scan finishes.")
-        return
+        return no("I'm still reading prices - press Sell again when the scan finishes.")
     end
     if not (AH and AH.PostItem and AH.PostCommodity and AH.SendSearchQuery) then
-        ns.Print("this game client doesn't have the selling functions I need.")
-        return
+        return no("this game client doesn't have the selling functions I need.")
     end
     local loc, have = findInBags(id)
     if not loc then
-        ns.Print("I can't find a sellable " .. ns.ItemName(id) .. " in your bags.")
-        return
+        return no("I can't find a sellable " .. ns.ItemName(id) .. " in your bags.")
     end
     if AH.IsSellItemValid and not ns.try(AH.IsSellItemValid, loc, false) then
-        ns.Print(ns.ItemName(id) .. " can't be sold on the auction house.")
-        return
+        return no(ns.ItemName(id) .. " can't be sold on the auction house.")
     end
     local status = ns.try(AH.GetItemCommodityStatus, loc)
     local S = Enum and Enum.ItemCommodityStatus or {}
     local COMMODITY, ITEM = S.Commodity or 2, S.Item or 1
     if status ~= COMMODITY and status ~= ITEM then
-        ns.Print("the game is still loading that item. Press Sell again in a moment.")
-        return
+        return no("the game is still loading that item. Press Sell again in a moment.")
     end
     job = { id = id, loc = loc, have = have, commodity = (status == COMMODITY) }
     if job.commodity then
@@ -242,18 +264,97 @@ function ns.OpenSell(id)
     end
     if not job.key then
         job = nil
-        ns.Print("the auction house wouldn't accept that item.")
-        return
+        return no("the auction house wouldn't accept that item.")
     end
     job.step = (AH.SupportsCopperValues and ns.try(AH.SupportsCopperValues)) and 1 or 100
     job.duration = ns.db.opts.sellDuration or 2
     job.qty = defaultQuantity()
     sendSearch()
     ns.Fire("SELL")
+    return true
 end
 
 function ns.CloseSell()
     job = nil
+    if queue then
+        ns.StopPostAll()
+        return
+    end
+    ns.Fire("SELL")
+end
+
+----------------------------------------------------------------------
+-- Post all: works through everything the Sell tab says to auction. Each
+-- item is price-checked by itself; you press Post once per listing (the
+-- game insists on a click for every post). Anything that isn't worth
+-- selling today, or that I won't guess a price for, is skipped.
+----------------------------------------------------------------------
+
+function ns.PostQueue()
+    return queue
+end
+
+local function nextInQueue()
+    if not queue then
+        return
+    end
+    while true do
+        queue.i = queue.i + 1
+        local id = queue.ids[queue.i]
+        if not id then
+            local q = queue
+            queue, job = nil, nil
+            ns.Print("post all finished: " .. plural(q.posted, "listing") .. " posted"
+                .. (#q.skipped > 0 and (", " .. #q.skipped .. " skipped (" .. table.concat(q.skipped, "; ") .. ")") or "") .. ".")
+            ns.Fire("SELL")
+            return
+        end
+        local ok, why = ns.OpenSell(id, true)
+        if ok then
+            return
+        end
+        queue.skipped[#queue.skipped + 1] = ns.ItemName(id) .. ": " .. (why or "couldn't start")
+    end
+end
+
+function ns.StartPostAll()
+    if queue then
+        return
+    end
+    if not ns.ahOpen then
+        ns.Print("open the auction window at an auctioneer first.")
+        return
+    end
+    local ids = {}
+    for _, b in ipairs(ns.BagAdvice().ah) do
+        ids[#ids + 1] = b.id
+    end
+    if #ids == 0 then
+        ns.Print("nothing in your bags is worth auctioning right now.")
+        return
+    end
+    queue = { ids = ids, i = 0, posted = 0, skipped = {} }
+    nextInQueue()
+end
+
+function ns.SkipPostAll(reason)
+    if not queue then
+        return
+    end
+    if job then
+        queue.skipped[#queue.skipped + 1] = ns.ItemName(job.id) .. ": " .. (reason or "skipped")
+    end
+    job = nil
+    nextInQueue()
+end
+
+function ns.StopPostAll()
+    if not queue then
+        return
+    end
+    local q = queue
+    queue, job = nil, nil
+    ns.Print("post all stopped after " .. plural(q.posted, "listing") .. ".")
     ns.Fire("SELL")
 end
 
@@ -307,11 +408,17 @@ local function decide()
         usualDays = days,
         last = ns.LastPrice(job.id),
         cost = rec and ns.EvalRecipe(rec).cost or nil,
+        undercutPct = UNDERCUT[ns.db.opts.postUndercut or "copper"] or 0,
     })
     job.checkedAt = GetTime()
     job.state = "ready"
     job.message = nil
     ns.Fire("SELL")
+    -- Post all moves straight past anything it shouldn't post.
+    if queue and not job.decision.ok then
+        local why = job.decision.why == "floor" and "not worth selling today" or "no price to go on"
+        C_Timer.After(0.2, ns.Guard("post-all", function() ns.SkipPostAll(why) end))
+    end
 end
 
 ns.On("COMMODITY_SEARCH_RESULTS_UPDATED", function(itemID)
@@ -467,6 +574,26 @@ ns.On("AUCTION_HOUSE_AUCTION_CREATED", function()
     job.message = nil
     ns.Print("listed " .. a[3] .. " x " .. ns.ItemText(job.id) .. " at " .. ns.Money(a[4]) .. " each.")
     ns.Fire("SELL")
+    if queue then
+        queue.posted = queue.posted + 1
+        -- More of the same left (posting a stack at a time)? Do the next
+        -- stack before moving on. The count is kept here rather than read
+        -- back from the bags, which can lag a moment behind the post.
+        local id = job.id
+        local left = job.have - a[3]
+        C_Timer.After(0.6, ns.Guard("post-all", function()
+            if not queue then
+                return
+            end
+            if left > 0 and (ns.db.opts.postQty or "stack") == "stack" and ns.OpenSell(id, true) then
+                job.have = min(job.have, left)
+                job.qty = min(job.qty, job.have)
+                return
+            end
+            job = nil
+            nextInQueue()
+        end))
+    end
     if AH.QueryOwnedAuctions then
         C_Timer.After(2, function()
             if ns.ahOpen then
@@ -503,7 +630,9 @@ ns.On("AUCTION_HOUSE_SHOW_ERROR", postFailed)
 ns.On("AUCTION_MULTISELL_FAILURE", postFailed)
 
 ns.Listen("AH_CLOSED", function()
-    if job then
+    if queue then
+        ns.StopPostAll()
+    elseif job then
         ns.CloseSell()
     end
 end)

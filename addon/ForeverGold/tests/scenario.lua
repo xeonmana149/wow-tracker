@@ -14,6 +14,10 @@ local function dumpRows(title, limit, list)
             out("  [" .. strip(d.text) .. "]  " .. strip(d.right))
         elseif d.type == "text" then
             out("  # " .. strip(d.title) .. ": " .. strip(d.text):sub(1, 90))
+        elseif d.type == "chips" then
+            local c = {}
+            for _, x in ipairs(d.chips) do c[#c + 1] = ns.ItemName(x.id) .. " " .. strip(x.text) end
+            out("      drops: " .. table.concat(c, "  "))
         else
             out("  - " .. strip(d.title) .. "  |  " .. strip(d.sub) .. "  =>  " .. strip(d.r1) .. " / " .. strip(d.r2))
         end
@@ -153,8 +157,63 @@ do
     check(ns.UI.makeMode == "routes" and F.plot:IsShown(), "Make > Routes shows the map")
     F.toolbar.buttons[1]._scripts.OnClick(F.toolbar.buttons[1])
     check(ns.UI.makeMode == "craft" and not F.plot:IsShown(), "Make > Craft hides it")
+    -- the details pane
+    local function paneText()
+        local t = { strip(F.pane.title:GetText() or "") }
+        for _, f in ipairs(F.pane.fs) do
+            if f:IsShown() then t[#t + 1] = strip(f:GetText() or "") end
+        end
+        return table.concat(t, " | ")
+    end
+    ns.ShowTab("todo")
+    local firstRow
+    for i = 1, F.list.count do
+        if not F.list.rows[i].d.type then firstRow = firstRow or F.list.rows[i].d end
+    end
+    check(F.pane:IsShown() and F.list.selected == firstRow, "To do picks its first row for the pane")
+    check(F.pane.primary:IsShown() and F.pane.primary.text:GetText() ~= "", "the pane has a main action: "
+        .. tostring(F.pane.primary.text:GetText()))
+    local chars = 0
+    ns.ShowTab("chars")
+    check(F.list.rows[2].d.type == "graph" and F.list.rows[2].graph ~= nil, "Characters opens on the gold graph")
+    do
+        local saved = ns.db.goldLog
+        local now = time()
+        ns.db.goldLog = { { now - 5 * 86400, 20000 }, { now - 3 * 86400, 50000 }, { now - 86400, 45000 } }
+        ns.RefreshUI()
+        local g = F.list.rows[2].graph
+        check(g.drawn and #g.drawn == 4, "the graph draws the history up to now: " .. tostring(g.drawn and #g.drawn))
+        local pts, change = ns.GoldHistory(7 * 86400)
+        check(change == ns.TotalGold() - 20000, "the week's change is now minus where it started")
+        ns.db.goldLog = saved
+        ns.RefreshUI()
+    end
+    for i = 1, F.list.count do
+        local d = F.list.rows[i].d
+        if d.key and d.key:find("^char:") then
+            chars = chars + 1
+            check(strip(d.sub):find("Mining 98"), "characters show their professions directly: " .. strip(d.sub))
+        end
+    end
+    check(chars >= 1, "one row per character")
+    ns.ShowTab("sell")
+    local target
+    for i = 1, F.list.count do
+        local r = F.list.rows[i]
+        if r.d.id == 2840 and not r.d.type then target = r end
+    end
+    target._scripts.OnClick(target)
+    out("  pane: " .. paneText())
+    check(F.list.selected.id == 2840 and paneText():find("Est. after the cut") and paneText():find("Auction house cut"),
+        "clicking a Sell row shows its sums in the pane")
+    check(strip(F.pane.note:GetText()):find("not a guaranteed sale"), "and says they're estimates")
+    ns.RefreshUI(true)
+    check(F.list.selected.id == 2840, "the pick survives a refresh")
+    local h = F:GetHeight()
+    check(h >= 360 and h <= 640, "the window fits its content: " .. h)
     F.settingsButton._scripts.OnClick(F.settingsButton)
-    check(ns.UI.tab == "settings" and strip(F.list.rows[1].d.text) == "Settings", "Settings button opens settings first")
+    check(not F.pane:IsShown(), "settings use the whole width")
+    check(ns.UI.tab == "settings" and strip(F.list.rows[1].d.text) == "Selling", "Settings button opens settings, selling first")
     F.settingsButton._scripts.OnClick(F.settingsButton)
     check(ns.UI.tab == "todo", "and closes back to To do")
 end
@@ -376,6 +435,46 @@ M.fire("AUCTION_HOUSE_SHOW"); M.advance(5)
 table.remove(M.bags) -- put the bags back how the later tests expect them
 M.fire("BAG_UPDATE_DELAYED"); M.advance(1)
 
+out("== post all")
+do
+    local d = ns.DecidePrice({ { p = 1000, q = 5 } }, { commodity = true, step = 1, floor = 0, undercutPct = 0.05 })
+    check(d.ok and d.price == 950, "5% undercut: 1000 -> " .. tostring(d.price))
+    local want = #ns.BagAdvice().ah
+    local before = #M.posted
+    ns.db.opts.postQty = "stack"
+    ns.StartPostAll(); M.advance(1)
+    local q = ns.PostQueue()
+    check(q and #q.ids == want and q.i >= 1, "post all queues everything the Sell tab lists: " .. want)
+    out("  panel: " .. strip(ForeverGoldSellFrame.have:GetText()) .. " | " .. strip(ForeverGoldSellFrame.post.text:GetText()))
+    check(strip(ForeverGoldSellFrame.post.text:GetText()) == "Post, then next" and ForeverGoldSellFrame.skip:IsShown(),
+        "the panel offers Post, then next, and Skip")
+    local presses = 0
+    while ns.PostQueue() and presses < 40 do
+        local job = ns.SellJob()
+        if job and job.state == "ready" and job.decision and job.decision.ok then
+            ns.SellPost()
+            presses = presses + 1
+        elseif job and job.state == "confirm" then
+            ns.SellPost()
+        end
+        M.advance(1)
+    end
+    check(ns.PostQueue() == nil and presses > 0, "post all finishes after " .. presses .. " presses")
+    local posted = #M.posted - before
+    check(posted == presses, "one listing per press: " .. posted)
+    -- linen (35 in bags, stacks of 20) goes up as two listings, 20 then 15
+    local linen = {}
+    for i = before + 1, #M.posted do
+        if M.posted[i].id == 2589 then linen[#linen + 1] = M.posted[i].qty end
+    end
+    check(table.concat(linen, ",") == "20,15", "a stack at a time: " .. table.concat(linen, ","))
+    -- stopping part way
+    ns.StartPostAll(); M.advance(1)
+    ForeverGoldSellFrame.close._scripts.OnClick(ForeverGoldSellFrame.close)
+    check(ns.PostQueue() == nil and ns.SellJob() == nil, "Stop ends post all")
+    ns.db.opts.postQty = nil
+end
+
 out("== gathering + route")
 local spots = { { 0.50, 0.50 }, { 0.40, 0.45 }, { 0.60, 0.40 }, { 0.45, 0.60 }, { 0.52, 0.48 }, { 0.47, 0.42 }, { 0.58, 0.55 } }
 for i, s in ipairs(spots) do
@@ -431,6 +530,8 @@ ns.ToggleTrackerWindow()
 local TW = ForeverGoldTracker
 check(TW and ns.TrackerWindowShown() and ns.db.opts.trackerShown, "Kills & Loot window opens on its own")
 dumpRows("Kills (not started)", 3, TW.list)
+check(TW.startBig:IsShown() and not TW.reset:IsShown() and not TW.cells[1]:IsShown() and strip(TW.state:GetText()) == "Idle",
+    "idle: just Start session, no Reset or Save")
 ns.ToggleTrackerWindow()
 check(not ns.TrackerWindowShown() and ns.db.opts.trackerShown == false, "and closes again")
 ns.TrackerStart()
@@ -450,10 +551,14 @@ M.fire("UNIT_HEALTH", "nameplate4")
 check(ns.Tracker().kills == 1, "one kill: no doubles, not other people's, not players: " .. ns.Tracker().kills)
 M.units = {}
 -- loot that corpse: 2 linen and some coin
-M.loot = { { type = 1, id = 2589, qty = 2, quality = 2, src = "Creature-0-1-2-3-4-0000AAAA" }, { type = 2, src = "Creature-0-1-2-3-4-0000AAAA" } }
+M.loot = { { type = 1, id = 2589, qty = 2, quality = 2, src = "Creature-0-1-2-3-4-0000AAAA" }, { type = 2, src = "Creature-0-1-2-3-4-0000AAAA" },
+    { type = 1, id = 5085, qty = 1, quest = true, src = "Creature-0-1-2-3-4-0000AAAA" } }
 M.fire("LOOT_READY", true)
 M.player.money = M.player.money + 137; M.fire("PLAYER_MONEY")
-M.fire("LOOT_SLOT_CLEARED", 1); M.fire("LOOT_SLOT_CLEARED", 2); M.fire("LOOT_CLOSED")
+M.fire("LOOT_SLOT_CLEARED", 1); M.fire("LOOT_SLOT_CLEARED", 2); M.fire("LOOT_SLOT_CLEARED", 3); M.fire("LOOT_CLOSED")
+-- opening the same corpse again doesn't count its drops twice
+M.loot = { { type = 1, id = 2589, qty = 1, src = "Creature-0-1-2-3-4-0000AAAA" } }
+M.fire("LOOT_READY", true); M.fire("LOOT_CLOSED")
 -- a corpse we never saw die still counts as a kill when looted
 M.loot = { { type = 1, id = 4865, qty = 1, src = "Creature-0-1-2-3-4-0000CCCC" } }
 M.fire("LOOT_READY", true); M.fire("LOOT_SLOT_CLEARED", 1); M.fire("LOOT_CLOSED")
@@ -483,8 +588,13 @@ M.inbox = { { invoice = "seller", item = "Copper Bar", count = 5, money = 950 } 
 TakeInboxMoney(1)
 M.advance(1)
 M.fire("MAIL_CLOSED")
--- quest reward
+-- money from nowhere in particular (a trade, say)
 M.player.money = M.player.money + 300; M.fire("PLAYER_MONEY")
+-- a quest turn-in: not farming income
+M.fire("QUEST_COMPLETE")
+M.player.money = M.player.money + 4000; M.fire("PLAYER_MONEY")
+M.fire("QUEST_FINISHED")
+M.fire("QUEST_TURNED_IN", 123, 450, 4000)
 local tr = ns.Tracker()
 check(tr.coin == 137, "coin looted: " .. tostring(tr.coin))
 check(tr.loot.mob[2589] == 2 and tr.loot.mob[4865] == 1, "mob drops counted")
@@ -493,12 +603,17 @@ check(tr.loot.Fishing[6522] == 1, "catch counted under Fishing")
 check(not tr.loot.other[2835], "loot left behind isn't counted")
 check(tr.inc.vendor == 500 and tr.out.vendor == 120, "vendor sales and repairs")
 check(tr.inc.ah == 950 and tr.sold["Copper Bar"] and tr.sold["Copper Bar"].q == 5, "auction sale from the mailbox")
-check(tr.inc.other == 300, "quest money as other income")
+check(tr.inc.other == 300, "other income counted, quest reward left out: " .. tostring(tr.inc.other))
+check(not tr.loot.mob[5085], "quest items aren't counted as loot")
 check(tr.kills == 2 and tr.mobs["Kolkar Drudge"] == 1, "mob names")
 do
     local m = tr.mob["Kolkar Drudge"]
     check(m and m.k == 1 and m.coin == 137 and m.items[2589] == 2, "per-mob kills, coin and drops")
     check(m and m.good == 1 and m.since == 0, "a green drop resets 'kills since your last green'")
+    check(m and m.drops[2589] == 1 and not m.drops[5085], "drop counted once per corpse, quest item left out")
+    local dm = ns.TrackerMobs("kills")[1]
+    check(dm.drops[1] and dm.drops[1].id == 2589 and dm.drops[1].rate == 1 and dm.drops[1].share == 1,
+        "drop rate per kill and share of drops")
     local node = tr.nodes["Copper Vein"]
     check(node and node.n == 1 and node.cat == "Mining" and node.items[2770] == 3 and tr.gathers == 1,
         "gathering counted by node name")
@@ -553,10 +668,15 @@ do
     check(view.sort == "recent", "sort goes round recent, kills, gold")
     TW._scripts.OnDragStop(TW)
     check(type(ns.db.opts.trackerPos) == "table", "window position saved")
+    check(not TW.startBig:IsShown() and TW.reset:IsShown() and TW.cells[3]:IsShown()
+        and strip(TW.state:GetText()) == "Recording", "recording: stats, Pause, Save and Reset")
+    out("  stats: " .. strip(TW.cells[1].value:GetText()) .. " | " .. strip(TW.cells[2].value:GetText()) .. " | "
+        .. strip(TW.cells[3].value:GetText()) .. " | " .. strip(TW.cells[4].value:GetText()))
     TW.fold._scripts.OnClick(TW.fold)
-    check(ns.db.opts.trackerCollapsed and TW:GetHeight() == 50, "fold down to one line")
+    check(ns.db.opts.trackerCollapsed and TW:GetHeight() == 22 and TW:GetWidth() < 286 and TW.head:IsShown(),
+        "fold down to a narrow status strip")
     TW.fold._scripts.OnClick(TW.fold)
-    check(not ns.db.opts.trackerCollapsed and TW:GetHeight() > 50, "and back")
+    check(not ns.db.opts.trackerCollapsed and TW:GetHeight() > 22, "and back")
     M.update(1.1)
     out("  window: " .. strip(TW.head:GetText()))
     check(strip(TW.head:GetText()):find("/hr"), "gold per hour in the window's top line")
@@ -576,7 +696,7 @@ do
         if b:IsShown() then labels[#labels + 1] = b.text:GetText() end
     end
     out("  Make > Farm toolbar: " .. table.concat(labels, " | "))
-    check(table.concat(labels, "|") == "Craft|Farm|Routes|Kills & Loot window", "Make > Farm toolbar: switch plus the Kills & Loot window")
+    check(table.concat(labels, "|") == "Craft|Farm|Routes|Farming Session", "Make > Farm toolbar: switch plus the Kills & Loot window")
 end
 local before = #ns.db.sessions
 ns.StopSession()

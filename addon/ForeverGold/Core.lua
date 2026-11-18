@@ -18,7 +18,7 @@ local ADDON, ns = ...
 _G.ForeverGold = ns
 
 ns.TITLE = "Forever Gold"
-ns.VERSION = "1.5.0"
+ns.VERSION = "1.6.0"
 -- The auction house keeps 5% of every sale.
 ns.AH_CUT = 0.05
 
@@ -46,15 +46,19 @@ function ns.Err(where, err)
 end
 
 -- Calls fn(...) and returns its results, or nothing if it is missing/errors.
+local function passed(ok, ...)
+    if ok then
+        return ...
+    end
+    return nil
+end
+
+-- Calls fn, returning all its results, or nil if it errors or isn't there.
 function ns.try(fn, ...)
     if type(fn) ~= "function" then
         return nil
     end
-    local ok, a, b, c, d, e, f = pcall(fn, ...)
-    if ok then
-        return a, b, c, d, e, f
-    end
-    return nil
+    return passed(pcall(fn, ...))
 end
 
 -- Wraps fn so an error inside it is recorded instead of thrown.
@@ -256,6 +260,7 @@ function ns.InitDB()
     ensure(db, "chars")    -- your characters: professions, recipes, bags
     ensure(db, "nodes")    -- ore / herb / fishing spots you have gathered
     ensure(db, "sessions") -- finished farming sessions
+    ensure(db, "goldLog")  -- { {time, copper}, ... } all your characters' gold over time
     local opts = ensure(db, "opts")
     if opts.autoScan == nil then opts.autoScan = true end
     if opts.tooltip == nil then opts.tooltip = true end
@@ -641,7 +646,7 @@ SlashCmdList["FOREVERGOLD"] = function(msg)
         ns.Print("commands:")
         print("  |cffffffff/gold|r - open or close the window")
         print("  |cffffffff/gold scan|r - read auction prices (at an auctioneer)")
-        print("  |cffffffff/gold kills|r - show or hide the Kills & Loot window (or right-click the minimap button)")
+        print("  |cffffffff/gold kills|r - show or hide the Farming Session window (or right-click the minimap button)")
         print("  |cffffffff/gold track|r - start or pause the kill and loot tracker")
         print("  |cffffffff/gold track reset|r - wipe the tracker's numbers")
         print("  |cffffffff/gold track save|r - save the trip to Make > Farm and clear the tracker")

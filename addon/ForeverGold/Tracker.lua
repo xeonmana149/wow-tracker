@@ -217,7 +217,9 @@ end
 
 -- Each mob killed this trip, at today's prices:
 -- { name, k, at, value, perKill, coin, good, since, zones = { names by kills },
---   items = { {id, n, v} by value }, life = { k, v, good } }
+--   items = { {id, n, v} by value }, life = { k, v, good, drops },
+--   drops = { {id, d = corpses it dropped from, n = how many looted, rate = per kill,
+--             share = of all this mob's drops, lifeD, lifeRate, v = value each} by rate } }
 -- sort: "recent" (default), "kills" or "value"
 function ns.TrackerMobs(sort)
     local t = T()
@@ -242,6 +244,25 @@ function ns.TrackerMobs(sort)
         table.sort(e.zones, function(a, b) return a.n > b.n end)
         e.value = v
         e.perKill = m.k > 0 and v / m.k or 0
+        -- Drop rates: how often each item drops (per kill), and its share
+        -- of everything this mob has dropped. All-time numbers alongside.
+        e.drops = {}
+        local lifeDrops, allDrops = e.life.drops or {}, 0
+        for _, d in pairs(m.drops or {}) do
+            allDrops = allDrops + d
+        end
+        for id, d in pairs(m.drops or {}) do
+            local lk, ld = e.life.k or 0, lifeDrops[id] or 0
+            e.drops[#e.drops + 1] = { id = id, d = d, n = m.items[id] or 0,
+                rate = m.k > 0 and min(1, d / m.k) or 0, share = allDrops > 0 and d / allDrops or 0,
+                lifeD = ld, lifeRate = lk > 0 and min(1, ld / lk) or nil, v = itemValue(id) }
+        end
+        table.sort(e.drops, function(a, b)
+            if a.rate ~= b.rate then
+                return a.rate > b.rate
+            end
+            return a.v > b.v
+        end)
         out[#out + 1] = e
     end
     local by = {
@@ -357,12 +378,14 @@ local function nameOf(guid)
     return nil
 end
 
+-- drops[id] = how many corpses dropped it, for "drops 1 in N kills".
 local function mobEntry(t, name)
     local m = t.mob[name]
     if not m then
-        m = { k = 0, at = 0, z = {}, items = {}, coin = 0, good = 0, since = 0 }
+        m = { k = 0, at = 0, z = {}, items = {}, coin = 0, good = 0, since = 0, drops = {} }
         t.mob[name] = m
     end
+    m.drops = m.drops or {}
     return m
 end
 
@@ -370,9 +393,10 @@ local function lifeMob(name)
     local l = Life().mobs
     local e = l[name]
     if not e then
-        e = { k = 0, v = 0, good = 0 }
+        e = { k = 0, v = 0, good = 0, drops = {} }
         l[name] = e
     end
+    e.drops = e.drops or {}
     return e
 end
 
@@ -467,6 +491,30 @@ local looting = false
 local pending = {} -- [slot] = { id, n, cat, mob, node, q }
 local coinMob -- the mob the coin in this loot window came from
 
+-- Corpses whose drops have been counted (reopening one doesn't count twice).
+local droppedFrom, droppedList = {}, {}
+local function markDropped(guid)
+    droppedFrom[guid] = true
+    droppedList[#droppedList + 1] = guid
+    if #droppedList > 600 then
+        droppedFrom[table.remove(droppedList, 1)] = nil
+    end
+end
+
+-- Quest items aren't loot you can sell, so the tracker leaves them out.
+local QUEST_CLASS = 12
+local function questItem(id)
+    local it = ns.Item(id)
+    if it and it.c then
+        return it.c == QUEST_CLASS
+    end
+    if C_Item and C_Item.GetItemInfoInstant then
+        local classID = select(6, ns.try(C_Item.GetItemInfoInstant, id))
+        return classID == QUEST_CLASS
+    end
+    return false
+end
+
 local function slotSource(slot)
     if type(GetLootSourceInfo) ~= "function" then
         return nil
@@ -490,6 +538,7 @@ local function onLootReady()
     local n = ns.try(GetNumLootItems) or 0
     local usedGather = false
     local t = T()
+    local seenHere, corpseGuid, corpseMob = {}, nil, nil
     for slot = 1, n do
         local guid = slotSource(slot)
         local fromNode = guid and guid:find("^GameObject")
@@ -513,17 +562,34 @@ local function onLootReady()
             cat = "other"
         end
         local mob = cat == "mob" and nameOf(guid) or nil
+        if mob and guid then
+            corpseGuid, corpseMob = guid, mob
+        end
         local slotType = ns.try(GetLootSlotType, slot)
         if slotType == LOOT_ITEM then
             local link = ns.try(GetLootSlotLink, slot)
             local id = type(link) == "string" and tonumber(link:match("item:(%d+)")) or nil
-            local _, _, qty, _, quality = ns.try(GetLootSlotInfo, slot)
-            if id then
+            local _, _, qty, _, quality, _, isQuest = ns.try(GetLootSlotInfo, slot)
+            if id and not isQuest and not questItem(id) then
                 pending[slot] = { id = id, n = max(1, tonumber(qty) or 1), cat = cat, mob = mob,
                     node = gatherFits and gather and lastGather and lastGather.node or nil, q = tonumber(quality) }
+                -- What this corpse dropped, counted once per item per corpse
+                -- (whether or not you take it), for the mob's drop rates.
+                if mob and guid and t and not droppedFrom[guid] then
+                    seenHere[id] = true
+                end
             end
         elseif slotType == LOOT_MONEY and mob then
             coinMob = mob
+        end
+    end
+    if t and corpseGuid and not droppedFrom[corpseGuid] then
+        markDropped(corpseGuid)
+        local m = mobEntry(t, corpseMob)
+        local lm = lifeMob(corpseMob)
+        for id in pairs(seenHere) do
+            m.drops[id] = (m.drops[id] or 0) + 1
+            lm.drops[id] = (lm.drops[id] or 0) + 1
         end
     end
     if usedGather then
@@ -603,6 +669,16 @@ end)
 local mailOpen, merchantOpen = false, false
 local invoice -- the auction-sale mail you just took money from
 
+-- Quest rewards aren't farming income: money that arrives while a quest is
+-- being handed in (or just after) isn't counted.
+local questOpen, questUntil = false, 0
+ns.On("QUEST_COMPLETE", function() questOpen = true end)
+ns.On("QUEST_FINISHED", function()
+    questUntil = GetTime() + 3
+    questOpen = false
+end)
+ns.On("QUEST_TURNED_IN", function() questUntil = GetTime() + 3 end)
+
 ns.On("MAIL_SHOW", function() mailOpen = true end)
 ns.On("MAIL_CLOSED", function() mailOpen = false end)
 ns.On("MERCHANT_SHOW", function() merchantOpen = true end)
@@ -665,6 +741,8 @@ ns.On("PLAYER_MONEY", function()
             end
         elseif merchantOpen then
             t.inc.vendor = (t.inc.vendor or 0) + delta
+        elseif questOpen or GetTime() < questUntil then
+            return -- a quest reward
         else
             t.inc.other = (t.inc.other or 0) + delta
         end

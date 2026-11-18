@@ -188,13 +188,19 @@ local function scanMerchant()
     end
     local npc = ns.try(UnitName, "npc")
     local zone = ns.try(GetRealZoneText)
+    -- Where the vendor stands, for "View vendor location" (you're next to them).
+    local map, x, y
+    if ns.PlayerMapPos then
+        map, x, y = ns.PlayerMapPos()
+    end
     local finds = {}
     for i = 1, n do
         local id, price, stack, avail, extended = merchantItem(i)
         if id and price and price > 0 and not extended then
             local unit = price / max(1, stack or 1)
             local limited = (avail and avail >= 0) and true or nil
-            ns.db.vendor[id] = { p = unit, lim = limited, t = time(), npc = npc, zone = zone }
+            ns.db.vendor[id] = { p = unit, lim = limited, t = time(), npc = npc, zone = zone,
+                m = map, x = x and floor(x * 10000) / 10000, y = y and floor(y * 10000) / 10000 }
             ns.Item(id)
             -- Only shout about it when it's real: it has actually been
             -- selling for that much, or this vendor's stock is limited. A

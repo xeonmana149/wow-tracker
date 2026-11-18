@@ -300,6 +300,22 @@ end
 -- Following a route
 ----------------------------------------------------------------------
 
+-- Puts the game's map pin on a spot and tracks it. Returns true if it worked.
+function ns.SetWaypoint(map, x, y)
+    if not (map and x and y and C_Map and C_Map.SetUserWaypoint and UiMapPoint and UiMapPoint.CreateFromCoordinates) then
+        return false
+    end
+    if C_Map.CanSetUserWaypointOnMap and not ns.try(C_Map.CanSetUserWaypointOnMap, map) then
+        return false
+    end
+    return pcall(function()
+        C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(map, x, y))
+        if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
+            C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+        end
+    end) and true or false
+end
+
 function ns.SetRouteWaypoint()
     local r = ns.route
     if not r or not ns.db.opts.waypoint then
