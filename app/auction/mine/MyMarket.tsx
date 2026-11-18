@@ -23,7 +23,7 @@ type Auction = {
 type Char = { name: string; faction?: string; level?: number; class?: string; money: number; seen: number };
 type Trip = { t: number; secs: number; v: number; cash?: number; zone?: string; who?: string; kills?: number; top: { n: number; item: Ref }[] };
 type Zone = { zone: string; trips: number; secs: number; made: number; perHour: number };
-type Mine = { empty?: boolean; updated: number; chars: Char[]; auctions: Auction[]; gold: [number, number][]; sessions: Trip[]; byZone: Zone[] };
+type Mine = { empty?: boolean; updated: number; chars: Char[]; auctions: Auction[]; gold: [number, number][]; goldByChar?: Record<string, [number, number][]>; sessions: Trip[]; byZone: Zone[] };
 
 const STATUS: Record<Auction["status"], { text: string; cls: string }> = {
   undercut: { text: "Undercut", cls: "border-red-500/50 text-red-300" },
@@ -180,7 +180,7 @@ export default function MyMarket() {
             <Money c={totalNow} /> across {data.chars.length} character{data.chars.length === 1 ? "" : "s"}
           </span>
         </div>
-        <GoldChart points={data.gold} />
+        <GoldChart points={data.gold} byChar={data.goldByChar} />
         <ul className="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
           {data.chars.map((c) => (
             <li key={c.name} className="flex items-center gap-2 border-t border-neutral-800 py-1">

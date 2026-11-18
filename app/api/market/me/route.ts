@@ -116,7 +116,16 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.money - a.money);
 
   return NextResponse.json(
-    { updated: f.updated, chars, auctions, gold: totalGoldSeries(f), sessions, byZone },
+    {
+      updated: f.updated,
+      chars,
+      auctions,
+      gold: totalGoldSeries(f),
+      // Each character's own series, for the chart's per-character views.
+      goldByChar: Object.fromEntries(chars.map((c) => [c.name, f.gold[c.name] ?? []])),
+      sessions,
+      byZone,
+    },
     { headers: { "Cache-Control": "no-store" } }
   );
 }

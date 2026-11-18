@@ -12,8 +12,9 @@ export function Money({ c, sign = false }: { c: number; sign?: boolean }) {
   const s = Math.floor(v / 100);
   const cu = v - s * 100;
   return (
-    <span className={`inline-flex items-center gap-1 whitespace-nowrap tabular-nums ${neg ? "text-red-300" : ""}`}>
-      {neg ? "-" : sign ? "+" : ""}
+    // Signed amounts (profit, change) are green when up and red when down.
+    <span className={`inline-flex items-center gap-1 whitespace-nowrap tabular-nums ${neg ? "text-red-300" : sign && c > 0 ? "text-emerald-300" : ""}`}>
+      {neg ? "-" : sign && c > 0 ? "+" : ""}
       {g > 0 && (
         <span className="inline-flex items-center gap-0.5">
           {g.toLocaleString()}

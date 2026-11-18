@@ -257,6 +257,7 @@ export async function loadAccountViewData(
     { data: characterRows },
     { data: accountAchievementRows },
     { data: legacyRows },
+    { data: legacyDefinitionRows },
     iconOverrides,
   ] = await Promise.all([
     client
@@ -271,7 +272,11 @@ export async function loadAccountViewData(
       .select("id, name, level, class, race, character_type, time_played_hours, money_copper, top_pvp_rank, hidden, include_in_statistics")
       .eq("user_id", userId),
     client.from("account_achievements").select("kind").eq("user_id", userId),
-    client.from("account_legacy_achievements").select("completed, ui_points").eq("user_id", userId),
+    // Point values live in the shared legacy_achievement_definitions table
+    // (since 2026-10-03); asking account_legacy_achievements for ui_points
+    // failed the whole query and every account showed 0 Legacy Points.
+    client.from("account_legacy_achievements").select("achievement_id, completed").eq("user_id", userId),
+    client.from("legacy_achievement_definitions").select("achievement_id, ui_points"),
     // Not user-scoped - badge_icons is one global table of admin-set icon
     // swaps, the same overrides regardless of whose account page this is.
     loadBadgeIconOverrides(client),
@@ -284,7 +289,13 @@ export async function loadAccountViewData(
   // exact same single query/shape rather than branching the select itself.
   const chars = includeHidden ? allChars : allChars.filter((c) => !c.hidden);
   const characterIds = chars.map((c) => c.id);
-  const legacy = (legacyRows ?? []) as LegacyRow[];
+  const legacyPointsById = new Map(
+    ((legacyDefinitionRows ?? []) as { achievement_id: number; ui_points: number | null }[]).map((d) => [d.achievement_id, d.ui_points])
+  );
+  const legacy: LegacyRow[] = ((legacyRows ?? []) as { achievement_id: number; completed: boolean }[]).map((r) => ({
+    completed: r.completed,
+    ui_points: legacyPointsById.get(r.achievement_id) ?? null,
+  }));
 
   let mergedItems: AchievementBoardItem[] = [];
   let itemOwner = new Map<string, string>();
