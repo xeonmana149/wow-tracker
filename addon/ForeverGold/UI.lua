@@ -222,6 +222,18 @@ end
 
 local RIGHT_W = 200
 
+-- A row's second line, in full, when it didn't fit on the row.
+local function cutLine(self)
+    local fs = self.sub
+    if fs and fs.IsTruncated and fs:IsTruncated() then
+        local text = fs:GetText()
+        if text and text ~= "" then
+            return text
+        end
+    end
+    return nil
+end
+
 local function rowEnter(self)
     local d = self.d
     if not d or d.type or not GameTooltip then
@@ -230,11 +242,19 @@ local function rowEnter(self)
     if not pcall(GameTooltip.SetOwner, GameTooltip, self, "ANCHOR_CURSOR_RIGHT") then
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     end
+    local cut = cutLine(self)
     -- With a details pane beside the list, the numbers are there already;
     -- hovering only shows the game's own item tooltip.
     if self.list and self.list.onSelect then
         if d.id then
             pcall(GameTooltip.SetItemByID, GameTooltip, d.id)
+            if cut then
+                GameTooltip:AddLine(cut, 1, 1, 1, true)
+            end
+            GameTooltip:Show()
+        elseif cut then
+            GameTooltip:SetText(d.title or "", 1, 0.82, 0)
+            GameTooltip:AddLine(cut, 1, 1, 1, true)
             GameTooltip:Show()
         else
             GameTooltip:Hide()
@@ -248,6 +268,9 @@ local function rowEnter(self)
     end
     if tip then
         GameTooltip:SetText(d.tipTitle or d.title or "", 1, 0.82, 0)
+        if cut then
+            GameTooltip:AddLine(cut, 1, 1, 1, true)
+        end
         for _, line in ipairs(tip) do
             if type(line) == "table" then
                 GameTooltip:AddDoubleLine(line[1], line[2], 0.9, 0.9, 0.9, 1, 1, 1)
@@ -262,6 +285,12 @@ local function rowEnter(self)
         end
     elseif d.id then
         pcall(GameTooltip.SetItemByID, GameTooltip, d.id)
+        if cut then
+            GameTooltip:AddLine(cut, 1, 1, 1, true)
+        end
+    elseif cut then
+        GameTooltip:SetText(d.title or "", 1, 0.82, 0)
+        GameTooltip:AddLine(cut, 1, 1, 1, true)
     else
         GameTooltip:Hide()
         return
@@ -438,37 +467,56 @@ local function newGraph(parent)
     g.empty = label(g, "GameFontDisableSmall")
     g.empty:SetPoint("CENTER")
     g.dot = tex(g, "OVERLAY", C.goldText[1], C.goldText[2], C.goldText[3], 1)
-    g.dot:SetSize(6, 6)
+    g.dot:SetSize(7, 7)
     g.dot:Hide()
+    -- The crosshair follows the mouse itself, not the nearest recorded point.
+    g.cross = g:CreateLine(nil, "OVERLAY")
+    g.cross:SetColorTexture(1, 1, 1, 0.35)
+    g.cross:SetThickness(1)
+    g.cross:Hide()
     g:EnableMouse(true)
-    g:SetScript("OnEnter", function(self) self.hovering = true end)
+    g:SetScript("OnEnter", function(self) self.hovering, self.lastX = true, nil end)
     g:SetScript("OnLeave", function(self)
         self.hovering = false
         self.dot:Hide()
+        self.cross:Hide()
         rowLeave()
     end)
     g:SetScript("OnUpdate", function(self)
-        if not self.hovering or not self.drawn or #self.drawn == 0 or not GameTooltip then
+        local s = self.scale
+        if not self.hovering or not s or not GameTooltip then
             return
         end
         local cx = GetCursorPosition() / (self:GetEffectiveScale() or 1) - (self:GetLeft() or 0)
-        local best, bestD
-        for _, p in ipairs(self.drawn) do
-            local dist = math.abs(p.x - cx)
-            if not bestD or dist < bestD then
-                best, bestD = p, dist
-            end
+        cx = max(GRAPH_LEFT, min(GRAPH_LEFT + s.pw, cx))
+        if self.lastX and math.abs(cx - self.lastX) < 0.5 then
+            return
         end
-        if best and best ~= self.shown then
-            self.shown = best
-            self.dot:ClearAllPoints()
-            self.dot:SetPoint("CENTER", self, "BOTTOMLEFT", best.x, best.y)
-            self.dot:Show()
-            GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
-            GameTooltip:SetText(date("%a %d %b, %H:%M", best.t), 1, 1, 1)
-            GameTooltip:AddLine(ns.Money(best.v), 1, 1, 1)
-            GameTooltip:Show()
+        self.lastX = cx
+        -- The balance at that moment: the last one recorded at or before it.
+        local t = s.t0 + (s.t1 > s.t0 and (cx - GRAPH_LEFT) / s.pw * (s.t1 - s.t0) or 0)
+        local all = self.all
+        local lo, hi = 1, #all
+        while lo < hi do
+            local mid = floor((lo + hi + 1) / 2)
+            if all[mid][1] <= t then lo = mid else hi = mid - 1 end
         end
+        local v = all[lo][2]
+        local y = s.Y(v)
+        self.cross:SetStartPoint("BOTTOMLEFT", self, cx, GRAPH_BOTTOM)
+        self.cross:SetEndPoint("BOTTOMLEFT", self, cx, GRAPH_BOTTOM + s.ph)
+        self.cross:Show()
+        self.dot:ClearAllPoints()
+        self.dot:SetPoint("CENTER", self, "BOTTOMLEFT", cx, y)
+        self.dot:Show()
+        GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+        GameTooltip:SetText(date("%a %d %b, %H:%M", floor(t)), 1, 1, 1)
+        GameTooltip:AddLine(ns.Money(v), 1, 1, 1)
+        local change = v - all[1][2]
+        if change ~= 0 then
+            GameTooltip:AddLine((ns.Profit and ns.Profit(change) or ns.Money(change)) .. GREY .. " since " .. date("%d %b %H:%M", all[1][1]) .. "|r", 1, 1, 1)
+        end
+        GameTooltip:Show()
     end)
 
     local function line(list, i, layer)
@@ -497,12 +545,14 @@ local function newGraph(parent)
         for _, t in ipairs(self.ylabels) do t:Hide() end
         for _, t in ipairs(self.xlabels) do t:Hide() end
         self.dot:Hide()
-        self.drawn, self.shown = {}, nil
+        self.cross:Hide()
+        self.drawn, self.scale, self.lastX = {}, nil, nil
         local w, h = self:GetWidth() or 300, self:GetHeight() or 150
         if #points < 2 then
             self.empty:SetText("Not enough history yet")
             return
         end
+        self.all = points
         self.empty:SetText("")
         -- Thin very long histories so there are never more than a few hundred segments.
         local step = math.ceil(#points / GRAPH_MAX_POINTS)
@@ -524,6 +574,7 @@ local function newGraph(parent)
         local pw, ph = w - GRAPH_LEFT - 8, h - GRAPH_BOTTOM - 8
         local function X(t) return GRAPH_LEFT + (t1 > t0 and (t - t0) / (t1 - t0) or 1) * pw end
         local function Y(v) return GRAPH_BOTTOM + (v - vmin) / (vmax - vmin) * ph end
+        self.scale = { t0 = t0, t1 = t1, pw = pw, ph = ph, Y = Y }
         for i = 0, 2 do
             local v = vmin + (vmax - vmin) * (0.1 + 0.4 * i)
             local y = Y(v)
@@ -538,29 +589,43 @@ local function newGraph(parent)
             t:SetPoint("RIGHT", self, "BOTTOMLEFT", GRAPH_LEFT - 6, y)
             t:SetText(shortGold(v))
         end
+        -- Time along the bottom: start, middle and end.
         local fmt = (t1 - t0) <= 2 * 86400 and "%H:%M" or "%d %b"
-        for i, t in ipairs({ t0, t1 }) do
+        for i, f in ipairs({ 0, 0.5, 1 }) do
+            local t = t0 + (t1 - t0) * f
             local xl = text(self.xlabels, i)
-            xl:SetJustifyH(i == 1 and "LEFT" or "RIGHT")
+            local where = i == 1 and "BOTTOMLEFT" or (i == 3 and "BOTTOMRIGHT" or "BOTTOM")
+            xl:SetJustifyH(i == 1 and "LEFT" or (i == 3 and "RIGHT" or "CENTER"))
             xl:SetWidth(80)
-            xl:SetPoint(i == 1 and "BOTTOMLEFT" or "BOTTOMRIGHT", self, "BOTTOMLEFT", i == 1 and GRAPH_LEFT or (w - 8), 2)
-            xl:SetText(date(fmt, t))
+            xl:SetPoint(where, self, "BOTTOMLEFT", X(t), 2)
+            xl:SetText(date(fmt, floor(t)))
         end
         local up = pts[#pts][2] >= pts[1][2]
         local cr, cg, cb = C.goldEdge[1], C.goldEdge[2], C.goldEdge[3]
         if not up then
             cr, cg, cb = 0.85, 0.42, 0.36
         end
+        -- Steps, not slopes: your gold holds until the next time it's recorded.
+        local used = 0
+        local function seg(x1, y1, x2, y2)
+            used = used + 1
+            local l = line(self.lines, used)
+            l:SetThickness(2)
+            l:SetColorTexture(cr, cg, cb, 1)
+            l:SetStartPoint("BOTTOMLEFT", self, x1, y1)
+            l:SetEndPoint("BOTTOMLEFT", self, x2, y2)
+        end
         for i, p in ipairs(pts) do
             local x, y = X(p[1]), Y(p[2])
             self.drawn[i] = { x = x, y = y, t = p[1], v = p[2] }
             if i > 1 then
                 local prev = self.drawn[i - 1]
-                local l = line(self.lines, i - 1)
-                l:SetThickness(2)
-                l:SetColorTexture(cr, cg, cb, 1)
-                l:SetStartPoint("BOTTOMLEFT", self, prev.x, prev.y)
-                l:SetEndPoint("BOTTOMLEFT", self, x, y)
+                if x > prev.x then
+                    seg(prev.x, prev.y, x, prev.y)
+                end
+                if y ~= prev.y then
+                    seg(x, prev.y, x, y)
+                end
             end
         end
     end
@@ -1466,18 +1531,29 @@ end
 local function buildChars()
     local rows = {}
     local range = graphRange()
-    local pts, change = ns.GoldHistory(range[3])
-    Hd(rows, "Gold over time", range[2] .. ":  " .. (#pts > 1 and ns.Profit(change) or "no change yet"))
-    rows[#rows + 1] = { type = "graph", points = pts, span = range[3], height = 170 }
-    if #pts < 3 then
-        Tx(rows, nil, GREY .. "Your gold is recorded from now on, every time it changes, across all your characters. The graph fills in as you play.|r")
-    end
-
     local chars = {}
     for _, ch in pairs(ns.db.chars) do
         chars[#chars + 1] = ch
     end
     table.sort(chars, function(a, b) return (a.money or 0) > (b.money or 0) end)
+
+    if UI.graphMode == "each" then
+        -- One smaller graph per character, richest first.
+        for _, ch in ipairs(chars) do
+            local pts, change = ns.GoldHistory(range[3], ch)
+            Hd(rows, ch.name or "?", ns.Money(ch.money or 0) .. GREY .. "  ·  " .. range[2] .. ": |r"
+                .. (#pts > 1 and change ~= 0 and ns.Profit(change) or (GREY .. "no change|r")))
+            rows[#rows + 1] = { type = "graph", points = pts, span = range[3], height = 90 }
+        end
+        Tx(rows, nil, GREY .. "Each character's gold is recorded from this version on, while you play that character.|r")
+    else
+        local pts, change = ns.GoldHistory(range[3])
+        Hd(rows, "Gold over time", "All characters  ·  " .. range[2] .. ":  " .. (#pts > 1 and ns.Profit(change) or "no change yet"))
+        rows[#rows + 1] = { type = "graph", points = pts, span = range[3], height = 170 }
+        if #pts < 3 then
+            Tx(rows, nil, GREY .. "Your gold is recorded from now on, every time it changes, across all your characters. The graph fills in as you play.|r")
+        end
+    end
     Hd(rows, "Characters", ns.Money(ns.TotalGold()) .. " in total")
     local CLASS_ICONS = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
     for _, ch in ipairs(chars) do
@@ -1515,7 +1591,16 @@ local function charsToolbar()
             ns.RefreshUI(true)
         end }
     end
-    bar.text = "Gold across all your characters."
+    bar[#bar].gap = 12
+    local each = UI.graphMode == "each"
+    bar[#bar + 1] = { label = "All characters", width = 100, on = not each, onClick = function()
+        UI.graphMode = nil
+        ns.RefreshUI()
+    end }
+    bar[#bar + 1] = { label = "Each character", width = 100, on = each, onClick = function()
+        UI.graphMode = "each"
+        ns.RefreshUI()
+    end }
     return bar
 end
 
@@ -1810,7 +1895,9 @@ local function buildDeals()
             Hd(rows, "Unproven - listed for more, but nobody may be buying", plural(#deals - deals.sure, "item"))
             Tx(rows, nil, GREY .. "Anyone can buy these from a vendor, so a high asking price on the auction house means little. Once the tracker app has a day or two of sale data, the ones that really sell move up to the list above.|r")
         end
-        local tip = { "Buy it from the vendor and list it on the auction house.",
+        local tip = { "Buy it from " .. (v.npc or "the vendor") .. (v.zone and v.zone ~= "" and (" in " .. v.zone) or "")
+            .. " for " .. ns.Money(v.buy) .. ", and list it on the auction house"
+            .. (v.how == "sold" and " - it has sold for " or " - it's listed at ") .. ns.Money(v.price) .. ".",
             (v.listed or 0) .. " listed right now. With few sellers, don't flood the market - list one or two." }
         if v.how == "sold" then
             tip[#tip + 1] = "These have actually been selling for about " .. ns.Money(v.net / (1 - CUT)) .. " each."
@@ -1841,7 +1928,7 @@ local function buildDeals()
             sub = "Now " .. ns.Money(b.price) .. GREY .. "  -  usually |r" .. ns.Money(b.usual) .. GREY .. "  ("
                 .. b.days .. " days of prices)  -  " .. b.listed .. " listed",
             tip = { "If the price returns to its usual level, buying now and relisting would earn about "
-                .. ns.Money(b.profit) .. " each after the cut.",
+                .. ns.Profit(b.profit) .. " each after the cut.",
                 "Risk: prices on a new realm often fall for good as more people reach higher levels." },
             r1 = ns.Profit(b.profit), r2 = "each, if it recovers" }
     end
@@ -1853,17 +1940,90 @@ end
 ----------------------------------------------------------------------
 
 UI.routeKinds = { ore = true, herb = true, fish = false }
+UI.routeStart = {} -- [mapID] = the spot you chose to start from
+UI.zoneMenu = nil  -- nil, "open" or "confirm"
 
 local function selectedRouteMap()
     if UI.routeMap and ns.db.nodes[UI.routeMap] then
         return UI.routeMap
     end
     local here = ns.PlayerMapPos()
-    if here and ns.db.nodes[here] then
+    if here and ns.db.nodes[here] and #ns.db.nodes[here] > 0 then
         return here
     end
     local zones = ns.NodeZones()
     return zones[1] and zones[1].map or nil
+end
+
+local function zoneInfo(mapID)
+    for _, z in ipairs(ns.NodeZones()) do
+        if z.map == mapID then
+            return z
+        end
+    end
+    return nil
+end
+
+-- Picking a zone: bring back its saved settings, and if what's ticked
+-- matches none of its spots, tick what it does have.
+local function selectZone(mapID)
+    UI.routeMap = mapID
+    UI.zoneMenu = nil
+    local saved = ns.db.routes[mapID]
+    local k = UI.routeKinds
+    if saved and saved.kinds then
+        k.ore, k.herb, k.fish = saved.kinds.ore and true or false, saved.kinds.herb and true or false,
+            saved.kinds.fish and true or false
+        UI.routeStart[mapID] = UI.routeStart[mapID] or ns.SavedStart(mapID)
+    end
+    local z = zoneInfo(mapID)
+    if z and #ns.MatchingNodes(mapID, k) == 0 then
+        for _, kind in ipairs(ns.KIND_ORDER) do
+            if (z[kind] or 0) > 0 then
+                k[kind] = true
+            end
+        end
+    end
+end
+
+-- The suggested loop for the picked zone, worked out again only when the
+-- zone, the ticks, the start or the spots change.
+local planVersion = 0
+local function currentPlan()
+    local mapID = selectedRouteMap()
+    if not mapID then
+        return nil, nil
+    end
+    local k = UI.routeKinds
+    local start = UI.routeStart[mapID]
+    local key = mapID .. ":" .. (k.ore and "o" or "") .. (k.herb and "h" or "") .. (k.fish and "f" or "") .. ":"
+        .. planVersion .. ":" .. tostring(start)
+    if UI.planKey ~= key then
+        UI.planKey = key
+        UI.plan, UI.planWhy = ns.PlanRoute(mapID, k, start)
+    end
+    return UI.plan, UI.planWhy
+end
+
+local function routesShown()
+    return UI.tab == "make" and UI.makeMode == "routes"
+end
+
+ns.Listen("NODES_UPDATED", function()
+    planVersion = planVersion + 1
+    if routesShown() then
+        ns.Later("ui-refresh", 0.2, function() ns.RefreshUI(true) end)
+    end
+end)
+
+local function mainKind(z)
+    local best, bestN = "herb", -1
+    for _, kind in ipairs(ns.KIND_ORDER) do
+        if (z[kind] or 0) > bestN then
+            best, bestN = kind, z[kind] or 0
+        end
+    end
+    return best
 end
 
 local function buildRoutes()
@@ -1871,32 +2031,54 @@ local function buildRoutes()
     local zones = ns.NodeZones()
     if #zones == 0 then
         Tx(rows, "No spots recorded yet",
-            "Just play: every ore vein you mine, herb you pick and place you catch a fish is remembered with its exact position. After a lap or two of a zone, come back here and press Build route.\n\nFarm (next to Routes above) tells you which zones to head for.")
+            "Just play: every ore vein you mine, herb you pick and place you catch a fish is remembered with its exact position. After a lap or two of a zone, come back here and pick it.\n\nFarm (next to Routes above) tells you which zones to head for.")
         return rows
     end
     local sel = selectedRouteMap()
-    local r = ns.route
-    if r then
-        Tx(rows, "Following a route in " .. ns.MapName(r.map), plural(r.n, "stop")
-            .. ". Follow the arrow on your screen; it moves to the next stop when you arrive. Press Skip on the arrow if a spot is empty.")
-    else
-        Tx(rows, nil,
-            "Pick a zone, choose what to include with the buttons above, then press Build route. I'll draw the shortest loop through your spots and point you round it.")
-    end
-    Hd(rows, "Zones you've gathered in")
+    -- Grouped by continent, filtered by the search box above the list.
+    local filter = (UI.zoneFilter or ""):lower():match("^%s*(.-)%s*$")
+    local groups, order = {}, {}
     for _, z in ipairs(zones) do
-        local parts = {}
-        if z.ore > 0 then parts[#parts + 1] = z.ore .. " ore" end
-        if z.herb > 0 then parts[#parts + 1] = z.herb .. " herb" end
-        if z.fish > 0 then parts[#parts + 1] = z.fish .. " fishing" end
-        local mapID = z.map
-        rows[#rows + 1] = { icon = COIN,
-            title = (mapID == sel and "|cffffd100> " or "") .. z.name .. (mapID == sel and "|r" or ""),
-            sub = table.concat(parts, ", "), r1 = plural(z.total, "spot"),
-            onClick = function()
-                UI.routeMap = mapID
-                ns.RefreshUI(true)
-            end }
+        local cont = ns.ContinentOf(z.map)
+        local cname = cont and cont.name or "Other places"
+        if filter == "" or z.name:lower():find(filter, 1, true) or cname:lower():find(filter, 1, true) then
+            local g = groups[cname]
+            if not g then
+                g = { name = cname, other = not cont, zones = {}, spots = 0 }
+                groups[cname] = g
+                order[#order + 1] = g
+            end
+            g.zones[#g.zones + 1] = z
+            g.spots = g.spots + z.total
+        end
+    end
+    if #order == 0 then
+        Tx(rows, nil, "No zones or continents match \"" .. (UI.zoneFilter or "") .. "\".")
+        return rows
+    end
+    table.sort(order, function(a, b)
+        if a.other ~= b.other then
+            return not a.other
+        end
+        return a.name < b.name
+    end)
+    for _, g in ipairs(order) do
+        Hd(rows, g.name, plural(g.spots, "spot"))
+        for _, z in ipairs(g.zones) do
+            local mapID = z.map
+            local marks = ""
+            if ns.route and ns.route.map == mapID then
+                marks = "  |cffffd100route on|r"
+            elseif ns.db.routes[mapID] then
+                marks = GREY .. "  saved|r"
+            end
+            rows[#rows + 1] = { icon = ns.KINDS[mainKind(z)].icon, key = "zone:" .. mapID, isSel = mapID == sel,
+                title = z.name .. marks, sub = ns.ZoneSummary(z),
+                onClick = function()
+                    selectZone(mapID)
+                    ns.RefreshUI(true)
+                end }
+        end
     end
     return rows
 end
@@ -1912,6 +2094,9 @@ local function optionRow(rows, key, text)
         onClick = function()
             ns.db.opts[key] = not ns.db.opts[key]
             ns.RefreshUI(true)
+            if ns.RedrawWorldMap then
+                ns.RedrawWorldMap()
+            end
         end }
 end
 
@@ -1976,7 +2161,7 @@ local function buildTips()
         { copper = "1 copper", ["1%"] = "1%", ["5%"] = "5%" },
         "Click to change. Never goes below your floor, and never undercuts your own auctions.")
     cycleRow(rows, "postQty", ns.POST_QTY_STEPS, "stack", "Each listing holds",
-        { stack = "one full stack", all = "everything you have", one = "one item" },
+        { stack = "one full stack", ["10"] = "10", ["5"] = "5", all = "everything you have", one = "one item" },
         "Click to change. With one full stack, Post all lists your stacks one at a time.")
     cycleRow(rows, "sellDuration", { 1, 2, 3 }, 2, "Auctions last",
         { [1] = ns.SellDurationLabel(1), [2] = ns.SellDurationLabel(2), [3] = ns.SellDurationLabel(3) },
@@ -1988,6 +2173,9 @@ local function buildTips()
     dealMinRow(rows)
     optionRow(rows, "tooltip", "Show auction prices when I hover over an item")
     optionRow(rows, "waypoint", "Use the game's map waypoint for the next stop on a route")
+    optionRow(rows, "worldMapSpots", "Show my gathering spots and route on the world map (OpenMap too)")
+    optionRow(rows, "minimapSpots", "Show my gathering spots and the next stop on the minimap")
+    optionRow(rows, "revealMap", "Draw the whole zone on the Routes map, not just the parts I've explored")
     Hd(rows, "Sale rates")
     Tx(rows, nil, ns.MarketStatus and ns.MarketStatus() or "")
     local have = ns.AccountProfessions()
@@ -2051,40 +2239,8 @@ local function makeToolbar()
             onClick = function() ns.ToggleTrackerWindow() end }
         bar.text = "Measures your real gold per hour."
     elseif mode == "routes" then
-        local k = UI.routeKinds
-        local function toggle(kind)
-            return function()
-                k[kind] = not k[kind]
-                ns.RefreshUI(true)
-            end
-        end
-        for _, b in ipairs({
-            { label = "Ore", width = 56, on = k.ore, onClick = toggle("ore") },
-            { label = "Herbs", width = 60, on = k.herb, onClick = toggle("herb") },
-            { label = "Fishing", width = 66, on = k.fish, onClick = toggle("fish") },
-            { label = "Build route", width = 96, onClick = function()
-                local mapID = selectedRouteMap()
-                if not mapID then
-                    ns.Print("no spots recorded yet - go gather something first.")
-                    return
-                end
-                local route, why = ns.BuildRoute(mapID, { ore = k.ore, herb = k.herb, fish = k.fish })
-                if not route then
-                    ns.Print(why)
-                else
-                    ns.Print("route ready: " .. route.n .. " stops in " .. ns.MapName(mapID) .. ". Follow the arrow.")
-                end
-                ns.RefreshUI(true)
-            end },
-        }) do
-            bar[#bar + 1] = b
-        end
-        if ns.route then
-            bar[#bar + 1] = { label = "Stop route", width = 86, onClick = function()
-                ns.StopRoute()
-                ns.RefreshUI(true)
-            end }
-        end
+        -- What to include and the route buttons live with the map, not here.
+        bar.text = "Pick a zone; the map previews a loop through your spots."
     end
     return bar
 end
@@ -2120,15 +2276,529 @@ local TAB_ALIAS = { characters = { "chars" }, today = { "todo" }, bags = { "sell
 
 local main
 
+-- The Routes page's footer: the route, your spots, when you last gathered.
+local function routeFooter()
+    local parts = {}
+    local r = ns.route
+    if r then
+        local step, n, lap = ns.RouteProgress(r)
+        parts[1] = (r.paused and "Route paused" or "Route running") .. " in " .. ns.MapName(r.map) .. ": stop " .. step
+            .. " of " .. n .. (lap > 1 and (", lap " .. lap) or "")
+    else
+        parts[1] = "No route running"
+    end
+    local total, last, zones = 0, 0, ns.NodeZones()
+    for _, z in ipairs(zones) do
+        total = total + z.total
+        last = max(last, z.last or 0)
+    end
+    parts[2] = plural(total, "spot") .. " recorded in " .. plural(#zones, "zone")
+    if last > 0 then
+        parts[3] = "last gathered " .. ns.Ago(last)
+    end
+    return table.concat(parts, GREY .. "  ·  |r")
+end
+
 local function refreshFooter()
     if not main or not main:IsShown() then
         return
     end
-    local text = ns.ScanStatus()
-    main.status:SetText(text)
+    local routes = routesShown()
+    main.status:SetText(routes and routeFooter() or ns.ScanStatus())
+    main.scanButton:SetShown(not routes)
     main.scanButton:SetDisabled(not ns.ahOpen or ns.scan.active)
     main.scanButton:SetLabel(ns.scan.active and "Scanning..." or "Scan now")
     main.money:SetText(ns.Money(ns.Char().money or 0))
+end
+
+----------------------------------------------------------------------
+-- The Routes map panel: what to include, the map, and the route buttons
+----------------------------------------------------------------------
+
+local MAP_W, MAP_H = 540, 360
+local PANEL_H = 30 + MAP_H + 64
+
+local function withCommas(n)
+    local s = tostring(floor(n))
+    while true do
+        local t, k = s:gsub("^(%d+)(%d%d%d)", "%1,%2")
+        s = t
+        if k == 0 then
+            return s
+        end
+    end
+end
+
+local function kindList(k)
+    local out = {}
+    for _, kind in ipairs(ns.KIND_ORDER) do
+        if k[kind] then
+            out[#out + 1] = ns.KINDS[kind].label
+        end
+    end
+    return table.concat(out, " + ")
+end
+
+local function routeHere(mapID)
+    local r = ns.route
+    return r and r.map == mapID and r or nil
+end
+
+local function nodeClick(n, which)
+    local mapID = selectedRouteMap()
+    if not mapID then
+        return
+    end
+    local r = routeHere(mapID)
+    if which == "RightButton" then
+        if r then
+            -- On a running route: go to this stop next.
+            for i, p in ipairs(r.pts) do
+                if p == n then
+                    r.i = i
+                    ns.SetRouteWaypoint()
+                    ns.Fire("ROUTE")
+                    return
+                end
+            end
+            ns.Print("that spot isn't on the route you're running.")
+        else
+            if n.skip then
+                ns.SetNodeSkipped(n, false)
+            end
+            UI.routeStart[mapID] = n
+            ns.RefreshUI(true)
+        end
+        return
+    end
+    ns.SetNodeSkipped(n, not n.skip)
+end
+
+local function nodeEnter(marker, n)
+    if not GameTooltip then
+        return
+    end
+    local kind = ns.KINDS[n.k]
+    GameTooltip:SetOwner(marker, "ANCHOR_RIGHT")
+    GameTooltip:AddLine(n.n or (kind and kind.label) or "Spot", 1, 0.82, 0)
+    GameTooltip:AddLine((kind and kind.one or "spot") .. " - gathered " .. plural(n.c or 1, "time") .. ", last "
+        .. ns.Ago(n.t), 0.8, 0.8, 0.8)
+    if n.skip then
+        GameTooltip:AddLine("Left out of routes.", 1, 0.45, 0.45)
+    end
+    local r = routeHere(selectedRouteMap())
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine("Click: " .. (n.skip and "put it back in the route" or "leave it out of the route")
+        .. (r and " (from the next route you start)" or ""), 1, 1, 1)
+    GameTooltip:AddLine(r and "Right-click: go here next" or "Right-click: start the route here", 1, 1, 1)
+    GameTooltip:Show()
+end
+
+local function refreshRoutePanel()
+    if not main or not main.plot:IsShown() then
+        return
+    end
+    local P = main.plot
+    local mapID = selectedRouteMap()
+    local k = UI.routeKinds
+    local z = mapID and zoneInfo(mapID)
+    -- Writing on the map sits above the spots; the zone menu above everything.
+    local base = P.map:GetFrameLevel() or 1
+    P.over:SetFrameLevel(base + 12)
+    P.menu:SetFrameLevel(base + 20)
+    for _, cb in ipairs(P.checks) do
+        cb:SetChecked(k[cb.kind])
+        cb:SetCount(z and z[cb.kind] or 0)
+    end
+    local matching, skipped = {}, 0
+    if mapID then
+        matching, skipped = ns.MatchingNodes(mapID, k)
+    end
+    P.count:SetText(#matching .. " matching " .. (#matching == 1 and "spot" or "spots")
+        .. (skipped > 0 and (GREY .. ", " .. skipped .. " left out|r") or ""))
+    P.zoneBtn:SetDisabled(not mapID)
+
+    -- The map
+    local r = ns.route
+    local plan, why
+    if not routeHere(mapID) then
+        plan, why = currentPlan()
+    end
+    local showing = routeHere(mapID) or plan
+    local info = main.plotter:Draw(mapID, MAP_W, MAP_H, { kinds = k, route = showing, player = true, size = 13,
+        art = true, interactive = true, onClick = nodeClick, onEnter = nodeEnter })
+    P.title:SetText(mapID and ns.MapName(mapID) or "")
+    P.titleBg:SetShown(mapID ~= nil)
+    P.titleBg:SetWidth(max(80, min(300, (P.title:GetStringWidth() or 200) + 16)))
+    for _, g in ipairs(P.grid) do
+        g:SetShown(info.art ~= "ok" and info.art ~= "loading")
+    end
+
+    -- Say why the map looks the way it does, rather than leave it blank.
+    local msg
+    local total = z and z.total or 0
+    if not mapID then
+        msg = "No gathering spots recorded yet.\nMine, pick herbs or fish anywhere and they'll show up here."
+    elseif total == 0 then
+        msg = "No spots recorded in " .. ns.MapName(mapID) .. " yet."
+    elseif not (k.ore or k.herb or k.fish) then
+        msg = "Nothing is included.\nTick Herbs, Ore or Fishing above to see your spots."
+    elseif info.shown == 0 then
+        local have = {}
+        for _, kind in ipairs(ns.KIND_ORDER) do
+            if (z[kind] or 0) > 0 then
+                have[#have + 1] = ns.KINDS[kind].label
+            end
+        end
+        msg = "None of this zone's " .. plural(total, "spot") .. " match what's ticked.\nTick " .. table.concat(have, " or ")
+            .. " above to see them."
+    elseif #matching < 2 and not routeHere(mapID) then
+        msg = #matching == 0 and "Every matching spot is left out.\nClick a crossed-out spot to put it back."
+            or "Only one matching spot here - a route needs at least two."
+    end
+    P.msg:SetText(msg or "")
+    P.msgBg:SetShown(msg ~= nil)
+    if msg then
+        P.msgBg:SetSize(min(MAP_W - 40, (P.msg:GetStringWidth() or 300) + 28), (P.msg:GetStringHeight() or 14) + 20)
+    end
+    local note
+    if info.art == "loading" then
+        note = "Loading the zone map..."
+    elseif info.art == "none" and mapID then
+        note = "No map picture for this zone - plain grid"
+    end
+    P.note:SetText(note or "")
+    P.noteBg:SetShown(note ~= nil)
+    P.artState = info.art
+
+    -- Below the map: what the route is and what you can do with it.
+    for _, b in ipairs(P.buttons) do
+        b:Hide()
+    end
+    if r then
+        local step, n, lap = ns.RouteProgress(r)
+        local pt = r.pts[r.i]
+        local kind = pt and ns.KINDS[pt.k]
+        P.sum:SetText("|cffffd100Stop " .. step .. " of " .. n .. "|r" .. (lap > 1 and ("  ·  lap " .. lap) or "")
+            .. (r.paused and "  ·  paused" or "") .. (r.map ~= mapID and ("  ·  in " .. ns.MapName(r.map)) or ""))
+        P.sub:SetText(r.paused and "Paused: the arrow is hidden until you resume. Your place in the loop is kept."
+            or ("Next: " .. ((pt and pt.n) or (kind and kind.one) or "spot")
+                .. ". Follow the arrow; it moves on when you arrive. Right-click a stop on the map to go there next."))
+        P.pause:SetLabel(r.paused and "Resume" or "Pause")
+        P.pause:Show()
+        P.skip:SetDisabled(r.paused)
+        P.skip:Show()
+        P.finish:Show()
+    else
+        if plan then
+            local yards = plan.yards and ("  ·  about " .. withCommas(floor(plan.yards / 10 + 0.5) * 10) .. " yards")
+                or ""
+            local onRoute = {}
+            for _, p in ipairs(plan.pts) do
+                onRoute[p.k] = true
+            end
+            P.sum:SetText("|cffffd100" .. plural(plan.n, "stop") .. "|r  ·  " .. kindList(onRoute) .. yards)
+            P.sub:SetText("Suggested loop through your recorded gathering spots. They aren't guaranteed to be up, and the lines and distance are straight-line, so they can cross cliffs or water. Click a stop to leave it out; right-click to start there.")
+        else
+            P.sum:SetText(mapID and (GREY .. (why or "No route to suggest yet.") .. "|r") or "")
+            P.sub:SetText("")
+        end
+        P.start:SetDisabled(not plan)
+        P.start:Show()
+        P.save:SetDisabled(not mapID)
+        local saved = mapID and ns.db.routes[mapID]
+        P.save:SetLabel(saved and "Save again" or "Save route")
+        P.save:Show()
+    end
+
+    -- The zone menu
+    local menu = P.menu
+    if UI.zoneMenu and mapID then
+        menu:Show()
+        local zname = ns.MapName(mapID)
+        if UI.zoneMenu == "confirm" then
+            menu.text:SetText("Forget all " .. plural(total, "spot") .. " recorded in " .. zname .. "?\nThis can't be undone.")
+            menu.a:SetLabel("Forget them")
+            menu.a.onClick = function()
+                ns.ForgetZone(mapID)
+                UI.routeMap, UI.zoneMenu, UI.routeStart[mapID] = nil, nil, nil
+                ns.RefreshUI()
+            end
+            menu.b:SetLabel("Keep them")
+            menu.b.onClick = function()
+                UI.zoneMenu = nil
+                refreshRoutePanel()
+            end
+            menu.b:SetDisabled(false)
+            menu.c:SetLabel("")
+            menu.c:Hide()
+        else
+            menu.text:SetText(zname)
+            menu.a:SetLabel("Put back " .. plural(z and z.skipped or 0, "left-out spot"))
+            menu.a:SetDisabled(not (z and z.skipped > 0))
+            menu.a.onClick = function()
+                ns.IncludeAllNodes(mapID)
+                UI.zoneMenu = nil
+            end
+            menu.b:SetLabel(ns.db.routes[mapID] and "Delete saved route" or "No saved route")
+            menu.b:SetDisabled(not ns.db.routes[mapID])
+            menu.b.onClick = function()
+                ns.db.routes[mapID] = nil
+                UI.zoneMenu = nil
+                ns.RefreshUI(true)
+            end
+            menu.c:SetLabel("Forget this zone's spots...")
+            menu.c.onClick = function()
+                UI.zoneMenu = "confirm"
+                refreshRoutePanel()
+            end
+            menu.c:Show()
+        end
+        menu.a:SetDisabled(UI.zoneMenu ~= "confirm" and not (z and z.skipped > 0))
+    else
+        menu:Hide()
+    end
+    P.sig = r and (tostring(r) .. r.i .. tostring(r.paused)) or "none"
+end
+ns.RefreshRoutePanel = refreshRoutePanel
+
+-- A tick box that can't be misread: a filled gold box with a check mark
+-- when on, an empty box and dim text when off.
+local CHECK = "Interface\\Buttons\\UI-CheckBox-Check"
+local function checkbox(parent, kind, w, onClick)
+    local info = ns.KINDS[kind]
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(w, 22)
+    b.kind = kind
+    local hl = tex(b, "HIGHLIGHT", 1, 0.92, 0.7, 0.08)
+    hl:SetAllPoints()
+    local box = CreateFrame("Frame", nil, b)
+    box:SetSize(16, 16)
+    box:SetPoint("LEFT", 2, 0)
+    skin(box, C.btn[1], C.btn[2], C.btn[3], 1, C.btnEdge[1], C.btnEdge[2], C.btnEdge[3], 1)
+    b.box = box
+    b.check = box:CreateTexture(nil, "OVERLAY")
+    b.check:SetSize(22, 22)
+    b.check:SetPoint("CENTER", 1, 0)
+    b.check:SetTexture(CHECK)
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetSize(16, 16)
+    b.icon:SetPoint("LEFT", 24, 0)
+    setIcon(b.icon, info.icon)
+    b.text = label(b, "GameFontHighlightSmall", info.label)
+    b.text:SetPoint("LEFT", 44, 0)
+    b:SetScript("OnClick", function()
+        local ok, err = pcall(onClick, kind)
+        if not ok then
+            ns.Err("button", err)
+        end
+    end)
+    b:SetScript("OnEnter", function(self)
+        if GameTooltip then
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:AddLine(info.label .. (self.checked and ": included" or ": not included"), 1, 0.82, 0)
+            GameTooltip:AddLine(plural(self.count or 0, info.one) .. " recorded in this zone.", 0.8, 0.8, 0.8)
+            GameTooltip:Show()
+        end
+    end)
+    b:SetScript("OnLeave", rowLeave)
+    function b:SetChecked(on)
+        self.checked = on and true or false
+        if on then
+            self.box.bg:SetColorTexture(C.gold[1], C.gold[2], C.gold[3], 1)
+            setEdge(self.box, C.goldEdge[1], C.goldEdge[2], C.goldEdge[3])
+            self.text:SetTextColor(C.goldText[1], C.goldText[2], C.goldText[3])
+            self.icon:SetAlpha(1)
+            if self.icon.SetDesaturated then
+                self.icon:SetDesaturated(false)
+            end
+        else
+            self.box.bg:SetColorTexture(0.05, 0.05, 0.05, 1)
+            setEdge(self.box, C.btnEdge[1], C.btnEdge[2], C.btnEdge[3])
+            self.text:SetTextColor(0.55, 0.54, 0.51)
+            self.icon:SetAlpha(0.5)
+            if self.icon.SetDesaturated then
+                self.icon:SetDesaturated(true)
+            end
+        end
+        self.check:SetShown(self.checked)
+    end
+    function b:SetCount(n)
+        self.count = n
+    end
+    return b
+end
+
+local function createRoutePanel(f)
+    local P = CreateFrame("Frame", nil, f)
+    P:SetSize(MAP_W, PANEL_H)
+
+    -- Include: [x] Herbs [ ] Ore [ ] Fishing   19 matching spots   [Zone...]
+    local inc = label(P, "GameFontNormalSmall", "Include:")
+    inc:SetPoint("TOPLEFT", 0, -5)
+    P.checks = {}
+    local x = 52
+    for _, spec in ipairs({ { "herb", 78 }, { "ore", 62 }, { "fish", 88 } }) do
+        local cb = checkbox(P, spec[1], spec[2], function(kind)
+            UI.routeKinds[kind] = not UI.routeKinds[kind]
+            refreshRoutePanel()
+        end)
+        cb:SetPoint("TOPLEFT", x, 0)
+        x = x + spec[2] + 4
+        P.checks[#P.checks + 1] = cb
+    end
+    P.count = label(P, "GameFontHighlightSmall")
+    P.count:SetPoint("TOPLEFT", x + 8, -5)
+    P.zoneBtn = button(P, "Zone...", 64, 22, function()
+        UI.zoneMenu = not UI.zoneMenu and "open" or nil
+        refreshRoutePanel()
+    end)
+    P.zoneBtn:SetPoint("TOPRIGHT", 0, 0)
+    P.count:SetWidth(MAP_W - 64 - 8 - (x + 8))
+    P.count:SetWordWrap(false)
+
+    -- The map
+    local map = CreateFrame("Frame", nil, P)
+    map:SetSize(MAP_W, MAP_H)
+    map:SetPoint("TOPLEFT", 0, -30)
+    skin(map, 0.05, 0.05, 0.045, 1, C.panelEdge[1], C.panelEdge[2], C.panelEdge[3], 1)
+    P.map = map
+    -- A faint grid for zones with no map picture.
+    P.grid = {}
+    for i = 1, 5 do
+        local v = tex(map, "BORDER", 1, 1, 1, 0.05)
+        v:SetWidth(1)
+        v:SetPoint("TOP", map, "TOPLEFT", MAP_W * i / 6, 0)
+        v:SetPoint("BOTTOM", map, "BOTTOMLEFT", MAP_W * i / 6, 0)
+        P.grid[#P.grid + 1] = v
+    end
+    for i = 1, 3 do
+        local hz = tex(map, "BORDER", 1, 1, 1, 0.05)
+        hz:SetHeight(1)
+        hz:SetPoint("LEFT", map, "TOPLEFT", 0, -MAP_H * i / 4)
+        hz:SetPoint("RIGHT", map, "TOPRIGHT", 0, -MAP_H * i / 4)
+        P.grid[#P.grid + 1] = hz
+    end
+
+    -- Things written on top of the map sit on their own frame above it.
+    local over = CreateFrame("Frame", nil, map)
+    over:SetAllPoints(map)
+    P.over = over
+    P.titleBg = tex(over, "BACKGROUND", 0, 0, 0, 0.6)
+    P.titleBg:SetPoint("TOPLEFT", 1, -1)
+    P.titleBg:SetSize(220, 24)
+    P.title = label(over, "GameFontNormal")
+    P.title:SetPoint("TOPLEFT", 8, -6)
+    P.title:SetTextColor(C.goldText[1], C.goldText[2], C.goldText[3])
+    P.msgBg = tex(over, "BACKGROUND", 0, 0, 0, 0.78)
+    P.msgBg:SetPoint("CENTER")
+    P.msg = label(over, "GameFontHighlight")
+    P.msg:SetPoint("CENTER")
+    P.msg:SetJustifyH("CENTER")
+    P.msg:SetWidth(MAP_W - 80)
+    P.msg:SetWordWrap(true)
+    -- Map status (loading / no picture) top right, opposite the zone name.
+    P.note = label(over, "GameFontHighlightSmall")
+    P.note:SetPoint("TOPRIGHT", -8, -7)
+    P.note:SetJustifyH("RIGHT")
+    P.noteBg = tex(over, "BACKGROUND", 0, 0, 0, 0.6)
+    P.noteBg:SetPoint("TOPLEFT", P.note, "TOPLEFT", -6, 5)
+    P.noteBg:SetPoint("BOTTOMRIGHT", P.note, "BOTTOMRIGHT", 6, -5)
+    -- What the symbols mean, on a band along the bottom.
+    local legendBg = tex(over, "BACKGROUND", 0, 0, 0, 0.6)
+    legendBg:SetPoint("BOTTOMLEFT", 1, 1)
+    legendBg:SetPoint("BOTTOMRIGHT", -1, 1)
+    legendBg:SetHeight(20)
+    local legend = label(over, "GameFontHighlightSmall",
+        "|T" .. ns.KINDS.herb.icon .. ":13|t herb   |T" .. ns.KINDS.ore.icon .. ":13|t ore   |T" .. ns.KINDS.fish.icon
+        .. ":13|t fishing   |TInterface\\Minimap\\MinimapArrow:14|t you   |cffffd100gold ring|r = start / next   crossed out = left out")
+    legend:SetPoint("BOTTOMLEFT", 8, 5)
+    P.legend = legend
+
+    -- Below the map
+    P.sum = label(P, "GameFontHighlight")
+    P.sum:SetPoint("TOPLEFT", map, "BOTTOMLEFT", 0, -10)
+    P.sum:SetWidth(MAP_W - 252)
+    P.sum:SetWordWrap(false)
+    P.sub = label(P, "GameFontDisableSmall")
+    P.sub:SetPoint("TOPLEFT", map, "BOTTOMLEFT", 0, -32)
+    P.sub:SetWidth(MAP_W)
+    P.sub:SetWordWrap(true)
+    P.sub:SetJustifyV("TOP")
+
+    local function startRoute()
+        local plan = currentPlan()
+        if not plan then
+            return
+        end
+        UI.planKey = nil -- the plan is now the running route; work out a fresh one next time
+        ns.StartRoute(plan)
+        UI.zoneMenu = nil
+        ns.Print("route started: " .. plan.n .. " stops in " .. ns.MapName(plan.map) .. ". Follow the arrow.")
+        ns.RefreshUI(true)
+    end
+    P.start = button(P, "Start route", 110, 26, startRoute)
+    P.start:SetPrimary(true)
+    P.start:SetPoint("TOPRIGHT", map, "BOTTOMRIGHT", 0, -6)
+    P.save = button(P, "Save route", 90, 26, function()
+        local mapID = selectedRouteMap()
+        if mapID then
+            ns.SaveRoute(mapID, UI.routeKinds, UI.routeStart[mapID])
+            ns.Print("saved: " .. ns.MapName(mapID) .. " opens with " .. kindList(UI.routeKinds)
+                .. (UI.routeStart[mapID] and " and your chosen start" or "") .. ".")
+        end
+    end)
+    P.save:SetPoint("RIGHT", P.start, "LEFT", -8, 0)
+    P.finish = button(P, "End route", 84, 26, function()
+        ns.StopRoute()
+        ns.RefreshUI(true)
+    end)
+    P.finish:SetPoint("TOPRIGHT", map, "BOTTOMRIGHT", 0, -6)
+    P.skip = button(P, "Skip stop", 80, 26, function() ns.NextStop() end)
+    P.skip:SetPoint("RIGHT", P.finish, "LEFT", -6, 0)
+    P.pause = button(P, "Pause", 70, 26, function()
+        ns.PauseRoute(not (ns.route and ns.route.paused))
+    end)
+    P.pause:SetPoint("RIGHT", P.skip, "LEFT", -6, 0)
+    P.buttons = { P.start, P.save, P.finish, P.skip, P.pause }
+
+    -- The zone menu drops down from its button.
+    local menu = CreateFrame("Frame", nil, P)
+    menu:SetSize(230, 124)
+    menu:SetPoint("TOPRIGHT", P.zoneBtn, "BOTTOMRIGHT", 0, -4)
+    skin(menu, C.panel[1], C.panel[2], C.panel[3], 0.98, C.edge[1], C.edge[2], C.edge[3], 1)
+    menu.text = label(menu, "GameFontNormalSmall")
+    menu.text:SetPoint("TOPLEFT", 10, -8)
+    menu.text:SetWidth(210)
+    menu.text:SetWordWrap(true)
+    menu.a = button(menu, "", 210, 22)
+    menu.a:SetPoint("TOPLEFT", 10, -40)
+    menu.b = button(menu, "", 210, 22)
+    menu.b:SetPoint("TOPLEFT", 10, -66)
+    menu.c = button(menu, "", 210, 22)
+    menu.c:SetPoint("TOPLEFT", 10, -92)
+    menu:Hide()
+    P.menu = menu
+
+    -- You move every frame; the rest only changes on events.
+    local since, slow = 0, 0
+    P:SetScript("OnUpdate", function(_, elapsed)
+        since, slow = since + elapsed, slow + elapsed
+        if since < 0.1 then
+            return
+        end
+        since = 0
+        ns.Guard("plot", function()
+            f.plotter:UpdatePlayer()
+            local r = ns.route
+            local sig = r and (tostring(r) .. r.i .. tostring(r.paused)) or "none"
+            if sig ~= P.sig or (P.artState == "loading" and slow > 0.5) then
+                slow = 0
+                refreshRoutePanel()
+            end
+        end)()
+    end)
+    return P
 end
 
 local function refreshToolbar(tab)
@@ -2165,16 +2835,6 @@ local function refreshToolbar(tab)
     return 30
 end
 
-local function drawPlot()
-    if not main or not main.plot:IsShown() then
-        return
-    end
-    local mapID = selectedRouteMap()
-    local w, h = main.plot:GetWidth(), main.plot:GetHeight()
-    main.plotTitle:SetText(mapID and ns.MapName(mapID) or "")
-    main.plotter:Draw(mapID, w, h, 6, UI.routeKinds, true)
-end
-
 function ns.RefreshUI(keepScroll)
     if not main or not main:IsShown() then
         return
@@ -2197,9 +2857,9 @@ function ns.RefreshUI(keepScroll)
     -- List on the left; on the right the route map, or the details of the
     -- picked row. Settings use the whole width.
     local withPane = not plot and tab ~= SETTINGS
-    local right = plot and 410 or (withPane and (PANE_W + 10) or 0)
+    local right = plot and (MAP_W + 12) or (withPane and (PANE_W + 10) or 0)
     list.viewW = W - 24 - right
-    list.rightW = withPane and 150 or nil
+    list.rightW = (withPane and 150) or (plot and 16) or nil
     list.onSelect = withPane and function(d)
         UI.sel[UI.selKey] = d.key or (d.id and ("item:" .. d.id)) or d.title
         ns.RefreshUI(true)
@@ -2226,19 +2886,34 @@ function ns.RefreshUI(keepScroll)
                 end
             end
         end
+    elseif plot then
+        for _, d in ipairs(rows) do
+            if d.isSel then
+                picked = d
+            end
+        end
     end
     list.selected = picked or first
     list:SetRows(rows, keepScroll)
 
     -- The window is as tall as what's in it, between MIN_H and MAX_H.
     local paneH = withPane and main.pane:SetRow(list.selected) or 0
-    local body = max(list.contentH, paneH, plot and 360 or 0, 120)
+    -- On Routes the zone list sits under its search box.
+    local searchH = plot and 32 or 0
+    local body = max(list.contentH + searchH, paneH, plot and PANEL_H or 0, 120)
     H = max(MIN_H, min(MAX_H, top + body + 46))
     main:SetHeight(H)
-    list.viewH = H - top - 46
+    list.viewH = H - top - searchH - 46
+    local search = main.zoneSearch
+    search:SetShown(plot and true or false)
+    if plot then
+        search:ClearAllPoints()
+        search:SetPoint("TOPLEFT", main, "TOPLEFT", 12, -top)
+        search:SetSize(list.viewW - 4, 24)
+    end
     local clip = list.clip
     clip:ClearAllPoints()
-    clip:SetPoint("TOPLEFT", main, "TOPLEFT", 12, -top)
+    clip:SetPoint("TOPLEFT", main, "TOPLEFT", 12, -(top + searchH))
     clip:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -(12 + right), 46)
     main.pane:SetShown(withPane)
     if withPane then
@@ -2246,9 +2921,13 @@ function ns.RefreshUI(keepScroll)
         main.pane:SetPoint("TOPRIGHT", main, "TOPRIGHT", -12, -top)
         main.pane:SetHeight(min(paneH, list.viewH))
     end
+    if plot then
+        main.plot:ClearAllPoints()
+        main.plot:SetPoint("TOPRIGHT", main, "TOPRIGHT", -12, -top)
+    end
     list:Apply()
     refreshFooter()
-    drawPlot()
+    refreshRoutePanel()
 end
 
 function ns.ShowTab(key)
@@ -2329,34 +3008,52 @@ local function createMain()
     f.list = createList(f)
     f.pane = createPane(f)
 
-    local plot = CreateFrame("Frame", nil, f)
-    plot:SetSize(396, 264)
-    plot:SetPoint("TOPRIGHT", -12, -132)
-    skin(plot, 0.03, 0.03, 0.03, 1, C.panelEdge[1], C.panelEdge[2], C.panelEdge[3], 1)
+    -- Make > Routes: the map panel (everything in it is parented to it, so
+    -- none of it shows on other tabs).
+    local plot = createRoutePanel(f)
+    plot:SetPoint("TOPRIGHT", -12, -106)
+    plot:Hide()
     f.plot = plot
-    f.plotter = ns.NewPlotter(plot)
-    f.plotTitle = label(f, "GameFontNormal")
-    f.plotTitle:SetPoint("BOTTOMLEFT", plot, "TOPLEFT", 0, 6)
-    local legend = label(plot, "GameFontDisableSmall",
-        "|cfffa9e33ore|r   |cff59e659herbs|r   |cff59a6fffishing|r   |cffff33e6you|r   |cffffd100route|r")
-    legend:SetPoint("TOPLEFT", plot, "BOTTOMLEFT", 0, -6)
-    local forget = button(plot, "Forget this zone's spots", 170, 22, function()
-        local mapID = selectedRouteMap()
-        if mapID then
-            ns.ForgetZone(mapID)
-            UI.routeMap = nil
-            ns.RefreshUI()
+    f.plotter = ns.NewPlotter(plot.map)
+
+    -- Make > Routes: a search box over the zone list.
+    local search = CreateFrame("EditBox", nil, f)
+    search:SetSize(260, 24)
+    search:SetAutoFocus(false)
+    search:SetMaxLetters(40)
+    if _G.GameFontHighlightSmall then
+        search:SetFontObject(_G.GameFontHighlightSmall)
+    end
+    search:SetTextInsets(24, 22, 0, 0)
+    skin(search, 0.05, 0.05, 0.045, 1, C.btnEdge[1], C.btnEdge[2], C.btnEdge[3], 1)
+    local glass = search:CreateTexture(nil, "ARTWORK")
+    glass:SetSize(14, 14)
+    glass:SetPoint("LEFT", 6, 0)
+    glass:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
+    search.hint = label(search, "GameFontDisableSmall", "Search zones or continents")
+    search.hint:SetPoint("LEFT", 24, 0)
+    search.clear = button(search, "x", 18, 18, function()
+        search:SetText("")
+        search:ClearFocus()
+    end)
+    search.clear:SetPoint("RIGHT", -3, 0)
+    search.clear:Hide()
+    search:SetScript("OnTextChanged", function(self)
+        local text = self:GetText() or ""
+        self.hint:SetShown(text == "")
+        self.clear:SetShown(text ~= "")
+        if text ~= (UI.zoneFilter or "") then
+            UI.zoneFilter = text
+            ns.Later("zone-search", 0.15, function() ns.RefreshUI() end)
         end
     end)
-    forget:SetPoint("TOPRIGHT", plot, "BOTTOMRIGHT", 0, -24)
-    local since = 0
-    plot:SetScript("OnUpdate", function(_, elapsed)
-        since = since + elapsed
-        if since > 1 then
-            since = 0
-            ns.Guard("plot", drawPlot)()
-        end
+    search:SetScript("OnEscapePressed", function(self)
+        self:SetText("")
+        self:ClearFocus()
     end)
+    search:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    search:Hide()
+    f.zoneSearch = search
 
     local footRule = tex(f, "BORDER", C.edge[1], C.edge[2], C.edge[3], 0.5)
     footRule:SetHeight(1)
@@ -2426,24 +3123,29 @@ local function updateHUD()
         return
     end
     do
-        if st.onMap then
+        local stop = "stop " .. (st.step or st.index) .. " of " .. st.count
+        if st.paused then
+            hud.line1:SetText("Route paused")
+            hud.line2:SetText(stop .. " - Resume carries on")
+            drawArrow(nil)
+        elseif st.onMap then
             hud.line1:SetText(st.name)
-            hud.line2:SetText((st.yards and (floor(st.yards) .. " yards   ") or "") .. "stop " .. st.index .. " of " .. st.count)
+            hud.line2:SetText((st.yards and (floor(st.yards) .. " yards   ") or "") .. stop)
             drawArrow(st.angle)
         else
             hud.line1:SetText("Route in " .. st.zone)
             hud.line2:SetText("Travel there to begin")
             drawArrow(nil)
         end
-        hud.skip:Show()
-        hud.stop:Show()
+        hud.pause:SetLabel(st.paused and "Resume" or "Pause")
+        hud.skip:SetDisabled(st.paused)
     end
     hud.line3:SetText("")
 end
 
 local function createHUD()
     local f = CreateFrame("Frame", "ForeverGoldGuide", UIParent)
-    f:SetSize(270, 68)
+    f:SetSize(284, 70)
     f:SetPoint("TOP", UIParent, "TOP", 0, -150)
     f:SetFrameStrata("MEDIUM")
     f:EnableMouse(true)
@@ -2472,13 +3174,17 @@ local function createHUD()
     f.line1:SetWordWrap(false)
     f.line2 = label(f, "GameFontHighlightSmall")
     f.line2:SetPoint("TOPLEFT", 56, -24)
+    f.line2:SetWidth(162)
+    f.line2:SetWordWrap(true)
     f.line3 = label(f, "GameFontHighlightSmall")
     f.line3:SetPoint("BOTTOMLEFT", 10, 7)
 
-    f.skip = button(f, "Skip", 40, 18, function() ns.NextStop() end)
-    f.skip:SetPoint("TOPRIGHT", -6, -6)
-    f.stop = button(f, "Stop", 40, 18, function() ns.StopRoute() end)
-    f.stop:SetPoint("TOPRIGHT", -6, -27)
+    f.pause = button(f, "Pause", 54, 18, function() ns.PauseRoute(not (ns.route and ns.route.paused)) end)
+    f.pause:SetPoint("TOPRIGHT", -6, -5)
+    f.skip = button(f, "Skip", 54, 18, function() ns.NextStop() end)
+    f.skip:SetPoint("TOPRIGHT", -6, -26)
+    f.stop = button(f, "End", 54, 18, function() ns.StopRoute() end)
+    f.stop:SetPoint("TOPRIGHT", -6, -47)
 
     local since = 0
     f:SetScript("OnUpdate", function(_, elapsed)
@@ -2699,6 +3405,13 @@ local function refreshAHPanel()
 end
 
 local function createAHPanel()
+    -- Our own auction window (AuctionUI.lua) has all of this built in.
+    if ns.AuctionUI and ns.AuctionUI.UsingOurs() then
+        if ahPanel then
+            ahPanel:Hide()
+        end
+        return
+    end
     if ahPanel then
         ahPanel:Show()
         refreshAHPanel()
@@ -2706,7 +3419,7 @@ local function createAHPanel()
     end
     local parent = AuctionHouseFrame or UIParent
     local p = CreateFrame("Frame", "ForeverGoldAuctionStrip", parent)
-    p:SetSize(620, 32)
+    p:SetSize(746, 32)
     if AuctionHouseFrame then
         p:SetPoint("BOTTOMRIGHT", AuctionHouseFrame, "TOPRIGHT", 0, 3)
     else
@@ -2738,8 +3451,21 @@ local function createAHPanel()
         end
     end)
     p.postAll:SetScript("OnLeave", rowLeave)
+    p.ours = button(p, "Forever Gold window", 124, 22, function()
+        if ns.AuctionUI then
+            ns.AuctionUI.UseOurs()
+        end
+    end)
+    p.ours:SetPoint("RIGHT", p.postAll, "LEFT", -6, 0)
     ahPanel = p
     refreshAHPanel()
+end
+
+ns.ShowAuctionStrip = createAHPanel
+function ns.HideAuctionStrip()
+    if ahPanel then
+        ahPanel:Hide()
+    end
 end
 
 ----------------------------------------------------------------------
@@ -2758,17 +3484,28 @@ local function createMinimapButton()
         return
     end
     local b = CreateFrame("Button", "ForeverGoldMinimapButton", Minimap)
-    b:SetSize(30, 30)
+    -- Built from the game's own minimap button parts (dark backing, gold
+    -- tracking ring, round glow on hover), the same as every other addon's
+    -- button, so it matches them on the minimap and in button drawers.
+    b:SetSize(31, 31)
     b:SetFrameStrata("MEDIUM")
     b:SetFrameLevel((Minimap:GetFrameLevel() or 1) + 10)
+    local back = b:CreateTexture(nil, "BACKGROUND")
+    back:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    back:SetSize(20, 20)
+    back:SetPoint("TOPLEFT", 7, -5)
     local icon = b:CreateTexture(nil, "ARTWORK")
-    icon:SetAllPoints()
     icon:SetTexture(LOGO)
-    local hl = b:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints()
-    hl:SetTexture(LOGO)
-    hl:SetBlendMode("ADD")
-    hl:SetAlpha(0.35)
+    icon:SetSize(19, 19)
+    icon:SetPoint("TOPLEFT", 6, -5)
+    b.icon = icon
+    local ring = b:CreateTexture(nil, "OVERLAY")
+    ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    ring:SetSize(53, 53)
+    ring:SetPoint("TOPLEFT")
+    if b.SetHighlightTexture then
+        b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+    end
     b:RegisterForDrag("LeftButton")
     b:SetScript("OnDragStart", function(self)
         self:SetScript("OnUpdate", function()
@@ -2934,7 +3671,8 @@ local function addTooltipLines(tooltip, data)
         if e.cost then
             tooltip:AddDoubleLine("|cffffd100Costs you to make|r", ns.Money(e.cost))
             if e.profit then
-                local pct = e.cost > 0 and (GREY .. "  " .. floor(e.profit / e.cost * 100 + 0.5) .. "% margin|r") or ""
+                local m = e.cost > 0 and floor(e.profit / e.cost * 100 + 0.5)
+                local pct = m and ("  " .. (m > 0 and "|cff40e060" or m < 0 and "|cffff6060" or GREY) .. m .. "%|r" .. GREY .. " margin|r") or ""
                 tooltip:AddDoubleLine("|cffffd100Profit if you craft and sell it|r", ns.Profit(e.profit) .. pct)
             end
         end
@@ -2947,7 +3685,7 @@ local function addTooltipLines(tooltip, data)
         local pct = floor(gain / vendor * 100 + 0.5)
         if gain > 0 then
             tooltip:AddDoubleLine("|cffffd100Auction over vendor|r  " .. GREY .. "after the 5% cut|r",
-                ns.Profit(gain) .. GREY .. "  +" .. pct .. "%|r")
+                ns.Profit(gain) .. "  |cff40e060+" .. pct .. "%|r")
         else
             tooltip:AddDoubleLine("|cffffd100Auction over vendor|r", "|cffff7070vendor pays more|r")
         end

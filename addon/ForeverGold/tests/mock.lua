@@ -30,7 +30,7 @@ for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_LEVEL_UP", "GET_ITE
     "BAG_UPDATE_DELAYED", "PLAYER_MONEY", "SKILL_LINES_CHANGED", "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_SUCCEEDED",
     "LOOT_READY", "LOOT_OPENED", "NEW_RECIPE_LEARNED", "UNIT_HEALTH", "LOOT_SLOT_CLEARED", "LOOT_CLOSED",
     "MAIL_SHOW", "MAIL_CLOSED", "MERCHANT_CLOSED", "PLAYER_LOGOUT", "AUCTION_HOUSE_AUCTION_CREATED", "PLAYER_DEAD",
-    "QUEST_COMPLETE", "QUEST_FINISHED", "QUEST_TURNED_IN" }) do
+    "QUEST_COMPLETE", "QUEST_FINISHED", "QUEST_TURNED_IN", "MAP_EXPLORATION_UPDATED" }) do
     KNOWN_EVENTS[e] = true
 end
 
@@ -98,6 +98,12 @@ function methods:SetItemByID(id) assert(type(id) == "number", "SetItemByID") end
 function methods:SetUnit() end
 function methods:GetCanvas() self._canvas = self._canvas or newWidget("Frame", nil, self); self._canvas._w, self._canvas._h = 1002, 668; return self._canvas end
 function methods:GetMapID() return 1413 end
+function methods:SetScale(s) assert(type(s) == "number" and s > 0, "SetScale needs a positive number"); self._scale = s end
+function methods:GetScale() return self._scale or 1 end
+function methods:SetAlpha(a) assert(type(a) == "number", "SetAlpha needs a number"); self._alpha = a end
+function methods:GetAlpha() return self._alpha or 1 end
+function methods:EnableMouse(on) self._mouse = on and true or false end
+function methods:Click(which) if self._scripts.OnClick then self._scripts.OnClick(self, which or "LeftButton") end end
 
 widgetMT = { __index = function(t, k)
     local m = methods[k]
@@ -212,7 +218,7 @@ function GetRealmName() return "CAMWOW AU1 Realm 2 PvP" end
 function GetNormalizedRealmName() return "PvP" end
 function GetRealZoneText() return M.player.zone end
 function GetPlayerFacing() return M.player.facing end
-function GetCursorPosition() return 300, 300 end
+function GetCursorPosition() return M.cursorX or 300, 300 end
 function GetLocale() return "enUS" end
 function IsShiftKeyDown() return M.shift end
 function IsFishingLoot() return M.fishing end
@@ -328,8 +334,9 @@ M.auctions = {
 local AHS = { pos = 0, results = {} }
 local function page()
     local out = {}
+    local list = AHS.list or M.auctions
     for i = 1, 3 do
-        local a = M.auctions[AHS.pos + i]
+        local a = list[AHS.pos + i]
         if a then
             out[#out + 1] = { itemKey = { itemID = a[1], itemLevel = 10, itemSuffix = a[4] or 0, battlePetSpeciesID = 0 }, minPrice = a[2], totalQuantity = a[3] }
         end
@@ -341,9 +348,19 @@ end
 C_AuctionHouse = {}
 function C_AuctionHouse.IsThrottledMessageSystemReady() return true end
 function C_AuctionHouse.SendBrowseQuery(q)
-    assert(type(q) == "table" and q.searchString == "" and #q.filters == 7 and #q.sorts == 2, "bad browse query")
+    assert(type(q) == "table" and type(q.searchString) == "string" and #q.filters >= 7 and #q.sorts == 2, "bad browse query")
     M.queries = (M.queries or 0) + 1
+    M.lastBrowse = q
     AHS.pos, AHS.results = 0, {}
+    AHS.list = nil
+    if q.searchString ~= "" then
+        -- a name search: only the matching items
+        AHS.list = {}
+        for _, a in ipairs(M.auctions) do
+            local it = M.items[a[1]]
+            if it and it[1]:lower():find(q.searchString:lower(), 1, true) then AHS.list[#AHS.list + 1] = a end
+        end
+    end
     C_Timer.After(0.3, function() page(); M.fire("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED") end)
 end
 function C_AuctionHouse.RequestMoreBrowseResults()
@@ -351,9 +368,15 @@ function C_AuctionHouse.RequestMoreBrowseResults()
     C_Timer.After(0.2, function() local p = page(); if #p > 0 then M.fire("AUCTION_HOUSE_BROWSE_RESULTS_ADDED", p) end end)
 end
 function C_AuctionHouse.GetBrowseResults() return AHS.results end
-function C_AuctionHouse.HasFullBrowseResults() return AHS.pos >= #M.auctions end
-function C_AuctionHouse.QueryOwnedAuctions(sorts) assert(type(sorts) == "table"); C_Timer.After(0.1, function() M.fire("OWNED_AUCTIONS_UPDATED") end) end
-function C_AuctionHouse.GetOwnedAuctions() return { { itemKey = { itemID = 2840 }, status = 0, quantity = 5, buyoutAmount = 600 } } end
+function C_AuctionHouse.HasFullBrowseResults() return AHS.pos >= #(AHS.list or M.auctions) end
+function C_AuctionHouse.QueryOwnedAuctions(sorts)
+    assert(type(sorts) == "table")
+    M.ownedQueries = (M.ownedQueries or 0) + 1
+    C_Timer.After(0.1, function() M.fire("OWNED_AUCTIONS_UPDATED") end)
+end
+function C_AuctionHouse.GetOwnedAuctions()
+    return M.owned or { { auctionID = 501, itemKey = { itemID = 2840 }, status = 0, quantity = 5, buyoutAmount = 600, timeLeftSeconds = 40000 } }
+end
 -- "Send me every auction": allowed once per 15 minutes, silently ignored otherwise.
 -- M.replicateOverride[itemID] = { { count, totalBuyout }, ... } for items whose
 -- real auctions differ from what a browse scan shows.
@@ -421,10 +444,33 @@ CreateVector2D = vec
 C_Map = {}
 function C_Map.GetBestMapForUnit() return M.player.map end
 function C_Map.GetPlayerMapPosition(map) if map ~= M.player.map then return nil end return vec(M.player.x, M.player.y) end
-function C_Map.GetMapInfo(id) return { name = id == 1413 and "The Barrens" or ("Zone " .. id), mapID = id } end
+function C_Map.GetMapInfo(id)
+    if id == 1414 then return { name = "Kalimdor", mapID = id, mapType = 2, parentMapID = 947 } end
+    return { name = id == 1413 and "The Barrens" or ("Zone " .. id), mapID = id, mapType = 3,
+        parentMapID = id == 1413 and 1414 or nil }
+end
 -- 1413 is 10000 yards wide (west) and 6666 tall (south); north/west increase the other way
 function C_Map.GetWorldPosFromMapPos(map, v) return 1, vec(-v.y * 6666, -v.x * 10000) end
 function C_Map.CanSetUserWaypointOnMap() return true end
+-- The Barrens (art 1194 here) has one explored area; the rest comes from the reveal data.
+function C_Map.GetMapArtID(map) return map == 1413 and 1194 or nil end
+C_MapExplorationInfo = {}
+function C_MapExplorationInfo.GetExploredMapTextures(map)
+    if map ~= 1413 then return nil end
+    return { { textureWidth = 445, textureHeight = 160, offsetX = 244, offsetY = 0, fileDataIDs = { 271435, 271442 },
+        isShownByMouseOver = false } }
+end
+-- The Barrens has a map picture (4 x 3 tiles of 256); other zones don't.
+function C_Map.GetMapArtLayers(map)
+    if map ~= 1413 then return nil end
+    return { { layerWidth = 1002, layerHeight = 668, tileWidth = 256, tileHeight = 256 } }
+end
+function C_Map.GetMapArtLayerTextures(map, layer)
+    assert(layer == 1, "layer index starts at 1")
+    local t = {}
+    for i = 1, 12 do t[i] = 100000 + i end
+    return t
+end
 function C_Map.SetUserWaypoint(p) M.waypoint = p end
 function C_Map.ClearUserWaypoint() M.waypoint = nil end
 UiMapPoint = { CreateFromCoordinates = function(map, x, y) return { map = map, x = x, y = y } end }
@@ -479,7 +525,9 @@ end
 function C_AuctionHouse.GetNumItemSearchResults(key) return #(M.market[key.itemID] or {}) end
 function C_AuctionHouse.GetItemSearchResultInfo(key, i)
     local l = M.market[key.itemID][i]
-    return { itemKey = key, buyoutAmount = l[1] * l[2], quantity = l[2], containsOwnerItem = l[3] or false, containsAccountItem = false }
+    return { itemKey = key, auctionID = key.itemID * 100 + i, buyoutAmount = l[1] * l[2], quantity = l[2],
+        containsOwnerItem = l[3] or false, containsAccountItem = false, owners = { l[3] and "player" or "Someone" },
+        timeLeftSeconds = 7200 * i, timeLeft = 2 }
 end
 function C_AuctionHouse.CalculateCommodityDeposit(id, duration, qty) assert(type(id) == "number" and duration >= 1 and duration <= 3); return qty * 2 end
 function C_AuctionHouse.CalculateItemDeposit(loc, duration, qty) assert(type(loc) == "table"); return 5 * qty end
@@ -503,6 +551,62 @@ function C_AuctionHouse.PostItem(loc, duration, qty, bid, buyout)
 end
 function C_AuctionHouse.ConfirmPostItem() end
 function StaticPopup_Hide(which) M.popupHidden = which end
+
+----------------------------------------------------------------------
+-- Buying and cancelling
+----------------------------------------------------------------------
+for _, e in ipairs({ "AUCTION_CANCELED", "COMMODITY_PRICE_UPDATED", "COMMODITY_PRICE_UNAVAILABLE",
+    "COMMODITY_PURCHASE_SUCCEEDED", "COMMODITY_PURCHASE_FAILED", "AUCTION_HOUSE_PURCHASE_COMPLETED" }) do
+    KNOWN_EVENTS[e] = true
+end
+function C_AuctionHouse.GetItemKeyInfo(key)
+    M.keyInfoCalls = (M.keyInfoCalls or 0) + 1
+    local it = M.items[key.itemID]
+    if not it then return nil end
+    return { itemID = key.itemID, itemName = it[1], quality = it[2], iconFileID = 134400, isCommodity = isCommodity(key.itemID), isEquipment = it[4] == 4 }
+end
+M.cancelled, M.bought, M.bids = {}, {}, {}
+function C_AuctionHouse.CanCancelAuction(id) assert(type(id) == "number"); return true end
+function C_AuctionHouse.GetCancelCost(id) assert(type(id) == "number"); return 30 end
+function C_AuctionHouse.CancelAuction(id)
+    assert(type(id) == "number", "bad CancelAuction")
+    M.cancelled[#M.cancelled + 1] = id
+    C_Timer.After(0.2, function() M.fire("AUCTION_CANCELED", id) end)
+end
+-- Buying stackable goods: ask for a quote, then confirm it.
+function C_AuctionHouse.StartCommoditiesPurchase(id, qty)
+    assert(type(id) == "number" and type(qty) == "number" and qty >= 1, "bad StartCommoditiesPurchase")
+    M.quoteFor = { id = id, qty = qty }
+    C_Timer.After(0.2, function()
+        local left, total = qty, 0
+        for _, l in ipairs(M.market[id] or {}) do
+            if not l[3] then
+                local take = math.min(left, l[2])
+                total, left = total + take * l[1], left - take
+            end
+            if left <= 0 then break end
+        end
+        if left > 0 then M.fire("COMMODITY_PRICE_UNAVAILABLE") return end
+        M.fire("COMMODITY_PRICE_UPDATED", math.floor(total / qty), total)
+    end)
+end
+function C_AuctionHouse.ConfirmCommoditiesPurchase(id, qty)
+    assert(M.quoteFor and M.quoteFor.id == id and M.quoteFor.qty == qty, "confirm without a matching quote")
+    M.bought[#M.bought + 1] = { id = id, qty = qty }
+    M.quoteFor = nil
+    C_Timer.After(0.2, function() M.fire("COMMODITY_PURCHASE_SUCCEEDED") end)
+end
+function C_AuctionHouse.CancelCommoditiesPurchase() M.quoteFor = nil end
+function C_AuctionHouse.PlaceBid(aid, amount)
+    assert(type(aid) == "number" and type(amount) == "number" and amount >= 1, "bad PlaceBid")
+    M.bids[#M.bids + 1] = { aid = aid, amount = amount }
+    C_Timer.After(0.2, function() M.fire("AUCTION_HOUSE_PURCHASE_COMPLETED", aid) end)
+end
+-- The game's category list (Blizzard_AuctionHouseUI)
+AuctionCategories = {
+    { name = "Weapons", filters = { { classID = 2 } }, subCategories = { { name = "Swords", filters = { { classID = 2, subClassID = 7 } } } } },
+    { name = "Trade Goods", filters = { { classID = 7 } }, subCategories = { { name = "Metal & Stone", filters = { { classID = 7, subClassID = 7 } } } } },
+}
 
 -- Report (once) any global the addon reads that this mock doesn't define.
 setmetatable(_G, { __index = function(_, k) M.undefined[k] = true return nil end })

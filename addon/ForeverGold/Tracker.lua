@@ -107,7 +107,7 @@ function ns.TrackerStart()
     if not t then
         t = blank()
         ns.db.track[ns.charKey] = t
-        ns.Print("tracker started. Kills, loot and every copper in or out are counted from now. Pause it any time.")
+        ns.Print("tracker started. Kills, loot and every copper in or out are counted from now. Stop it any time.")
     elseif not t.runAt then
         ns.Print("tracker running again.")
     end
@@ -125,7 +125,7 @@ function ns.TrackerPause(quiet)
     t.secs = (t.secs or 0) + max(0, time() - t.runAt)
     t.runAt = nil
     if not quiet then
-        ns.Print("tracker paused at " .. ns.Duration(t.secs) .. ".")
+        ns.Print("tracker stopped at " .. ns.Duration(t.secs) .. ". Start carries on from there; Reset clears it.")
     end
     ns.Fire("SESSION")
 end

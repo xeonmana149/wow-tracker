@@ -713,6 +713,11 @@ function ns.VerifyNext()
     if verify.current or not ns.ahOpen or scan.active or (ns.SellJob and ns.SellJob()) then
         return
     end
+    -- The auction window's own price checks and posts go first; try later.
+    if ns.AHBusy and ns.AHBusy() then
+        ns.Later("verify-wait", 3, ns.VerifyNext)
+        return
+    end
     local id = table.remove(verify.queue, 1)
     if not id then
         return

@@ -202,13 +202,15 @@ local function sendSearch()
 end
 
 -- How much goes in one listing, from Settings: "stack" (one full stack,
--- the default), "all" (everything you have) or "one".
+-- the default), "10", "5", "all" (everything you have) or "one".
 local function defaultQuantity()
     local mode = ns.db.opts.postQty or "stack"
     if mode == "one" then
         return 1
     elseif mode == "all" then
         return max(1, job.have)
+    elseif tonumber(mode) then
+        return max(1, min(job.have, tonumber(mode)))
     end
     if job.commodity then
         local stack = (C_Item and ns.try(C_Item.GetItemMaxStackSizeByID, job.id)) or 20
@@ -220,7 +222,7 @@ end
 -- The undercut, from Settings: 1 copper (default), 1% or 5%.
 local UNDERCUT = { copper = 0, ["1%"] = 0.01, ["5%"] = 0.05 }
 ns.UNDERCUT_STEPS = { "copper", "1%", "5%" }
-ns.POST_QTY_STEPS = { "stack", "all", "one" }
+ns.POST_QTY_STEPS = { "stack", "10", "5", "one", "all" }
 
 local queue -- Post all: { ids, i, posted, skipped = { "name: why" } }
 
@@ -794,13 +796,28 @@ ns.On("AUCTION_HOUSE_SHOW", function()
 end)
 
 -- Any new listing: read your auctions shortly after so the check below runs.
+-- Once per burst of posting, a few seconds after the last post: each read
+-- uses the same allowance as posting, and one per post made the next Post
+-- click find the auction house busy.
+local ownedAfterPost = 0
+local function readOwnedSoon()
+    ownedAfterPost = ownedAfterPost + 1
+    local mine = ownedAfterPost
+    C_Timer.After(3, function()
+        if mine ~= ownedAfterPost or not ns.ahOpen then
+            return
+        end
+        if ns.AHBusy and ns.AHBusy() then
+            readOwnedSoon()
+            return
+        end
+        pcall(AH.QueryOwnedAuctions, {})
+    end)
+end
+
 ns.On("AUCTION_HOUSE_AUCTION_CREATED", function()
     if AH and AH.QueryOwnedAuctions then
-        C_Timer.After(1.5, function()
-            if ns.ahOpen then
-                pcall(AH.QueryOwnedAuctions, {})
-            end
-        end)
+        readOwnedSoon()
     end
 end)
 

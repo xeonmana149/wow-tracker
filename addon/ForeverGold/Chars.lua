@@ -46,43 +46,66 @@ end
 
 local GOLD_STEP, DAY = 900, 86400
 
-function ns.LogGold()
-    local log = ns.db and ns.db.goldLog
-    if not log then
-        return
-    end
-    local now, total = time(), ns.TotalGold()
+-- Adds `value` to a log of { time, copper } points; returns the log, which
+-- is a new (thinned) table once it gets long.
+local function pushGold(log, now, value)
     local last = log[#log]
-    if last and last[2] == total then
-        return
+    if last and last[2] == value then
+        return log
     end
     if last and math.floor(last[1] / GOLD_STEP) == math.floor(now / GOLD_STEP) and #log > 1 then
-        last[1], last[2] = now, total
+        last[1], last[2] = now, value
     else
-        log[#log + 1] = { now, total }
+        log[#log + 1] = { now, value }
     end
-    if #log > 2500 then
-        local keep, lastDay = {}, nil
-        for _, p in ipairs(log) do
-            local day = math.floor(p[1] / DAY)
-            if p[1] > now - 30 * DAY then
-                keep[#keep + 1] = p
-            elseif day ~= lastDay then
-                keep[#keep + 1] = p
-                lastDay = day
-            else
-                keep[#keep] = p -- the day's last value
-            end
+    if #log <= 2500 then
+        return log
+    end
+    local keep, lastDay = {}, nil
+    for _, p in ipairs(log) do
+        local day = math.floor(p[1] / DAY)
+        if p[1] > now - 30 * DAY then
+            keep[#keep + 1] = p
+        elseif day ~= lastDay then
+            keep[#keep + 1] = p
+            lastDay = day
+        else
+            keep[#keep] = p -- the day's last value
         end
-        ns.db.goldLog = keep
+    end
+    return keep
+end
+
+-- The account total in db.goldLog, and this character's own gold in its
+-- c.goldLog (only the logged-in character's gold can change).
+function ns.LogGold()
+    if not (ns.db and ns.db.goldLog) then
+        return
+    end
+    local now = time()
+    ns.db.goldLog = pushGold(ns.db.goldLog, now, ns.TotalGold())
+    local c = ns.Char()
+    if c and c.money then
+        c.goldLog = pushGold(c.goldLog or {}, now, c.money)
     end
 end
 
 -- Points within the last `secs` seconds (all of them if nil), with the
 -- value just before the window so the line starts at the left edge.
--- Returns points, change over the window.
-function ns.GoldHistory(secs)
-    local log = ns.db.goldLog or {}
+-- Returns points, change over the window. With `ch` (a character's saved
+-- table), that character's gold instead of the account total.
+function ns.GoldHistory(secs, ch)
+    local log
+    if ch then
+        log = ch.goldLog or {}
+        -- Characters from before this was recorded: one point from when
+        -- they were last seen.
+        if #log == 0 and ch.seen and ch.money then
+            log = { { ch.seen, ch.money } }
+        end
+    else
+        log = ns.db.goldLog or {}
+    end
     local now = time()
     local from = secs and (now - secs) or (log[1] and log[1][1] or now)
     local pts, before = {}, nil
@@ -96,7 +119,7 @@ function ns.GoldHistory(secs)
     if before then
         table.insert(pts, 1, { from, before[2] })
     end
-    local current = ns.TotalGold()
+    local current = ch and (ch.money or 0) or ns.TotalGold()
     if #pts > 0 and pts[#pts][1] < now then
         pts[#pts + 1] = { now, current }
     end

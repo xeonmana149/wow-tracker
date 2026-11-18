@@ -47,6 +47,8 @@ check(ns.Char().bags[2770] == 40, "bags read")
 check(ForeverGoldMinimapButton ~= nil, "minimap button created")
 check(ns.db.opts.fastScan == true and ns.db.opts.dealMin == 500, "new settings default to fast scan on, 5s deal minimum")
 ns.db.opts.fastScan = false -- the older sections below exercise the slow scan; fast scan has its own section
+check(ns.AuctionUI.UsingOurs(), "our auction window is the default")
+ns.db.opts.ahBlizzard = true -- the older sections use the game's auction window; ours has its own section
 -- what the price check on each suspicious piece of gear will find:
 M.market[12345] = { { 0, 1 }, { 1500, 1 } } -- junk sword: a bid, then a 15s buyout
 M.market[12346] = { { 300, 1 }, { 800, 1 } } -- boots: a real 3s buyout
@@ -183,6 +185,18 @@ do
         ns.RefreshUI()
         local g = F.list.rows[2].graph
         check(g.drawn and #g.drawn == 4, "the graph draws the history up to now: " .. tostring(g.drawn and #g.drawn))
+        -- hovering: the readout is the balance at the mouse's own moment
+        local function hoverAt(frac)
+            M.cursorX = g:GetLeft() + 54 + g.scale.pw * frac
+            g.hovering, g.lastX = true, nil
+            g._scripts.OnUpdate(g)
+            return strip((GameTooltip._lines or {})[1] or "")
+        end
+        check(hoverAt(0.5) == strip(ns.Money(50000)), "halfway along (2.5 days ago) shows the 3-days-ago balance: " .. hoverAt(0.5))
+        check(hoverAt(0.1) == strip(ns.Money(20000)), "near the start shows the first balance: " .. hoverAt(0.1))
+        check(g.cross:IsShown() and g.dot:IsShown(), "with a crosshair at the mouse")
+        g._scripts.OnLeave(g)
+        M.cursorX = nil
         local pts, change = ns.GoldHistory(7 * 86400)
         check(change == ns.TotalGold() - 20000, "the week's change is now minus where it started")
         ns.db.goldLog = saved
@@ -196,6 +210,29 @@ do
         end
     end
     check(chars >= 1, "one row per character")
+    do
+        -- "Each character" swaps the total for one graph per character.
+        local eachBtn
+        for _, b in ipairs(F.toolbar.buttons) do
+            if b:IsShown() and b.text:GetText() == "Each character" then eachBtn = b end
+        end
+        check(eachBtn ~= nil, "the Characters toolbar has an Each character button")
+        eachBtn:GetScript("OnClick")(eachBtn, "LeftButton")
+        local graphs, n = 0, 0
+        for _ in pairs(ns.db.chars) do n = n + 1 end
+        for i = 1, F.list.count do
+            if F.list.rows[i].d.type == "graph" then graphs = graphs + 1 end
+        end
+        check(graphs == n, "one graph per character: " .. graphs .. " for " .. n)
+        ns.LogGold()
+        check(ns.Char().goldLog and #ns.Char().goldLog >= 1, "the logged-in character's own gold is recorded")
+        local pts = ns.GoldHistory(7 * 86400, ns.Char())
+        check(#pts >= 1 and pts[#pts][2] == (ns.Char().money or 0), "a character's graph ends at its own gold")
+        for _, b in ipairs(F.toolbar.buttons) do
+            if b:IsShown() and b.text:GetText() == "All characters" then b:GetScript("OnClick")(b, "LeftButton") end
+        end
+        check(F.list.rows[2].d.type == "graph" and F.list.rows[2].d.height == 170, "All characters goes back to the one big total graph")
+    end
     ns.ShowTab("sell")
     local target
     for i = 1, F.list.count do
@@ -487,6 +524,123 @@ M.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 2657) -- smelting must not 
 M.fishing = true; M.player.x, M.player.y = 0.30, 0.30; M.fire("LOOT_READY"); M.advance(1); M.fishing = false
 check(#ns.db.nodes[1413] == 8, "7 veins + 1 fishing spot recorded (repeat swings merged): " .. #ns.db.nodes[1413])
 ns.ShowTab("routes"); pokeRows(); dumpRows("Routes", 8)
+do
+    local F = ForeverGoldFrame
+    local P, plotter = F.plot, F.plotter
+    local function msg() return strip(P.msg:GetText() or "") end
+    local function markerFor(node)
+        for i = 1, plotter.usedMarks do
+            if plotter.marks[i].node == node then return plotter.marks[i] end
+        end
+    end
+    local function check2(kind) for _, cb in ipairs(P.checks) do if cb.kind == kind then return cb end end end
+    ns.UI.routeKinds.ore, ns.UI.routeKinds.herb, ns.UI.routeKinds.fish = true, true, false
+    ns.RefreshUI(true)
+    check(P:IsShown() and plotter.usedTiles - plotter.pieceTiles == 12 and P.artState == "ok", "the zone's own map is drawn under the spots: "
+        .. tostring(plotter.usedTiles) .. " tiles")
+    check(plotter.pieceTiles == 12, "explored areas (2 tiles) plus the rest of the zone revealed (10): " .. tostring(plotter.pieceTiles))
+    ns.db.opts.revealMap = false
+    ns.RefreshUI(true)
+    check(plotter.pieceTiles == 2, "with reveal off, only what you've explored: " .. tostring(plotter.pieceTiles))
+    ns.db.opts.revealMap = true
+    ns.RefreshUI(true)
+    check(F.list.rows[1].d.type == "header" and strip(F.list.rows[1].d.text) == "Kalimdor", "zones are grouped by continent")
+    check(F.zoneSearch:IsShown(), "with a search box over the list")
+    check(F.list.rows[2] and strip(F.list.rows[2].sub:GetText()) == "7 ore veins · 1 fishing spot · No herbs recorded",
+        "zone row says what's there: " .. strip(F.list.rows[2] and F.list.rows[2].sub:GetText() or ""))
+    check(strip(P.count:GetText()) == "7 matching spots" and msg() == "", "Include row counts matching spots: " .. strip(P.count:GetText()))
+    check(strip(P.sum:GetText()):find("^7 stops") and P.start:IsShown() and not P.start.disabled and not P.finish:IsShown(),
+        "it previews a loop with Start route before anything starts: " .. strip(P.sum:GetText()))
+    check(strip(P.sum:GetText()):find("about [%d,]+ yards$"), "with a rough distance in yards")
+    check(strip(P.sub:GetText()):find("^Suggested loop through your recorded gathering spots"), "and says it's only a suggestion")
+    check(ns.route == nil, "previewing doesn't start a route")
+    -- unticking ore leaves nothing: the map says so
+    check2("ore"):Click()
+    check(not check2("ore").checked and msg():find("match what's ticked") and msg():find("Ore"), "nothing ticked that's here: " .. msg())
+    check(P.start.disabled, "and Start is off")
+    check2("ore"):Click()
+    -- leave a spot out, then start from another
+    local nodes = ns.db.nodes[1413]
+    local odd, startAt
+    for _, n in ipairs(nodes) do
+        if n.k == "ore" then
+            if not odd then odd = n elseif not startAt then startAt = n end
+        end
+    end
+    markerFor(odd):Click("LeftButton"); M.advance(1)
+    check(odd.skip and strip(P.sum:GetText()):find("^6 stops") and strip(P.count:GetText()):find("1 left out"),
+        "clicking a spot leaves it out: " .. strip(P.sum:GetText()) .. " / " .. strip(P.count:GetText()))
+    markerFor(startAt):Click("RightButton"); M.advance(1)
+    local plan = ns.UI.plan
+    check(plan and plan.pts[plan.first] == startAt and markerFor(startAt).tag:GetText() == "Start", "right-click picks where to start")
+    -- Save, then Start
+    P.save:Click()
+    check(ns.db.routes[1413] and ns.db.routes[1413].kinds.ore and ns.db.routes[1413].start, "Save route keeps what's ticked and the start")
+    P.start:Click(); M.advance(1)
+    check(ns.route and ns.route.n == 6 and ns.route.pts[ns.route.i] == startAt, "Start route follows the previewed loop")
+    check(P.pause:IsShown() and P.skip:IsShown() and P.finish:IsShown() and not P.start:IsShown(),
+        "running: Pause, Skip stop and End route replace Start")
+    check(strip(P.sum:GetText()):find("^Stop 1 of 6"), "with progress: " .. strip(P.sum:GetText()))
+    P.skip:Click(); M.advance(1)
+    check(strip(P.sum:GetText()):find("^Stop 2 of 6"), "Skip stop moves on: " .. strip(P.sum:GetText()))
+    P.pause:Click(); M.advance(1)
+    M.update(0.2)
+    check(ns.route.paused and strip(P.sum:GetText()):find("paused") and strip(ForeverGoldGuide.line1:GetText()) == "Route paused",
+        "Pause holds your place and says so on the arrow")
+    local held = ns.route.i
+    M.player.x, M.player.y = ns.route.pts[held].x, ns.route.pts[held].y
+    M.update(0.5)
+    check(ns.route.i == held, "paused routes don't move on when you arrive")
+    P.pause:Click(); M.advance(1)
+    check(not ns.route.paused and strip(P.pause.text:GetText()) == "Pause", "Resume carries on")
+    check(strip(F.status:GetText()):find("^Route running in The Barrens: stop") and not F.scanButton:IsShown(),
+        "the footer shows the route and your spots, not auction prices: " .. strip(F.status:GetText()))
+    P.finish:Click(); M.advance(1)
+    check(ns.route == nil and P.start:IsShown(), "End route goes back to the preview")
+    -- the zone menu
+    P.zoneBtn:Click()
+    check(P.menu:IsShown() and not P.menu.a.disabled, "the zone menu offers to put left-out spots back")
+    P.menu.a:Click(); M.advance(1)
+    check(not odd.skip and not P.menu:IsShown(), "which it does")
+    ns.db.routes[1413] = nil
+    ns.UI.routeStart[1413] = nil
+    -- forgetting a zone needs a second click
+    ns.db.nodes[4242] = { { x = 0.2, y = 0.2, k = "herb", c = 1, t = time() }, { x = 0.3, y = 0.3, k = "herb", c = 1, t = time() } }
+    ns.Fire("NODES_UPDATED"); M.advance(1)
+    local function search(text)
+        F.zoneSearch:SetText(text)
+        F.zoneSearch._scripts.OnTextChanged(F.zoneSearch)
+        M.advance(1)
+        local titles = {}
+        for i = 1, F.list.count do
+            local d = F.list.rows[i].d
+            titles[#titles + 1] = strip(d.type == "header" and ("[" .. (d.text or "") .. "]") or (d.title or d.text or ""))
+        end
+        return table.concat(titles, " | ")
+    end
+    check(search("zone 42") == "[Other places] | Zone 4242", "searching finds a zone by name: " .. search("zone 42"))
+    check(search("kalim") == "[Kalimdor] | The Barrens", "or every zone on a continent: " .. search("kalim"))
+    check(search("nowhere"):find("No zones or continents match"), "and says when nothing matches")
+    search("")
+    local row4242
+    for i = 1, F.list.count do
+        if F.list.rows[i].d.key == "zone:4242" then row4242 = F.list.rows[i] end
+    end
+    row4242._scripts.OnClick(row4242)
+    check(ns.UI.routeMap == 4242 and ns.UI.routeKinds.herb, "picking a herb-only zone ticks Herbs")
+    check(P.artState == "none" and strip(P.note:GetText()):find("plain grid"), "no map picture: says so and draws a grid")
+    P.zoneBtn:Click(); P.menu.c:Click()
+    check(ns.db.nodes[4242] and strip(P.menu.text:GetText()):find("^Forget all 2 spots"), "Forget asks first")
+    P.menu.b:Click()
+    check(ns.db.nodes[4242] and not P.menu:IsShown(), "Keep them keeps them")
+    P.zoneBtn:Click(); P.menu.c:Click(); P.menu.a:Click(); M.advance(1)
+    check(ns.db.nodes[4242] == nil, "Forget them forgets")
+    ns.UI.routeMap = 1413
+    -- other tabs don't show any of it (the zone name used to stay on screen)
+    ns.ShowTab("chars")
+    check(not F.plot:IsShown(), "the map and its zone name hide on other tabs")
+    ns.ShowTab("routes")
+end
 M.player.x, M.player.y = 0.50, 0.505
 local route = ns.BuildRoute(1413, { ore = true, herb = true, fish = false })
 check(route and route.n == 7, "route through 7 ore spots")
@@ -517,6 +671,38 @@ check(ns.route.i ~= before, "arriving advances to the next stop")
 ForeverGoldGuide.skip._scripts.OnClick(ForeverGoldGuide.skip)
 WorldMapFrame.OnMapChanged(WorldMapFrame)
 WorldMapFrame._scripts.OnShow(WorldMapFrame)
+do
+    local wp = ns.WorldMapPlot()
+    check(wp and wp.usedMarks == 8 and wp.usedLines > 0, "world map: every spot and the route: " .. tostring(wp and wp.usedMarks))
+    -- OpenMap's stitched map: spots placed through its API, our switch in its menu
+    local toggles, events = {}, {}
+    OpenMapAPI = {
+        IsStitched = function() return true end,
+        WorldFromMap = function(m, x, y) if m == 1413 then return 0.4 + x * 0.1, 0.3 + y * 0.1 end end,
+        MapFromWorld = function(host, u, v) return (u - 0.4) * 3, (v - 0.3) * 3 end,
+        ArtTopLevel = function() return 900 end,
+        RegisterCallback = function(owner, event, fn) events[event] = fn end,
+        RegisterMenuToggle = function(owner, spec) toggles[spec.id] = spec end,
+    }
+    M.fire("ADDON_LOADED", "OpenMap")
+    ns.RedrawWorldMap()
+    check(toggles.spots and toggles.minimap and events.OpenMap_StitchedChanged, "OpenMap gets our switches and tells us when it changes")
+    check(wp.usedMarks == 8, "spots drawn on OpenMap's stitched map too")
+    toggles.spots.set(false)
+    check(wp.usedMarks == 0 and toggles.spots.get() == false and ns.db.opts.worldMapSpots == false, "its switch hides them")
+    toggles.spots.set(true)
+    OpenMapAPI = nil
+    ns.RedrawWorldMap()
+    -- the minimap: nearby spots, and the next stop on the edge when it's far
+    M.player.x, M.player.y = 0.50, 0.505
+    ns.UpdateMinimapPins()
+    local near = ns.MinimapPins.used
+    check(near >= 2, "minimap shows the spots around you and the next stop: " .. near)
+    ns.db.opts.minimapSpots = false
+    ns.UpdateMinimapPins()
+    check(ns.MinimapPins.used == 0, "and can be switched off")
+    ns.db.opts.minimapSpots = true
+end
 M.player.map = 9999 -- left the zone
 M.update(1.1)
 out("  guide (other zone): " .. strip(ForeverGoldGuide.line1:GetText()) .. " | " .. strip(ForeverGoldGuide.line2:GetText()))
@@ -669,7 +855,7 @@ do
     TW._scripts.OnDragStop(TW)
     check(type(ns.db.opts.trackerPos) == "table", "window position saved")
     check(not TW.startBig:IsShown() and TW.reset:IsShown() and TW.cells[3]:IsShown()
-        and strip(TW.state:GetText()) == "Recording", "recording: stats, Pause, Save and Reset")
+        and strip(TW.state:GetText()) == "Recording" and TW.start.text:GetText() == "Stop", "recording: stats, Stop, Save and Reset")
     out("  stats: " .. strip(TW.cells[1].value:GetText()) .. " | " .. strip(TW.cells[2].value:GetText()) .. " | "
         .. strip(TW.cells[3].value:GetText()) .. " | " .. strip(TW.cells[4].value:GetText()))
     TW.fold._scripts.OnClick(TW.fold)
@@ -688,7 +874,11 @@ M.units.target = { guid = "Creature-0-1-2-3-4-0000FFFF", name = "Plainstrider", 
 M.fire("UNIT_HEALTH", "target")
 M.units = {}
 M.advance(120)
-ns.ToggleSession() -- pause
+ns.ToggleSession() -- stop
+if TW and TW:IsShown() then
+    ns.RefreshTrackerWindow()
+    check(TW.start.text:GetText() == "Start" and strip(TW.state:GetText()) == "Stopped", "stopped: the button says Start")
+end
 ns.ShowTab("farm")
 do
     local labels = {}
@@ -999,6 +1189,204 @@ do
     check(web.prices == nil and me.bags == nil and me.recipes == nil, "web export leaves prices, bags and recipes out")
     C_AuctionHouse.GetOwnedAuctions = real
     M.fire("AUCTION_HOUSE_CLOSED")
+end
+
+out("")
+out("== our own auction window")
+do
+    local A, P = ns.AuctionUI, ns.Poster
+    ns.db.opts.ahBlizzard = nil
+    M.fire("AUCTION_HOUSE_SHOW"); M.advance(60)
+    local F = ForeverGoldAuctionFrame
+    check(F and F:IsShown(), "talking to an auctioneer opens our window")
+    check(AuctionHouseFrame._scale == 0.001 and AuctionHouseFrame._alpha == 0 and AuctionHouseFrame._mouse == false,
+        "the game's window is shrunk out of the way, not closed")
+    check(not (ForeverGoldAuctionStrip and ForeverGoldAuctionStrip:IsShown()), "the strip above the game's window stays hidden")
+    check(A.tab == "browse" and F.browse:IsShown() and not F.sell:IsShown(), "it opens on Browse")
+
+    -- Browse: a name search
+    A.Search("bar"); M.advance(5)
+    local names, allBars = {}, true
+    for _, r in ipairs(A.BUY.results) do
+        local n = ns.ItemName(r.id)
+        names[#names + 1] = n
+        if not n:find("Bar") then allBars = false end
+    end
+    check(#A.BUY.results == 3 and allBars and not A.BUY.searching, "searching 'bar' finds the three bars: " .. table.concat(names, ", "))
+    check(M.lastBrowse.searchString == "bar", "the search text reaches the auction house")
+    A.Refresh()
+    check(F.browse.results.view[1] ~= nil and F.browse.results.rows[1]:IsShown(), "results are listed")
+
+    -- A category
+    A.openCategory = nil
+    F.browse.cats.onClick({ name = "Trade Goods", top = 2, filters = { { classID = 7 } } }); M.advance(5)
+    check(M.lastBrowse.itemClassFilters and M.lastBrowse.itemClassFilters[1].classID == 7 and A.openCategory == 2,
+        "picking a category searches it and opens its subcategories")
+
+    -- Deals
+    local keepMin = ns.db.opts.dealMin
+    ns.db.opts.dealMin = 1
+    ns.Fire("PRICES_UPDATED")
+    A.ShowDeals()
+    local flips = #ns.VendorFlips() + #ns.Bargains()
+    check(A.BUY.deals and flips > 0 and #A.BUY.results == flips, "Deals lists the bargains from the last scan: " .. #A.BUY.results)
+    A.Refresh()
+    check(F.browse.results.rows[1]:IsShown() and strip(F.browse.results.rows[1].cells[5]:GetText()) ~= "", "each deal says why")
+    ns.db.opts.dealMin = keepMin
+    ns.Fire("PRICES_UPDATED")
+
+    -- Buying stackable goods: quote, then confirm
+    M.market[2840] = { { 90, 150 }, { 95, 30 }, { 120, 5, true } }
+    A.OpenItem({ id = 2840 }); M.advance(2)
+    check(A.BUY.mode == "item" and A.BUY.item.commodity and #A.BUY.listings == 3, "opening Copper Bar lists every price")
+    A.BUY.qty = 160
+    check(A.CommodityCost(160) == 150 * 90 + 10 * 95, "the cost adds up cheapest first, skipping your own")
+    A.Refresh()
+    check(strip(F.browse.box.buy.text:GetText()) == "Buy 160", "the buy button says how many")
+    M.player.money = 100000
+    F.browse.box.buy:Click(); M.advance(1)
+    check(A.BUY.buy and A.BUY.buy.state == "quoted" and A.BUY.buy.total == 150 * 90 + 10 * 95, "first click asks for the real price")
+    A.Refresh()
+    check(strip(F.browse.box.buy.text:GetText()):find("^Confirm: pay"), "then the button asks you to confirm it")
+    F.browse.box.buy:Click(); M.advance(1)
+    check(#M.bought == 1 and M.bought[1].qty == 160 and A.BUY.buy == nil, "second click buys them")
+    check(strip(A.BUY.message or ""):find("^Bought 160"), "and says so: " .. strip(A.BUY.message or ""))
+    -- backing out of a quote
+    A.OpenItem({ id = 2840 }); M.advance(2)
+    A.Buy(); M.advance(1)
+    A.CancelBuy()
+    check(A.BUY.buy == nil and M.quoteFor == nil and #M.bought == 1, "Cancel backs out of a quote")
+
+    -- Buying gear: pick the listing
+    A.OpenItem({ id = 12346 }); M.advance(2)
+    check(A.BUY.item and not A.BUY.item.commodity and #A.BUY.listings == 2, "gear lists each auction")
+    A.Refresh()
+    check(F.browse.box.buy.disabled, "nothing to buy until you pick one")
+    F.browse.listings.onClick({ l = A.BUY.listings[1] })
+    F.browse.box.buy:Click(); M.advance(1)
+    check(#M.bids == 1 and M.bids[1].aid == 1234601 and M.bids[1].amount == 300, "buying gear pays its buyout")
+    check(A.BUY.buy == nil and strip(A.BUY.message or ""):find("Bought"), "and finishes")
+    M.market[12346] = { { 300, 1, true } }
+    A.OpenItem({ id = 12346 }); M.advance(2)
+    A.BUY.sel = A.BUY.listings[1]
+    A.Buy()
+    check(#M.bids == 1, "never buys your own listing")
+
+    -- Elsewhere in the addon, "search the auction house" lands here
+    ns.SearchAH("Tin Bar"); M.advance(3)
+    check(A.tab == "browse" and A.BUY.query == "Tin Bar" and F.browse.search:GetText() == "Tin Bar", "other search buttons use our Browse tab")
+
+    -- Sell: the proposed listings, then Post, Post, Post
+    A.SetTab("sell")
+    check(F.sell:IsShown() and #P.entries > 0, "Sell lists what's in your bags: " .. #P.entries)
+    local picked = 0
+    for _, e in ipairs(P.entries) do if e.picked then picked = picked + 1 end end
+    A.Refresh()
+    check(picked > 0 and strip(F.sell.side.post.text:GetText()) == "Price check " .. picked .. " items",
+        "the big button price-checks the ticked items first: " .. strip(F.sell.side.post.text:GetText()))
+    local undercutBefore = P.Setting("undercut")
+    F.sell.settings[1]:Click()
+    check(P.Setting("undercut") ~= undercutBefore, "the settings bar cycles undercut")
+    for _ = 1, #P.UNDERCUT - 1 do F.sell.settings[1]:Click() end
+    check(P.Setting("undercut") == undercutBefore, "and round again")
+    F.sell.side.post:Click(); M.advance(30)
+    check(P.state == "ready", "after the check, listings are ready: " .. tostring(P.state))
+    local ready, listings = P.Summary()
+    A.Refresh()
+    check(strip(F.sell.side.post.text:GetText()):find("^Post %d+ x "), "the button names the next listing: " .. strip(F.sell.side.post.text:GetText()))
+    local before = #M.posted
+    local queriesBefore = M.ownedQueries or 0
+    local presses = 0
+    while P.state == "ready" and presses < 40 do
+        F.sell.side.post:Click(); M.advance(1)
+        presses = presses + 1
+    end
+    check(P.state == "done" and #M.posted - before == listings and presses == listings,
+        "one press per listing until done: " .. presses .. " presses, " .. (#M.posted - before) .. " posted, " .. listings .. " planned")
+    local cheap = true
+    for i = before + 1, #M.posted do
+        local p = M.posted[i]
+        local e
+        for _, x in ipairs(P.entries) do if x.id == p.id then e = x end end
+        local each = p.kind == "item" and (p.price / p.qty) or p.price
+        if e and e.lowest and each > e.lowest then cheap = false end
+    end
+    check(cheap, "nothing posted above the lowest price it saw")
+    A.Refresh()
+    check(strip(F.sell.side.post.text:GetText()):find("All posted"), "then it says all posted")
+    M.advance(5)
+    check((M.ownedQueries or 0) - queriesBefore == 1,
+        "your auctions are read once after the posting, not after every post: " .. ((M.ownedQueries or 0) - queriesBefore))
+
+    -- The main window's Sell button picks the item in our Sell tab
+    local target
+    for _, e in ipairs(P.entries) do if e.id == 2840 then target = e end end
+    if target then
+        target.status = "posted"
+        ns.OpenSell(2840); M.advance(5)
+        check(A.tab == "sell" and A.sellSel == target and target.picked and P.state ~= "checking",
+            "the main window's Sell button checks that one item in our Sell tab: " .. tostring(target.status))
+    else
+        check(false, "Copper Bar is in the Sell list")
+    end
+
+    -- Walking away mid-check doesn't leave items stuck on "Checking..."
+    P.entries[1].status = "checking"; P.state = "checking"
+    M.fire("AUCTION_HOUSE_CLOSED"); M.advance(1)
+    check(P.entries[1].status == "new" and P.state ~= "checking", "closing the auction house mid-check resets it")
+    M.fire("AUCTION_HOUSE_SHOW"); M.advance(60)
+
+    -- Browse rows are reused, not rebuilt, when nothing changed
+    A.SetTab("browse")
+    A.Search("bar"); M.advance(5)
+    A.Refresh()
+    local calls = M.keyInfoCalls or 0
+    for _ = 1, 10 do ns.Fire("SCAN_PROGRESS"); M.advance(1) end
+    A.Refresh()
+    check((M.keyInfoCalls or 0) == calls, "scan progress and gold changes don't rebuild the Browse list: " .. ((M.keyInfoCalls or 0) - calls))
+    A.SetTab("sell")
+
+    -- Auctions: undercut checks and the cancel queue
+    M.owned = {
+        { auctionID = 601, itemKey = { itemID = 2840 }, status = 0, quantity = 7, buyoutAmount = 100, timeLeftSeconds = 30000 },
+        { auctionID = 602, itemKey = { itemID = 3576 }, status = 0, quantity = 3, buyoutAmount = 150, timeLeftSeconds = 30000 },
+        { auctionID = 603, itemKey = { itemID = 2589 }, status = 1, quantity = 4, buyoutAmount = 70 },
+    }
+    M.market[3576] = { { 150, 3, true }, { 200, 40 } }
+    A.SetTab("auctions"); M.advance(1)
+    check(#P.owned == 3, "Auctions lists your auctions: " .. #P.owned)
+    F.mine.side.check:Click(); M.advance(10)
+    local st = {}
+    for _, a in ipairs(P.owned) do st[a.auctionID] = a.state end
+    check(st[601] == "undercut" and st[602] == "cheapest" and st[603] == "sold",
+        "live checks mark undercut, cheapest and sold: " .. tostring(st[601]) .. "/" .. tostring(st[602]) .. "/" .. tostring(st[603]))
+    A.Refresh()
+    check(strip(F.mine.side.cancelNext.text:GetText()) == "Cancel next undercut (1)", "the cancel button counts the undercut ones")
+    F.mine.side.cancelNext:Click()
+    check(M.cancelled[#M.cancelled] == 601, "it cancels the undercut one, not the cheapest")
+    M.owned = { M.owned[2], M.owned[3] }
+    M.advance(2)
+    check(#P.Undercut() == 0 and P.cancelling == nil, "then nothing is left undercut")
+    A.mineSel = P.owned[1]
+    A.Refresh()
+    check(not F.mine.side.cancelOne.disabled and strip(F.mine.side.body:GetText()):find("Cancelling costs"), "a picked auction shows its cancel cost")
+    M.owned = nil
+
+    -- Switching to the game's window and back
+    F.blizz:Click()
+    check(not F:IsShown() and AuctionHouseFrame._scale == 1 and AuctionHouseFrame._alpha == 1 and ns.db.opts.ahBlizzard,
+        "Game's window brings back the game's own")
+    check(ForeverGoldAuctionStrip and ForeverGoldAuctionStrip:IsShown() and ForeverGoldAuctionStrip.ours, "with a button to come back")
+    ForeverGoldAuctionStrip.ours:Click()
+    check(F:IsShown() and AuctionHouseFrame._scale == 0.001 and not ns.db.opts.ahBlizzard and not ForeverGoldAuctionStrip:IsShown(),
+        "which switches back to ours")
+    M.fire("AUCTION_HOUSE_CLOSED"); M.advance(1)
+    check(not F:IsShown() and AuctionHouseFrame._scale == 1 and AuctionHouseFrame._alpha == 1, "walking away closes ours and restores the game's")
+    -- the game shows its frame after the event: our hook hides it again
+    M.fire("AUCTION_HOUSE_SHOW")
+    AuctionHouseFrame:Hide(); AuctionHouseFrame._scale = 1; AuctionHouseFrame:Show()
+    check(AuctionHouseFrame._scale == 0.001, "the game's window is hidden again whenever it shows")
+    M.fire("AUCTION_HOUSE_CLOSED"); M.advance(1)
 end
 ForeverGoldMarket = nil
 ns.Fire("PRICES_UPDATED")

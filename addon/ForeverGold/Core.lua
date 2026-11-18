@@ -18,7 +18,7 @@ local ADDON, ns = ...
 _G.ForeverGold = ns
 
 ns.TITLE = "Forever Gold"
-ns.VERSION = "1.6.0"
+ns.VERSION = "1.7.0"
 -- The auction house keeps 5% of every sale.
 ns.AH_CUT = 0.05
 
@@ -195,10 +195,15 @@ function ns.Profit(c)
     if type(c) ~= "number" then
         return "|cff808080--|r"
     end
-    if c >= 0 then
-        return "|cff40e060+|r" .. ns.Money(c)
+    -- The whole amount in one colour: green when you make money, red when
+    -- you lose it, grey for nothing either way.
+    local plain = ns.Money(c):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    if c > 0 then
+        return "|cff40e060+" .. plain .. "|r"
+    elseif c < 0 then
+        return "|cffff6060" .. plain .. "|r"
     end
-    return ns.Money(c)
+    return "|cff9d9d9d" .. plain .. "|r"
 end
 
 function ns.Ago(t)
@@ -259,6 +264,7 @@ function ns.InitDB()
     ensure(db, "vendor")   -- what vendors charge, learned by visiting them
     ensure(db, "chars")    -- your characters: professions, recipes, bags
     ensure(db, "nodes")    -- ore / herb / fishing spots you have gathered
+    ensure(db, "routes")   -- saved route settings per zone: what to include, where to start
     ensure(db, "sessions") -- finished farming sessions
     ensure(db, "goldLog")  -- { {time, copper}, ... } all your characters' gold over time
     local opts = ensure(db, "opts")
@@ -269,6 +275,12 @@ function ns.InitDB()
     if opts.fastScan == nil then opts.fastScan = true end
     if opts.dealMin == nil then opts.dealMin = 500 end -- 5 silver
     if opts.autoAge == nil then opts.autoAge = 300 end -- rescan after 5 minutes
+    -- Your spots on the world map and minimap, and the whole zone drawn on the Routes map.
+    if opts.hideMapNodes then opts.worldMapSpots = false end
+    opts.hideMapNodes = nil
+    if opts.worldMapSpots == nil then opts.worldMapSpots = true end
+    if opts.minimapSpots == nil then opts.minimapSpots = true end
+    if opts.revealMap == nil then opts.revealMap = true end
     ns.db = db
     return db
 end
@@ -647,7 +659,7 @@ SlashCmdList["FOREVERGOLD"] = function(msg)
         print("  |cffffffff/gold|r - open or close the window")
         print("  |cffffffff/gold scan|r - read auction prices (at an auctioneer)")
         print("  |cffffffff/gold kills|r - show or hide the Farming Session window (or right-click the minimap button)")
-        print("  |cffffffff/gold track|r - start or pause the kill and loot tracker")
+        print("  |cffffffff/gold track|r - start or stop the kill and loot tracker")
         print("  |cffffffff/gold track reset|r - wipe the tracker's numbers")
         print("  |cffffffff/gold track save|r - save the trip to Make > Farm and clear the tracker")
         print("  |cffffffff/gold market|r - where the sale-rate data stands")

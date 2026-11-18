@@ -2,12 +2,12 @@
 
 A standalone gold-making addon for WoW Forever (interface 16001). It reads the
 auction house and tells you, in plain English, what to craft, farm, sell and
-flip with your own characters. It needs no other addon. It never buys, bids or
-cancels anything, and it only posts an auction when you press Post on the Sell
-panel.
+flip with your own characters. It needs no other addon. It never buys, posts or
+cancels anything on its own: each of those happens only when you press the
+button for it (the game needs a click for every one anyway).
 
 Open it with `/gold`, the round infinity-coin button on the minimap, or the
-"Advice" button above the auction window.
+"Advice" button in the auction window.
 
 ## Install
 
@@ -38,7 +38,7 @@ The window answers one question first: what should I do right now?
 | To do | Opens first. Undercut auctions to relist, then every quick win numbered best first: post these from your bags, buy these and vendor them, craft this, buy this from a vendor and resell it. Each row is short (the item, then where it goes: "Vendor > auction house · The Barrens"); the full instructions are in the pane. Below: the best farm if you've got an hour, and a one-line account summary. |
 | Sell | What in your bags to auction (each row has a Sell button, see below), what to vendor, and which of your auctions were undercut. |
 | Buy | Auction items cheaper than a vendor pays (no risk), vendor items that really resell at auction (proven by sale data, or limited vendor stock), and items far below their usual price. |
-| Make | Three views, switched at the top. Craft: every recipe you know, with cost, sale price and profit after the 5% cut. Farm: gathering and grinding spots for your level and professions, your saved trips, and the Farming Session window. Routes: every ore vein, herb and fishing spot you've gathered; build a loop through a zone and follow the arrow. |
+| Make | Three views, switched at the top. Craft: every recipe you know, with cost, sale price and profit after the 5% cut. Farm: gathering and grinding spots for your level and professions, your saved trips, and the Farming Session window. Routes: pick a zone you've gathered in and the map (the zone's own map picture, with a pickaxe, leaf or hook on each recorded spot) previews a suggested loop. Tick Herbs, Ore or Fishing above the map; click a spot to leave it out, right-click to start there; then Start route and follow the arrow (Pause, Skip stop, End route). Save route remembers the ticks and start for that zone. Recorded spots aren't guaranteed to be up, and the lines are straight. |
 | Characters | A graph of your gold across all your characters over time (24 hours, 7 days, 30 days or all of it; hover for the exact amount at any point), and every character with class, level, gold and primary professions. Click one for all its professions. Gold is recorded from this version on. |
 
 Each tab is a list on the left and a details pane on the right. Click a row
@@ -65,11 +65,12 @@ Open it with `/gold kills`, a right-click on the minimap button, or the button
 under Make > Farm; starting a session opens it too. Drag it by its top bar. It
 remembers where you left it and whether it was open.
 
-Its state shows at the top right: Idle, Recording (green dot) or Paused
+Its state shows at the top right: Idle, Recording (green dot) or Stopped
 (yellow). Idle, it's just one "Start session" button. During a session it
 shows time, kills, money actually earned (coin plus sales) and the estimated
 value of the loot you're carrying, kept apart, with gold per hour beside the
-buttons: Pause/Resume, Save trip (keeps a record under Make > Farm) and Reset.
+buttons: Stop/Start (Start carries on from where you stopped), Save trip
+(keeps a record under Make > Farm) and Reset.
 "-" folds it into a narrow status strip (time, kills, gold per hour) for while
 you farm. It grows downward as you kill and loot (up to a limit, then it
 scrolls).
@@ -91,6 +92,41 @@ Quests aren't counted: quest items you loot and quest reward money stay out
 of the totals, so the numbers show what farming is worth. Kills are counted
 without the combat log: a mob you or your group tagged dying in front of you,
 or a corpse you loot. Opening the same corpse twice counts its drops once.
+
+## The auction window
+
+Talking to an auctioneer opens Forever Gold's own auction window instead of the
+game's. It has the game's three tabs, plus what the addon knows:
+
+- **Browse** - search by name or pick a category (the game's own list). Each
+  result shows the lowest price, the usual price, how it compares, and how fast
+  it sells. **Deals** at the top of the categories lists the bargains from your
+  last scan. Click a result for every listing, then buy:
+  - stackable goods: type how many (or Max). The first click asks the auction
+    house for the exact price; the second click, "Confirm: pay ...", buys.
+    Cancel backs out. It buys cheapest first and skips your own listings.
+  - gear: click the listing you want, then "Buy now".
+- **Sell** - a proposed listing for everything in your bags that can go on the
+  auction house. The ones the advice recommends are ticked; tick or untick the
+  rest (remembered). Press "Price check" once: every ticked item is looked up
+  live and given a price (undercut, never under its floor) and a listing size.
+  Then press **Post** once per listing - the button names the next one - until
+  it says "All posted". The bar under the list sets the undercut (1 copper, 1%,
+  5%), how much goes in each listing (a stack, 10, 5, 1, everything), how many
+  listings per item, and how long they last. Click a row to see why it picked
+  that price, type your own price ("1g 20s", "1.5g", or copper), or change the
+  size with - and +. Skip passes on one. A price over 5 minutes old is checked
+  again before it posts.
+- **Auctions** - your auctions, each marked undercut, tied, cheapest, alone or
+  sold. "Check prices now" looks each one up live (prices marked * are from
+  your last scan). "Cancel next undercut" cancels them one click at a time, then
+  you post them again from Sell once they're back from the mail. Click one to see
+  what cancelling costs.
+
+"Game's window" switches to the game's own auction window (remembered), with
+the old strip above it; its "Forever Gold window" button switches back. The
+game's window is still open underneath ours, just shrunk out of sight, so
+Escape, walking away and the X all close the auction house as normal.
 
 ## The Sell button
 
@@ -182,7 +218,7 @@ latest snapshot and tells you which have been undercut.
 - `/gold scan fast` - force the one-download fast scan (the game allows it every 15 minutes)
 - `/gold scan slow` - force the page-by-page scan
 - `/gold kills` - show or hide the Farming Session window
-- `/gold track` - start or pause a farming session
+- `/gold track` - start or stop a farming session
 - `/gold track reset` - wipe the tracker's numbers
 - `/gold track save` - save the trip to Make > Farm and clear the tracker
 - `/gold market` - where the sale-rate data stands
@@ -201,11 +237,13 @@ latest snapshot and tells you which have been undercut.
 - `Advisor.lua` - the sums behind every recommendation
 - `Route.lua` - node recording, route building, map drawing
 - `Sell.lua` - the pricing rules and posting behind the Sell button, and the vendor-price guard
+- `Poster.lua` - the auction window's post queue, live price lookups, and your auctions' undercut checks and cancelling
 - `RecipeData.lua` - every Forever recipe and its reagents (generated, not edited by hand)
 - `Recipes.lua` - what each item is used in, and which of your characters know those recipes
 - `Web.lua` - the `webExport` table the tray app sends to the website
 - `UI.lua` - the window, the on-screen route guide, minimap button, tooltips
 - `TrackerUI.lua` - the Farming Session window
+- `AuctionUI.lua` - the auction window (Browse and buy, Sell, Auctions) that replaces the game's
 - `Icon.tga` - the addon's icon (minimap button, window title, addon list)
 
 ## Scanning

@@ -226,8 +226,8 @@ local BUILD = { kills = buildKills, loot = buildLoot, money = buildMoney }
 --
 -- Idle:      one big "Start session" button.
 -- Recording: time, kills, money actually earned and the estimated value of
---            what you looted, then Pause / Save trip / Reset and the tabs.
--- Paused:    the same, with Resume as the main button.
+--            what you looted, then Stop / Save trip / Reset and the tabs.
+-- Stopped:   the same, with Start as the main button (it carries on).
 -- "-" folds it into a narrow status strip for while you farm.
 ----------------------------------------------------------------------
 
@@ -243,10 +243,32 @@ local function state()
     return "idle"
 end
 
-local STATE_LABEL = { idle = "Idle", recording = "|cff59e659Recording|r", paused = "|cffffd100Paused|r" }
+local STATE_LABEL = { idle = "Idle", recording = "|cff59e659Recording|r", paused = "|cffffd100Stopped|r" }
 
-local function headline()
-    local s = ns.TrackerSummary and ns.TrackerSummary()
+-- The summary the once-a-second tick reads. Building it walks every item,
+-- mob and sale of the trip, so the tick reuses the last one and only moves
+-- the clock on. It's rebuilt whenever the window refreshes (a kill, loot,
+-- coin or new prices) and every 10 seconds as a safety net.
+local tick, tickAt
+
+local function freshSummary()
+    tick = ns.TrackerSummary and ns.TrackerSummary()
+    tickAt = GetTime()
+    return tick
+end
+
+local function tickSummary()
+    if not tick or GetTime() - (tickAt or 0) >= 10 then
+        return freshSummary()
+    end
+    local secs = ns.TrackerSeconds()
+    tick.secs = secs
+    tick.perHour = secs > 60 and tick.made / secs * 3600 or nil
+    return tick
+end
+
+local function headline(s)
+    s = s or freshSummary()
     if not s then
         return kit().GREY .. "Idle|r"
     end
@@ -254,8 +276,8 @@ local function headline()
         .. (s.perHour and ("  ·  |cffffd100" .. ns.Money(s.perHour) .. "/hr|r") or "")
 end
 
-local function fillStats()
-    local s = ns.TrackerSummary and ns.TrackerSummary()
+local function fillStats(s)
+    s = s or tick or freshSummary()
     if not s or not win then
         return
     end
@@ -265,7 +287,7 @@ local function fillStats()
     c[3].value:SetText(ns.Money(s.cashIn or s.coin))
     c[4].value:SetText(ns.Money(max(0, s.made - s.coin)))
     win.rate:SetText(s.perHour and (ns.Money(s.perHour) .. kit().GREY .. " an hour|r")
-        or (kit().GREY .. "per hour after a minute|r"))
+        or (kit().GREY .. "gold/hr after 1 min|r"))
 end
 
 -- The window is pinned by its top-left corner, so a change in height grows
@@ -322,14 +344,15 @@ function ns.RefreshTrackerWindow(keepScroll)
         win.dot:SetColorTexture(0.45, 0.44, 0.42, 1)
     end
     win.state:SetText(STATE_LABEL[st])
-    win.head:SetText(headline())
-    win.start:SetLabel(st == "recording" and "Pause" or "Resume")
+    local s = freshSummary()
+    win.head:SetText(headline(s))
+    win.start:SetLabel(st == "recording" and "Stop" or "Start")
     win.start:SetPrimary(st == "paused")
     win.sort:SetLabel(SORT_LABEL[view.sort])
     for key, b in pairs(win.tabs) do
         b:SetOn(key == view.tab)
     end
-    fillStats()
+    fillStats(s)
     if not ns.db.opts.trackerCollapsed then
         local ok, rows = pcall(BUILD[view.tab])
         if not ok then
@@ -404,12 +427,31 @@ local function create()
     -- What matters while you farm: real money apart from the estimate.
     f.cells = {}
     local cellW = floor((W - 8) / 4)
-    for i, cap in ipairs({ "Time", "Kills", "Money earned", "Loot, est." }) do
+    -- Short captions, each clipped to its own cell, so they can't run into
+    -- the next one at a large UI scale. The tooltip on each says it in full.
+    local CAPS = {
+        { "Time", "How long this session has been recording." },
+        { "Kills", "Mobs you've killed this session." },
+        { "Earned", "Money actually earned: coin looted plus vendor and auction sales." },
+        { "Loot, est.", "Estimated value of the items you've looted (not sold yet)." },
+    }
+    for i, cap in ipairs(CAPS) do
         local cell = session(CreateFrame("Frame", nil, f))
         cell:SetSize(cellW, STATS_H - 4)
         cell:SetPoint("TOPLEFT", 4 + (i - 1) * cellW, -(TITLE_H + 3))
-        cell.caption = K.label(cell, "GameFontDisableSmall", cap)
+        cell.caption = K.label(cell, "GameFontDisableSmall", cap[1])
         cell.caption:SetPoint("TOPLEFT", 4, -2)
+        cell.caption:SetWidth(cellW - 6)
+        cell.caption:SetWordWrap(false)
+        cell.caption:SetJustifyH("LEFT")
+        cell:EnableMouse(true)
+        cell:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(cap[1], 1, 0.82, 0)
+            GameTooltip:AddLine(cap[2], 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
         cell.value = K.label(cell, "GameFontHighlight")
         cell.value:SetPoint("TOPLEFT", 4, -15)
         cell.value:SetWidth(cellW - 6)
@@ -423,15 +465,19 @@ local function create()
     K.tex(rule, "BORDER", C.edge[1], C.edge[2], C.edge[3], 0.6):SetAllPoints()
 
     local y = -(TITLE_H + STATS_H + 4)
-    f.start = session(K.button(f, "Pause", 58, 18, function() ns.TrackerToggle() end))
+    f.start = session(K.button(f, "Stop", 58, 18, function() ns.TrackerToggle() end))
     f.start:SetPoint("TOPLEFT", 4, y)
     f.save = session(K.button(f, "Save trip", 62, 18, function() ns.StopSession() end))
     f.save:SetPoint("LEFT", f.start, "RIGHT", 3, 0)
     f.reset = session(K.button(f, "Reset", 46, 18, function() ns.TrackerReset() end))
     f.reset:SetPoint("LEFT", f.save, "RIGHT", 3, 0)
     f.rate = session(K.label(f, "GameFontHighlightSmall"))
+    -- Fills the gap right of Reset and no further, so it shortens instead
+    -- of sliding under the buttons.
     f.rate:SetPoint("TOPRIGHT", -6, y - 3)
+    f.rate:SetPoint("LEFT", f.reset, "RIGHT", 6, 0)
     f.rate:SetJustifyH("RIGHT")
+    f.rate:SetWordWrap(false)
 
     f.tabs = {}
     local x = 4
@@ -462,8 +508,9 @@ local function create()
         since = since + elapsed
         if since >= 1 then
             since = 0
-            f.head:SetText(headline())
-            fillStats()
+            local s = tickSummary()
+            f.head:SetText(headline(s))
+            fillStats(s)
         end
     end)
     f:SetScript("OnShow", function()
