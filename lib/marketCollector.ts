@@ -8,8 +8,9 @@
 //   site-<house>.json.gz     what the website's Auction House pages show (history per item)
 //   ladder-<house>.json.gz   everything listed right now, grouped by price
 //
-// There's no scheduler: every tray app asks /api/market for the rates about
-// every 20 minutes, and that request also does the collecting when it's due.
+// A Vercel schedule (vercel.json) calls /api/market/collect every 20
+// minutes, and every tray app's call to /api/market (about every 20
+// minutes too) also collects when it's due.
 // Checking costs nothing when Blizzard has no new snapshot (it answers 304),
 // and a new snapshot appears about once an hour.
 

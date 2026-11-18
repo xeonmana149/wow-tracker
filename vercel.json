@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "schedules": {
+    "market-collect": {
+      "schedule": "*/20 * * * *",
+      "path": "/api/market/collect",
+      "requestMethod": "GET"
+    }
+  }
+}

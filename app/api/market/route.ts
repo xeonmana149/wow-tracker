@@ -7,8 +7,9 @@ import { topUpItemInfo } from "../../../lib/marketItems";
 //
 // The tray app calls this about every 20 minutes and writes the answer
 // into the addon's folder. Each call also collects Blizzard's newest
-// snapshot when one is due (see lib/marketCollector.ts), so as long as
-// anyone's tray app is running, the data keeps growing.
+// snapshot when one is due (see lib/marketCollector.ts). A Vercel schedule
+// also collects every 20 minutes (/api/market/collect), so no hour is
+// missed when nobody's tray app is running.
 //
 //   /api/market             collect if due, then return every tracked house
 //   /api/market?collect=0   just return what's stored
