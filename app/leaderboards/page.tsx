@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { classIcon } from "../../lib/icons";
@@ -66,6 +66,21 @@ type ProfessionRow = {
 };
 
 const TIER_ORDER: AchievementTier[] = ["Platinum", "Gold", "Silver", "Copper"];
+
+// Account display names by user id, so any board can link a character to
+// its owner's account page without passing the map through every prop.
+const OwnerNames = createContext<Record<string, string>>({});
+
+function OwnerLink({ userId }: { userId: string }) {
+  const names = useContext(OwnerNames);
+  const name = names[userId];
+  if (!name) return null;
+  return (
+    <Link href={`/account/${userId}`} className="text-amber-400/80 hover:underline">
+      {name}
+    </Link>
+  );
+}
 
 function parseStatValue(value: string): number | null {
   const n = Number(value.replace(/,/g, ""));
@@ -217,6 +232,7 @@ export default function LeaderboardsPage() {
   }
 
   return (
+    <OwnerNames.Provider value={displayNames}>
     <main className="mx-auto max-w-[1200px] p-4 md:p-6">
       <h1 className="text-4xl font-bold">Leaderboards</h1>
       <p className="mt-1 text-gray-400">See how everyone stacks up - overall, by badge, or by any raw stat.</p>
@@ -293,6 +309,7 @@ export default function LeaderboardsPage() {
         />
       )}
     </main>
+    </OwnerNames.Provider>
   );
 }
 
@@ -347,7 +364,7 @@ function OverallBoard({
                 {row.c.name}
               </Link>
               <div className="text-xs text-gray-500">
-                Level {row.c.level} {row.c.class} · {row.c.character_type}
+                Level {row.c.level} {row.c.class} · {row.c.character_type} · <OwnerLink userId={row.c.user_id} />
               </div>
             </div>
             <TierCountsRow counts={row.counts} />
@@ -382,7 +399,9 @@ function OverallBoard({
         >
           <RankBadge rank={i + 1} />
           <div className="min-w-0 flex-1">
-            <div className="font-semibold text-white">{row.label}</div>
+            <Link href={`/account/${row.userId}`} className="font-semibold text-white hover:underline">
+              {row.label}
+            </Link>
             <div className="text-xs text-gray-500">
               {row.characters.length} character{row.characters.length === 1 ? "" : "s"}
             </div>
@@ -560,6 +579,7 @@ function AchievementsBoard({
                 rank={i + 1}
                 label={row.c.name}
                 sublabel={`Level ${row.c.level} ${row.c.class}`}
+                ownerId={row.c.user_id}
                 value={row.value}
                 tier={row.tier}
                 achievementKind={achievementKind}
@@ -584,6 +604,7 @@ function AchievementsBoard({
                 achievementKind={achievementKind}
                 maxThreshold={maxThreshold}
                 thresholds={thresholds}
+                href={`/account/${row.userId}`}
               />
             ))
           ))}
@@ -602,6 +623,7 @@ function ProgressRow({
   maxThreshold,
   thresholds,
   href,
+  ownerId,
 }: {
   rank: number;
   label: string;
@@ -612,6 +634,7 @@ function ProgressRow({
   maxThreshold: number;
   thresholds: { tier: AchievementTier; value: number }[];
   href?: string;
+  ownerId?: string;
 }) {
   return (
     <div className="rounded-lg border border-neutral-700 bg-neutral-900/40 p-3">
@@ -626,7 +649,15 @@ function ProgressRow({
           ) : (
             <span className="font-semibold text-white">{label}</span>
           )}
-          <div className="text-xs text-gray-500">{sublabel}</div>
+          <div className="text-xs text-gray-500">
+            {sublabel}
+            {ownerId && (
+              <>
+                {" · "}
+                <OwnerLink userId={ownerId} />
+              </>
+            )}
+          </div>
         </div>
         <span className="shrink-0 text-sm font-semibold text-gray-300">{tier ?? "Untiered"}</span>
         <span className="shrink-0 text-lg font-bold text-[#c9a566]">{value.toLocaleString()}</span>
@@ -771,9 +802,14 @@ function StatisticsBoard({
                     className="flex items-center gap-3 rounded-lg border border-neutral-700 bg-neutral-900/40 p-3"
                   >
                     <RankBadge rank={i + 1} />
-                    <Link href={`/character/${row.c.id}`} className="min-w-0 flex-1 font-semibold text-white hover:underline">
-                      {row.c.name}
-                    </Link>
+                    <span className="min-w-0 flex-1">
+                      <Link href={`/character/${row.c.id}`} className="font-semibold text-white hover:underline">
+                        {row.c.name}
+                      </Link>
+                      <span className="ml-2 text-xs">
+                        <OwnerLink userId={row.c.user_id} />
+                      </span>
+                    </span>
                     <span className="shrink-0 text-lg font-bold text-[#c9a566]">
                       {row.value.toLocaleString()}
                     </span>
@@ -790,7 +826,9 @@ function StatisticsBoard({
                     className="flex items-center gap-3 rounded-lg border border-neutral-700 bg-neutral-900/40 p-3"
                   >
                     <RankBadge rank={i + 1} />
-                    <span className="min-w-0 flex-1 font-semibold text-white">{row.label}</span>
+                    <Link href={`/account/${row.userId}`} className="min-w-0 flex-1 font-semibold text-white hover:underline">
+                      {row.label}
+                    </Link>
                     <span className="shrink-0 text-lg font-bold text-[#c9a566]">
                       {row.value.toLocaleString()}
                     </span>

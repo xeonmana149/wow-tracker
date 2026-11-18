@@ -16,7 +16,7 @@ export default async function LegacyPage({ params }: { params: Promise<{ id: str
 
   const { data: character } = await supabase
     .from("characters")
-    .select("id, name, user_id, profiles!user_id(legacy_points)")
+    .select("id, name, user_id, profiles!user_id(legacy_points, display_name)")
     .eq("id", id)
     .single();
 
@@ -32,13 +32,20 @@ export default async function LegacyPage({ params }: { params: Promise<{ id: str
 
   const profile = Array.isArray(character.profiles) ? character.profiles[0] : character.profiles;
   const earned = (profile as { legacy_points?: number } | null)?.legacy_points ?? 0;
+  const ownerName = (profile as { display_name?: string } | null)?.display_name ?? "Unknown";
 
   return (
     <main className="mx-auto max-w-[1500px] p-4 md:p-6">
       <Link href={`/character/${character.id}`} className="text-blue-400">
         ← Back to {character.name}
       </Link>
-      <h1 className="mb-6 mt-4 text-3xl font-bold">{character.name}&apos;s Legacy</h1>
+      <h1 className="mt-4 text-3xl font-bold">{character.name}&apos;s Legacy</h1>
+      {character.user_id && (
+        <Link href={`/account/${character.user_id}`} className="chip mb-6 mt-2 inline-block hover:underline">
+          Owned by {ownerName}
+        </Link>
+      )}
+      {!character.user_id && <div className="mb-6" />}
 
       {trees.length > 0 ? (
         <LegacyPlanner

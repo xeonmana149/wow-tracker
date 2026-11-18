@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { H_DAY, H_LOW, H_MKT, H_SOLD, H_SOLDP } from "../../../../lib/market";
+import { H_DAY, H_EXP, H_LOW, H_MIN, H_MKT, H_POSTS, H_QTY, H_SOLD, H_SOLDP } from "../../../../lib/market";
 import { AH_CUT, getMarket, itemBasics, itemDetail, SPEED_TEXT, type CraftLine, type Market } from "../../../../lib/marketView";
 import AddToList from "../../AddToList";
 import MarketStatus, { NoMarket } from "../../MarketStatus";
@@ -80,7 +80,17 @@ export default async function AuctionItemPage({ params, searchParams }: { params
   const d = await itemDetail(m, id);
   const r = d.row;
 
-  const points = d.history.map((h) => ({ day: h[H_DAY], sold: h[H_SOLDP], mkt: h[H_MKT], qty: h[H_SOLD], low: h[H_LOW] }));
+  const points = d.history.map((h) => ({
+    day: h[H_DAY],
+    sold: h[H_SOLD] ?? 0,
+    soldP: h[H_SOLDP] ?? 0,
+    min: h[H_MIN] ?? 0,
+    low: h[H_LOW] ?? 0,
+    mkt: h[H_MKT] ?? 0,
+    listed: h[H_QTY] ?? 0,
+    posts: h[H_POSTS] ?? 0,
+    exp: h[H_EXP] ?? 0,
+  }));
   const sellEach = r.avgSold > 0 && r.speed !== "rarely" ? Math.min(r.avgSold, r.mkt || r.avgSold) : r.mkt;
   const net = sellEach ? Math.round(sellEach * (1 - AH_CUT)) : 0;
 
@@ -143,7 +153,7 @@ export default async function AuctionItemPage({ params, searchParams }: { params
 
       <Panel>
         {points.length >= 2 ? (
-          <HistoryCharts points={points} today={dayNumber()} />
+          <HistoryCharts points={points} today={dayNumber()} itemName={r.name} />
         ) : (
           <p className="text-sm text-gray-400">
             Price history builds up a day at a time (it started {points.length ? "today" : "recently"}). Come back tomorrow for a chart.

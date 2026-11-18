@@ -198,8 +198,8 @@ export default function MyMarket() {
         <h2 className="mb-2 font-semibold text-gray-100">Farming trips</h2>
         {data.sessions.length === 0 ? (
           <p className="text-sm text-gray-400">
-            No saved trips yet. In game, start the tracker on Forever Gold&apos;s Track tab (or /gold track) and save the trip when you&apos;re
-            done.
+            No saved trips yet. In game, start a session in Forever Gold&apos;s Farming Session window (/gold kills, or /gold track) and
+            press Save trip when you&apos;re done.
           </p>
         ) : (
           <>

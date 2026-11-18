@@ -29,6 +29,7 @@ const TIER_RANK: Record<AchievementTier, number> = { Platinum: 3, Gold: 2, Silve
 export default function CharacterAchievementsPage({ characterId }: { characterId: string }) {
   const [loading, setLoading] = useState(true);
   const [characterName, setCharacterName] = useState("");
+  const [owner, setOwner] = useState<{ id: string; name: string } | null>(null);
   const [items, setItems] = useState<AchievementBoardItem[]>([]);
   // "oneOff" is a filter dimension separate from family (2026-09-25) - the
   // one-off/flat achievements (max_level, level milestones, personality
@@ -61,7 +62,7 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
         await Promise.all([
           supabase
             .from("characters")
-            .select("name, user_id, showcase_kinds, time_played_hours, level, top_pvp_rank")
+            .select("name, user_id, showcase_kinds, time_played_hours, level, top_pvp_rank, profiles!user_id(display_name)")
             .eq("id", characterId)
             .single(),
           supabase
@@ -74,6 +75,10 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
         ]);
 
       setCharacterName(character?.name ?? "");
+      if (character?.user_id) {
+        const prof = Array.isArray(character.profiles) ? character.profiles[0] : character.profiles;
+        setOwner({ id: character.user_id, name: (prof as { display_name?: string } | null)?.display_name ?? "Unknown" });
+      }
       setIsOwner(!!character?.user_id && userData.user?.id === character.user_id);
       setPinned((character?.showcase_kinds as string[] | null) ?? []);
 
@@ -222,6 +227,11 @@ export default function CharacterAchievementsPage({ characterId }: { characterId
             ← Back to {characterName || "character"}
           </Link>
           <h1 className="text-3xl font-bold">Achievements</h1>
+          {owner && (
+            <Link href={`/account/${owner.id}`} className="chip mt-2 inline-block hover:underline">
+              Owned by {owner.name}
+            </Link>
+          )}
         </div>
         <div className="flex items-baseline gap-4">
           <Link href="/legacy" className="text-sm text-gray-400 hover:underline">

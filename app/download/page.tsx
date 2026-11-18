@@ -49,6 +49,34 @@ export default function DownloadPage() {
           a signed app - click &quot;More info&quot; then &quot;Run anyway&quot;.
         </p>
       </section>
+
+      <section className="mt-6 rounded bg-neutral-800 p-5">
+        <h2 className="text-xl font-bold">Forever Gold (in-game addon)</h2>
+        <p className="mt-2 text-sm text-gray-400">
+          A gold-making addon: what to post, craft, farm and flip right now, with real
+          auction sale rates, an auto-poster and a kills and loot tracker. Optional and
+          separate from the tracker addon.
+        </p>
+        <p className="mt-3 text-sm text-gray-300">
+          Have the app above? Open its Settings and press <b>Install Forever Gold</b> -
+          it installs it and keeps it updated, and it&apos;s the only way to get the
+          sale rates.
+        </p>
+        <a
+          href={DOWNLOAD_URLS.foreverGold}
+          className="mt-4 inline-block rounded bg-neutral-700 px-5 py-2.5 font-medium text-white hover:bg-neutral-600"
+        >
+          Download Forever Gold (.zip)
+        </a>
+        <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm text-gray-300">
+          <li>Close WoW.</li>
+          <li>
+            Unzip it into <code>World of Warcraft/_forever_/Interface/AddOns</code>, so
+            you end up with <code>AddOns/ForeverGold/ForeverGold.toc</code>.
+          </li>
+          <li>Start the game and type <code>/gold</code>.</li>
+        </ol>
+      </section>
     </main>
   );
 }

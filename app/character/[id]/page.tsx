@@ -225,9 +225,9 @@ export default async function CharacterPage({
               {character.ruleset && <span className="chip">{character.ruleset}</span>}
               <span className="chip">{character.character_type}</span>
               {character.guild && <span className="chip">{`<${character.guild}>`}</span>}
-              <span className="chip">
+              <Link href={`/account/${character.user_id}`} className="chip hover:underline">
                 Owned by {character.profiles?.display_name ?? "Unknown"}
-              </span>
+              </Link>
             </div>
 
             <div className="mt-2 flex flex-wrap gap-2">
