@@ -780,9 +780,21 @@ local function renderRow(r, d, width)
     setFont(r.title, "GameFontHighlight")
     r.title:SetPoint("TOPLEFT", tx, -6)
     r.title:SetWidth(width - tx - rightW - pad - 4)
+    r.title:SetWordWrap(true)
+    if r.title.SetMaxLines then
+        r.title:SetMaxLines(2)
+    end
     r.title:SetText(d.title or "")
-    r.sub:SetPoint("TOPLEFT", tx, -23)
+    -- Both lines wrap instead of being cut off; the row grows to fit them.
+    local titleH = max(14, r.title:GetStringHeight() or 14)
+    local subY = floor(6 + titleH + 3 + 0.5)
+    r.sub:SetPoint("TOPLEFT", tx, -subY)
     r.sub:SetWidth(width - tx - rightW - pad - 4)
+    r.sub:SetJustifyV("TOP")
+    r.sub:SetWordWrap(true)
+    if r.sub.SetMaxLines then
+        r.sub:SetMaxLines(4)
+    end
     r.sub:SetText(d.sub and (GREY .. d.sub .. "|r") or "")
     r.r1:SetPoint("TOPRIGHT", -pad, -6)
     r.r1:SetWidth(rightW)
@@ -790,10 +802,127 @@ local function renderRow(r, d, width)
     r.r2:SetPoint("TOPRIGHT", -pad, -24)
     r.r2:SetWidth(rightW)
     r.r2:SetText(d.r2 or "")
-    return 42
+    local subH = (d.sub and d.sub ~= "") and (r.sub:GetStringHeight() or 0) or 0
+    return max(42, floor(subY + subH + 7 + 0.5))
 end
 
 local MAX_ROWS = 400
+
+----------------------------------------------------------------------
+-- A scrollbar you can drag
+----------------------------------------------------------------------
+
+-- A thin brass bar at a list's right edge. Drag the thumb, or click the
+-- track to jump there and keep dragging. The list anchors bar.track by its
+-- TOPRIGHT and calls bar:Update(offset, maxOff, shownFraction, trackH)
+-- whenever it scrolls; set(offset) is called while you drag.
+local function cursorY(frame)
+    local _, y = GetCursorPosition()
+    local scale = frame:GetEffectiveScale() or 1
+    return (y or 0) / (scale > 0 and scale or 1)
+end
+
+local function scrollBar(parent, set)
+    local bar = { set = set, offset = 0, maxOff = 0, size = 20, trackH = 0 }
+    local track = CreateFrame("Frame", nil, parent)
+    track:SetSize(10, 10)
+    track:SetFrameLevel((parent:GetFrameLevel() or 0) + 6)
+    track:EnableMouse(true)
+    track.line = tex(track, "BACKGROUND", 1, 1, 1, 0.06)
+    track.line:SetPoint("TOPRIGHT", -1, 0)
+    track.line:SetPoint("BOTTOMRIGHT", -1, 0)
+    track.line:SetWidth(4)
+    local thumb = CreateFrame("Frame", nil, track)
+    thumb:SetWidth(10)
+    thumb:EnableMouse(true)
+    thumb.bar = tex(thumb, "OVERLAY", C.edge[1], C.edge[2], C.edge[3], 0.9)
+    thumb.bar:SetPoint("TOPRIGHT", -1, 0)
+    thumb.bar:SetPoint("BOTTOMRIGHT", -1, 0)
+    bar.track, bar.thumb = track, thumb
+
+    local function paint()
+        local hot = bar.dragging or thumb.hover
+        local c = hot and C.goldEdge or C.edge
+        thumb.bar:SetWidth(hot and 6 or 4)
+        thumb.bar:SetColorTexture(c[1], c[2], c[3], hot and 1 or 0.9)
+    end
+    local function stop()
+        bar.dragging = nil
+        thumb:SetScript("OnUpdate", nil)
+        paint()
+    end
+    local function startDrag()
+        local span = bar.trackH - bar.size
+        if bar.maxOff <= 0 or span <= 0 then
+            return
+        end
+        bar.dragging = { y = cursorY(track), off = bar.offset, per = bar.maxOff / span }
+        paint()
+        thumb:SetScript("OnUpdate", function()
+            local d = bar.dragging
+            if not d then
+                return
+            end
+            if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+                stop()
+                return
+            end
+            bar.set(max(0, min(bar.maxOff, d.off + (d.y - cursorY(track)) * d.per)))
+        end)
+    end
+    bar.Drag, bar.StopDrag = startDrag, stop
+    thumb:SetScript("OnEnter", function()
+        thumb.hover = true
+        paint()
+    end)
+    thumb:SetScript("OnLeave", function()
+        thumb.hover = nil
+        paint()
+    end)
+    thumb:SetScript("OnMouseDown", function(_, which)
+        if which == nil or which == "LeftButton" then
+            startDrag()
+        end
+    end)
+    thumb:SetScript("OnMouseUp", stop)
+    -- A click on the track puts the thumb's middle under the cursor.
+    track:SetScript("OnMouseDown", function(_, which)
+        if which ~= nil and which ~= "LeftButton" then
+            return
+        end
+        local span, top = bar.trackH - bar.size, track:GetTop()
+        if bar.maxOff <= 0 or span <= 0 or not top then
+            return
+        end
+        local rel = top - cursorY(track)
+        bar.set(max(0, min(bar.maxOff, (rel - bar.size / 2) / span * bar.maxOff)))
+        startDrag()
+    end)
+    track:SetScript("OnMouseUp", stop)
+
+    function bar:Update(offset, maxOff, frac, trackH)
+        self.offset, self.maxOff, self.trackH = offset or 0, maxOff or 0, trackH or 0
+        if self.maxOff <= 0 or self.trackH <= 0 then
+            if self.dragging then
+                stop()
+            end
+            track:Hide()
+            return
+        end
+        self.size = max(20, min(self.trackH, self.trackH * (frac or 1)))
+        track:SetHeight(self.trackH)
+        thumb:SetHeight(self.size)
+        thumb:ClearAllPoints()
+        thumb:SetPoint("TOPRIGHT", track, "TOPRIGHT", 0, -(self.trackH - self.size) * (self.offset / self.maxOff))
+        track:Show()
+    end
+    function bar:IsShown()
+        return track:IsShown()
+    end
+    paint()
+    track:Hide()
+    return bar
+end
 
 local function createList(parent)
     local list = { rows = {}, ys = {}, hs = {}, count = 0, offset = 0, contentH = 0 }
@@ -804,8 +933,11 @@ local function createList(parent)
     content:SetSize(10, 10)
     content:SetPoint("TOPLEFT", 0, 0)
     list.content = content
-    list.thumb = tex(clip, "OVERLAY", C.edge[1], C.edge[2], C.edge[3], 0.9)
-    list.thumb:SetWidth(3)
+    list.bar = scrollBar(clip, function(o)
+        list.offset = o
+        list:Apply()
+    end)
+    list.bar.track:SetPoint("TOPRIGHT", clip, "TOPRIGHT", 0, 0)
 
     function list:Apply()
         local viewH = self.viewH or 0
@@ -820,15 +952,7 @@ local function createList(parent)
         for i = self.count + 1, #self.rows do
             self.rows[i]:Hide()
         end
-        if maxOffset > 0 and viewH > 0 then
-            local size = max(24, viewH * viewH / self.contentH)
-            self.thumb:SetHeight(size)
-            self.thumb:ClearAllPoints()
-            self.thumb:SetPoint("TOPRIGHT", self.clip, "TOPRIGHT", 0, -(viewH - size) * (self.offset / maxOffset))
-            self.thumb:Show()
-        else
-            self.thumb:Hide()
-        end
+        self.bar:Update(self.offset, maxOffset, self.contentH > 0 and viewH / self.contentH or 1, viewH)
     end
 
     function list:SetRows(data, keepScroll)
@@ -1127,7 +1251,7 @@ end
 
 -- The same building blocks, for the other windows (TrackerUI.lua).
 ns.UIKit = { tex = tex, skin = skin, label = label, button = button, setIcon = setIcon,
-    createList = createList, Hd = Hd, Tx = Tx, GREY = GREY, COIN = COIN, LOGO = LOGO, rowLeave = rowLeave,
+    createList = createList, scrollBar = scrollBar, Hd = Hd, Tx = Tx, GREY = GREY, COIN = COIN, LOGO = LOGO, rowLeave = rowLeave,
     C = C, SERIF_L = SERIF_L, edgeFor = edgeFor }
 
 local SRC = { vendor = "from a vendor", ah = "auction house", craft = "you make it", old = "last price seen" }
@@ -2159,6 +2283,65 @@ local function cycleRow(rows, key, steps, default, title, labels, sub)
         end }
 end
 
+-- Mailbox settings: the same switches as the mailbox window, in one place.
+local RESERVE_STEPS = { 0, 10000, 50000, 100000, 500000, 1000000 }
+
+local function mailRefresh()
+    ns.RefreshUI(true)
+    if ns.MailUI and ns.MailUI.Refresh then
+        ns.MailUI.Refresh()
+    end
+end
+
+local function mailSwitch(rows, on, text, sub, flip)
+    rows[#rows + 1] = { noIcon = true, title = (on and "|cff40e060[on]|r  " or "|cffff7070[off]|r  ") .. text,
+        sub = sub and (sub .. "  Click to turn " .. (on and "off." or "on.")) or ("Click to turn " .. (on and "off" or "on")),
+        onClick = function()
+            flip(not on)
+            mailRefresh()
+        end }
+end
+
+local function mailRows(rows)
+    local opts = ns.db.opts
+    local U = ns.MailUI
+    mailSwitch(rows, not opts.mailBlizzard, "Use the Forever Gold mailbox window instead of the game's",
+        "Off: the game's own mailbox, with a button above it to switch back.",
+        function(on)
+            if U and ns.Mail and ns.Mail.open then
+                if on then U.UseOurs() else U.UseBlizzard() end
+            else
+                opts.mailBlizzard = (not on) or nil
+            end
+        end)
+    mailSwitch(rows, opts.mailPrompt ~= false, "Ask to send what my rules match when I open a mailbox",
+        "Shows what would go where, with Send now, Review first or Not now.",
+        function(on) opts.mailPrompt = on end)
+    mailSwitch(rows, opts.mailAuto == true, "Send what my rules match by itself when I open a mailbox",
+        "No asking: it starts sending as soon as the mailbox opens.",
+        function(on) opts.mailAuto = on end)
+    mailSwitch(rows, opts.mailGold == true, "Quick-send to my banker also sends my spare gold",
+        "Everything above \"Keep at least\" after postage.",
+        function(on) opts.mailGold = on end)
+    local cur = (ns.Mail and ns.Mail.Reserve) and ns.Mail.Reserve() or 0
+    rows[#rows + 1] = { noIcon = true,
+        title = "Keep at least this much gold when mailing: |cffffd100" .. (cur > 0 and ns.Money(cur) or "nothing") .. "|r",
+        sub = "Click to change (nothing, 1g, 5g, 10g, 50g or 100g). Postage counts. The mailbox's Send tab takes any amount.",
+        onClick = function()
+            local nextStep = RESERVE_STEPS[1]
+            for i, v in ipairs(RESERVE_STEPS) do
+                if v == cur then
+                    nextStep = RESERVE_STEPS[(i % #RESERVE_STEPS) + 1]
+                end
+            end
+            opts.mailReserve = nextStep
+            mailRefresh()
+        end }
+    local banker = ns.Mail and ns.Mail.NameOf and ns.Mail.NameOf(ns.Mail.BankerKey())
+    Tx(rows, nil, "Your banker" .. (banker and (" is |cffffd100" .. banker .. "|r") or "")
+        .. ". Rules, the banker and what quick-send includes are set in the mailbox window (Send and Rules tabs).")
+end
+
 local function buildTips()
     local rows = {}
     Hd(rows, "Selling")
@@ -2185,6 +2368,8 @@ local function buildTips()
     optionRow(rows, "lootBeam", "Loot beams: gold on a route stop, white on a spot I've recorded, light blue on one I haven't")
     optionRow(rows, "nearestBeam", "With no route running, put a white beam on the nearest spot I've recorded (only when I'm not tracking anything else)")
     optionRow(rows, "beamUnrecorded", "Beam on herbs, veins and chests right in front of me, recorded or not (turns on the game's Interact Key and its icons)")
+    Hd(rows, "Mailbox")
+    mailRows(rows)
     Hd(rows, "Sale rates")
     Tx(rows, nil, ns.MarketStatus and ns.MarketStatus() or "")
     local have = ns.AccountProfessions()

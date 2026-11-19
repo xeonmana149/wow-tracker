@@ -199,7 +199,11 @@ function ns.SpeedWeight(id)
 end
 
 local function perDayText(d)
-    if d >= 10 then
+    if d >= 10000 then
+        return floor(d / 1000 + 0.5) .. "k"
+    elseif d >= 1000 then
+        return (floor(d / 100 + 0.5) / 10) .. "k"
+    elseif d >= 10 then
         return tostring(floor(d + 0.5))
     elseif d >= 1 then
         return tostring(floor(d * 10 + 0.5) / 10)

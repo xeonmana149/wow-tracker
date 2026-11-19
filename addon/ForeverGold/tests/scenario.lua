@@ -1198,6 +1198,110 @@ do
     list.clip._scripts.OnMouseWheel(list.clip, -1)
     check(list.offset > 0, "mouse wheel scrolls")
     list.clip._scripts.OnMouseWheel(list.clip, 1)
+
+    -- The scrollbar drags.
+    local bar = list.bar
+    list.offset = 0; list:Apply()
+    check(bar:IsShown() and bar.trackH > bar.size, "the settings list shows a scrollbar")
+    M.cursorY = 600
+    bar.thumb._scripts.OnMouseDown(bar.thumb, "LeftButton")
+    check(bar.dragging, "pressing the thumb starts a drag")
+    local function drag()
+        bar.thumb._scripts.OnUpdate(bar.thumb, 0.1)
+    end
+    M.cursorY = 550
+    drag()
+    local dragged = list.offset
+    check(dragged > 0, "dragging the thumb down scrolls the list: " .. tostring(dragged))
+    M.cursorY = 525
+    drag()
+    check(list.offset > dragged, "dragging further scrolls further")
+    M.cursorY = 900
+    drag()
+    check(list.offset == 0, "dragging past the top stops at the top")
+    bar.thumb._scripts.OnMouseUp(bar.thumb, "LeftButton")
+    M.cursorY = 0
+    M.update(0.1)
+    check(list.offset == 0 and not bar.dragging, "letting go ends the drag")
+    local maxOff = list.contentH - list.viewH
+    M.cursorY = 700 - bar.trackH + 2 -- the mock puts the track's top at 700
+    bar.track._scripts.OnMouseDown(bar.track, "LeftButton")
+    check(math.abs(list.offset - maxOff) < 0.01, "clicking the bottom of the track jumps to the end")
+    bar.track._scripts.OnMouseUp(bar.track, "LeftButton")
+    M.cursorY = 700 - bar.trackH / 2
+    bar.track._scripts.OnMouseDown(bar.track, "LeftButton")
+    bar.track._scripts.OnMouseUp(bar.track, "LeftButton")
+    check(math.abs(list.offset - maxOff / 2) < maxOff * 0.05, "clicking the middle of the track jumps to the middle")
+    M.cursorY = nil
+    list.offset = 0; list:Apply()
+
+    -- Long lines wrap and the row grows, instead of being cut off.
+    local tall, beam
+    for i = 1, list.count do
+        local d = list.rows[i].d
+        if d.title and strip(d.title):find("Beam on herbs") then
+            beam = list.hs[i]
+        end
+    end
+    check(beam and beam > 42, "a long settings line wraps onto a taller row: " .. tostring(beam))
+
+    -- Mailbox settings
+    check(ns.db.opts.mailReserve == 0 and ns.db.opts.mailReserveFree, "no gold is held back from mail by default")
+    local mailRows = {}
+    local inMail = false
+    for i = 1, list.count do
+        local d = list.rows[i].d
+        if d.type == "header" then
+            inMail = d.text == "Mailbox"
+        elseif inMail and not d.type then
+            mailRows[#mailRows + 1] = d
+        end
+    end
+    check(#mailRows == 5, "Settings has a Mailbox section with 5 switches: " .. #mailRows)
+    local function mailRow(word)
+        for _, d in ipairs(mailRows) do
+            if strip(d.title):find(word) then return d end
+        end
+    end
+    local r = mailRow("Ask to send")
+    check(r and strip(r.title):find("%[on%]"), "the mailbox ask switch shows on")
+    r.onClick(r)
+    check(ns.db.opts.mailPrompt == false, "the ask switch turns off from Settings")
+    ns.db.opts.mailPrompt = true
+    r = mailRow("by itself")
+    r.onClick(r)
+    check(ns.db.opts.mailAuto == true, "auto-send turns on from Settings")
+    ns.db.opts.mailAuto = false
+    r = mailRow("spare gold")
+    r.onClick(r)
+    check(ns.db.opts.mailGold == true, "sending spare gold turns on from Settings")
+    ns.db.opts.mailGold = false
+    r = mailRow("Keep at least")
+    check(r and strip(r.title):find("nothing"), "the reserve shows nothing kept")
+    r.onClick(r)
+    check(ns.db.opts.mailReserve == 10000, "clicking the reserve steps to 1g")
+    ns.db.opts.mailReserve = 0
+    r = mailRow("mailbox window")
+    r.onClick(r)
+    check(ns.db.opts.mailBlizzard == true, "switching to the game's mailbox from Settings")
+    ns.ShowTab("tips")
+    for i = 1, list.count do
+        local d = list.rows[i].d
+        if d.title and strip(d.title):find("mailbox window") then d.onClick(d) end
+    end
+    check(not ns.db.opts.mailBlizzard, "and back to Forever Gold's")
+    ns.RefreshUI(true)
+end
+do
+    -- An old saved 5g reserve (the old default) is cleared once; your own stays.
+    local saved = ns.db.opts
+    saved.mailReserve, saved.mailReserveFree = 50000, nil
+    ns.InitDB()
+    check(ns.db.opts.mailReserve == 0, "the old 5g default reserve is cleared")
+    ns.db.opts.mailReserve = 50000
+    ns.InitDB()
+    check(ns.db.opts.mailReserve == 50000, "a 5g reserve you set again yourself is kept")
+    ns.db.opts.mailReserve = 0
 end
 SlashCmdList["FOREVERGOLD"]("debug")
 SlashCmdList["FOREVERGOLD"]("help")

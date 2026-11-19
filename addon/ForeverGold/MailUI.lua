@@ -239,7 +239,14 @@ local function showPopup(owner, options, onPick)
             popup.offset = max(0, min(popup.offset - delta * 3, max(0, #popup.options - POP_ROWS)))
             popup:Render()
         end)
+        popup.bar = K.scrollBar(popup, function(o)
+            popup.offset = floor(o + 0.5)
+            popup:Render()
+        end)
+        popup.bar.track:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -1, -2)
         function popup:Render()
+            local n = #self.options
+            self.bar:Update(self.offset, max(0, n - POP_ROWS), n > 0 and POP_ROWS / n or 1, 20 * min(POP_ROWS, max(1, n)))
             for i = 1, POP_ROWS do
                 local r = self.rows[i]
                 local o = self.options[i + self.offset]
@@ -448,8 +455,11 @@ local function newRows(parent, w, h, rowH, opts)
         r:SetScript("OnLeave", untip)
         L.rows[i] = r
     end
-    L.thumb = tex(L, "OVERLAY", C.edge[1], C.edge[2], C.edge[3], 0.9)
-    L.thumb:SetWidth(3)
+    L.bar = K.scrollBar(L, function(o)
+        L.offset = floor(o + 0.5)
+        L:Render()
+    end)
+    L.bar.track:SetPoint("TOPRIGHT", L, "TOPRIGHT", 0, -3)
     L.empty = label(L, "GameFontDisable")
     L.empty:SetPoint("TOP", 0, -70)
     L.empty:SetWidth(w - 60)
@@ -527,16 +537,7 @@ local function newRows(parent, w, h, rowH, opts)
             end
         end
         self.empty:SetShown(n == 0)
-        if maxOff > 0 then
-            local trackH = self:GetHeight() - 6
-            local size = max(20, trackH * self.visible / n)
-            self.thumb:SetHeight(size)
-            self.thumb:ClearAllPoints()
-            self.thumb:SetPoint("TOPRIGHT", self, "TOPRIGHT", -2, -3 - (trackH - size) * (self.offset / maxOff))
-            self.thumb:Show()
-        else
-            self.thumb:Hide()
-        end
+        self.bar:Update(self.offset, maxOff, n > 0 and self.visible / n or 1, self:GetHeight() - 6)
     end
     function L:SetEmpty(text)
         self.empty:SetText(text or "")

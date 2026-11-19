@@ -167,7 +167,10 @@ under the tabs is on every tab: your **banker**, **Change banker**, and
   Mail takes whole stacks, so if the keep amount falls inside a stack the row
   says "whole stacks" and sends less. Gold is off until you tick "Include spare
   gold": it then sends what's above "Keep at least" after every mail's postage.
-  Postage never takes you under "Keep at least" either.
+  "Keep at least" is nothing unless you set it (any amount in the Send tab, or
+  steps from nothing to 100g in Settings); postage never takes you under it.
+  Settings on the Tips tab also has a Mailbox section: which mailbox window to
+  use, asking or auto-sending when a mailbox opens, and sending spare gold.
 - **Auto-send rules** - each rule matches one item or a material group (cloth
   and bolts, herbs, ore and bars, leather and hides, elemental, enchanting, meat
   and fish, gems, or auction stock), sends it to a character or to "Banker"

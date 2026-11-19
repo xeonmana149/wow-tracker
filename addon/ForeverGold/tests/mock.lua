@@ -231,7 +231,7 @@ function GetRealmName() return "CAMWOW AU1 Realm 2 PvP" end
 function GetNormalizedRealmName() return "PvP" end
 function GetRealZoneText() return M.player.zone end
 function GetPlayerFacing() return M.player.facing end
-function GetCursorPosition() return M.cursorX or 300, 300 end
+function GetCursorPosition() return M.cursorX or 300, M.cursorY or 300 end
 function GetLocale() return "enUS" end
 function IsShiftKeyDown() return M.shift end
 function IsFishingLoot() return M.fishing end

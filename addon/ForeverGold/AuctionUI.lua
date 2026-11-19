@@ -128,8 +128,11 @@ local function newTable(parent, w, h, cols)
         t.heads[i] = b
     end
 
-    t.thumb = tex(t, "OVERLAY", C.edge[1], C.edge[2], C.edge[3], 0.9)
-    t.thumb:SetWidth(3)
+    t.bar = K.scrollBar(t, function(o)
+        t.offset = floor(o + 0.5)
+        t:Render()
+    end)
+    t.bar.track:SetPoint("TOPRIGHT", t, "TOPRIGHT", 0, -24)
     t.empty = label(t, "GameFontDisable")
     t.empty:SetPoint("TOP", 0, -60)
     t.empty:SetWidth(w - 60)
@@ -305,16 +308,7 @@ local function newTable(parent, w, h, cols)
             end
         end
         self.empty:SetShown(n == 0)
-        if maxOff > 0 then
-            local trackH = self:GetHeight() - 26
-            local size = max(20, trackH * self.visible / n)
-            self.thumb:SetHeight(size)
-            self.thumb:ClearAllPoints()
-            self.thumb:SetPoint("TOPRIGHT", self, "TOPRIGHT", -2, -24 - (trackH - size) * (self.offset / maxOff))
-            self.thumb:Show()
-        else
-            self.thumb:Hide()
-        end
+        self.bar:Update(self.offset, maxOff, n > 0 and self.visible / n or 1, self:GetHeight() - 26)
         for i, c in ipairs(self.cols) do
             local arrow = (self.sortKey == c.key) and (self.sortAsc and " ^" or " v") or ""
             self.heads[i].text:SetText((c.title or "") .. arrow)

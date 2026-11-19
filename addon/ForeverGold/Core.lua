@@ -18,7 +18,7 @@ local ADDON, ns = ...
 _G.ForeverGold = ns
 
 ns.TITLE = "Forever Gold"
-ns.VERSION = "1.9.0"
+ns.VERSION = "1.9.1"
 -- The auction house keeps 5% of every sale.
 ns.AH_CUT = 0.05
 
@@ -289,7 +289,13 @@ function ns.InitDB()
     if opts.mailAuto == nil then opts.mailAuto = false end
     if opts.mailPrompt == nil then opts.mailPrompt = true end
     if opts.mailGold == nil then opts.mailGold = false end
-    if opts.mailReserve == nil then opts.mailReserve = 50000 end -- keep 5 gold
+    -- No gold is held back unless you set "Keep at least". The old default kept 5 gold;
+    -- that is cleared once, so only a reserve you set yourself stays.
+    if not opts.mailReserveFree then
+        if opts.mailReserve == 50000 then opts.mailReserve = 0 end
+        opts.mailReserveFree = true
+    end
+    if opts.mailReserve == nil then opts.mailReserve = 0 end
     ns.db = db
     return db
 end

@@ -83,6 +83,16 @@ function MB.Reserve()
     return max(0, floor(tonumber(O().mailReserve) or 0))
 end
 
+-- Why a mail can't be paid for: under the gold you keep, or (with no
+-- reserve set) more than you have.
+local function shortWords()
+    local r = MB.Reserve()
+    if r > 0 then
+        return "would take you under the " .. plain(r) .. " you keep"
+    end
+    return "is more gold than you have"
+end
+
 function MB.Postage(attachments)
     return MB.POSTAGE * max(1, attachments or 0)
 end
@@ -743,8 +753,8 @@ local function totals(plan)
     local money = ns.try(GetMoney) or 0
     plan.after = money - postage - (plan.gold or 0)
     if #plan.ships > 0 and money - postage < MB.Reserve() then
-        plan.warn = "Postage (" .. plain(postage) .. ") would take you under the " .. plain(MB.Reserve())
-            .. " you keep. Lower \"Keep at least\" or send less."
+        plan.warn = "Postage (" .. plain(postage) .. ") " .. shortWords()
+            .. (MB.Reserve() > 0 and ". Lower \"Keep at least\" or send less." or ". Send less.")
     end
 end
 
@@ -872,7 +882,8 @@ function MB.PlanBanker()
             last.money = spare
             last.gold = true
         else
-            plan.goldNote = "No spare gold: you have " .. plain(money) .. ", keep " .. plain(MB.Reserve())
+            plan.goldNote = "No spare gold: you have " .. plain(money)
+                .. (MB.Reserve() > 0 and (", keep " .. plain(MB.Reserve())) or "")
                 .. " and postage is " .. plain(postage) .. "."
         end
     end
@@ -936,8 +947,8 @@ function MB.PlanCustom(form)
         plan.ships = { ship }
         local have = ns.try(GetMoney) or 0
         if money > 0 and have - money - ship.postage < MB.Reserve() then
-            plan.problem = "Sending " .. plain(money) .. " plus " .. plain(ship.postage) .. " postage would leave less than the "
-                .. plain(MB.Reserve()) .. " you keep."
+            plan.problem = "Sending " .. plain(money) .. " plus " .. plain(ship.postage) .. " postage "
+                .. shortWords() .. "."
             plan.ships = {}
         end
     end
@@ -1580,15 +1591,16 @@ prepare = function()
         if s.gold then
             s.money = max(0, money - MB.Reserve() - postage - remainingPostage(Q.i))
             if s.money <= 0 and #atts == 0 then
-                s.status, s.error = "skipped", "No spare gold left above your reserve."
+                s.status, s.error = "skipped",
+                    MB.Reserve() > 0 and "No spare gold left above your reserve." or "No spare gold left after postage."
                 advance()
                 return
             end
-            notes[#notes + 1] = "gold lowered to " .. plain(s.money) .. " to keep your reserve"
+            notes[#notes + 1] = "gold lowered to " .. plain(s.money)
+                .. (MB.Reserve() > 0 and " to keep your reserve" or " to cover postage")
         else
             s.status = "planned"
-            stopSending("error", "Postage for " .. shipLabel(s) .. " would take you under the " .. plain(MB.Reserve())
-                .. " you keep. Nothing was sent.")
+            stopSending("error", "Postage for " .. shipLabel(s) .. " " .. shortWords() .. ". Nothing was sent.")
             return
         end
     end
@@ -1737,7 +1749,7 @@ function MB.SendNext()
         s.money = min(s.money or 0, max(0, money - MB.Reserve() - postage - remainingPostage(Q.i)))
     end
     if money - postage - (s.money or 0) < MB.Reserve() then
-        stopSending("error", "Sending would take you under the " .. plain(MB.Reserve()) .. " you keep. Nothing was sent.")
+        stopSending("error", "Sending " .. shortWords() .. ". Nothing was sent.")
         return false
     end
     s.postage = postage
