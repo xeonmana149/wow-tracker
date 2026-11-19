@@ -34,8 +34,8 @@ export const DOWNLOAD_URLS = {
   // tray installer (nsis.artifactName in tray-electron/package.json), but
   // for the addon zip that upload is a manual (or scripted) extra step you
   // do yourself - see the comment above.
-  addon: "1.9.17",
-  tray: "2.2.33",
+  addon: "https://github.com/xeonmana149/wow-tracker/releases/latest/download/WoWForeverTrackerAddon.zip",
+  tray: "https://github.com/xeonmana149/wow-tracker/releases/latest/download/WoWForeverTrackerSetup.exe",
   // Attached to every release by the tray's zip-addon-for-publish.js hook.
-  foreverGold: "1.9.3",
+  foreverGold: "https://github.com/xeonmana149/wow-tracker/releases/latest/download/ForeverGoldAddon.zip",
 };
