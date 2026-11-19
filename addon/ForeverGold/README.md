@@ -38,7 +38,7 @@ The window answers one question first: what should I do right now?
 | To do | Opens first. Undercut auctions to relist, then every quick win numbered best first: post these from your bags, buy these and vendor them, craft this, buy this from a vendor and resell it. Each row is short (the item, then where it goes: "Vendor > auction house · The Barrens"); the full instructions are in the pane. Below: the best farm if you've got an hour, and a one-line account summary. |
 | Sell | What in your bags to auction (each row has a Sell button, see below), what to vendor, and which of your auctions were undercut. |
 | Buy | Auction items cheaper than a vendor pays (no risk), vendor items that really resell at auction (proven by sale data, or limited vendor stock), and items far below their usual price. |
-| Make | Three views, switched at the top. Craft: every recipe you know, with cost, sale price and profit after the 5% cut. Farm: gathering and grinding spots for your level and professions, your saved trips, and the Farming Session window. Routes: pick a zone you've gathered in and the map (the zone's own map picture, with a pickaxe, leaf or hook on each recorded spot) previews a suggested loop. Tick Herbs, Ore or Fishing above the map; click a spot to leave it out, right-click to start there; then Start route and follow the arrow (Pause, Skip stop, End route). Save route remembers the ticks and start for that zone. Recorded spots aren't guaranteed to be up, and the lines are straight. |
+| Make | Three views, switched at the top. Craft: every recipe you know, with cost, sale price and profit after the 5% cut. Farm: gathering and grinding spots for your level and professions, your saved trips, and the Farming Session window. Routes: pick a zone you've gathered in and the map (the zone's own map picture, with a pickaxe, leaf or hook on each recorded spot) previews a suggested loop. Tick Herbs, Ore or Fishing above the map; click a spot to leave it out, right-click to start there; then Start route and follow the arrow (Pause, Skip stop, End route). Save route remembers the ticks and start for that zone. Recorded spots aren't guaranteed to be up, and the lines are straight. A loot beam stands on the next stop (gold), the nearest recorded spot when no route runs (white), and an herb, vein or chest right in front of you that isn't recorded yet (blue). On the world map (OpenMap's too) the gathering button at the top right filters herbs, ore, fishing, chests and the route line; right-click it to hide them all. |
 | Characters | A graph of your gold across all your characters over time (24 hours, 7 days, 30 days or all of it; hover for the exact amount at any point), and every character with class, level, gold and primary professions. Click one for all its professions. Gold is recorded from this version on. |
 
 Each tab is a list on the left and a details pane on the right. Click a row
@@ -106,6 +106,16 @@ game's. It has the game's three tabs, plus what the addon knows:
     house for the exact price; the second click, "Confirm: pay ...", buys.
     Cancel backs out. It buys cheapest first and skips your own listings.
   - gear: click the listing you want, then "Buy now".
+
+  Each listing shows its **seller**. The box beside it says who has the most
+  listed and who's cheapest, and when you look at an item again, sellers who
+  cut their price (**cut**) or weren't there before (**new**) are marked
+  (remembered for the session). Ctrl+click any gear to try it on.
+
+  **Suspicious** marks prices that make no sense - mostly a gray item listed for
+  far more than a vendor pays, which is gold being passed between accounts - and
+  items whose usual price was built from listings like that. They're never
+  called deals, and selling never undercuts them.
 - **Sell** - a proposed listing for everything in your bags that can go on the
   auction house. The ones the advice recommends are ticked; tick or untick the
   rest (remembered). Press "Price check" once: every ticked item is looked up
@@ -168,9 +178,10 @@ under the tabs is on every tab: your **banker**, **Change banker**, and
   stays. "Add suggested rules" adds cloth to Xeon Hexspark (keep 20), herbs to
   Xeon Raincaller (keep 5), ore and bars to Xeon Mana (keep 20), leather to Xeon
   Ironfang (keep 10) and auction stock to your banker, all switched off for you
-  to check. "Preview matching mail" shows the result on Send mail. "Auto-send on
-  mailbox open" (off unless you tick it) gets the first mail ready as the
-  mailbox opens.
+  to check. "Preview matching mail" shows the result on Send mail. "Ask when a
+  mailbox opens" (on by default) shows what your rules would send as the mailbox
+  opens, with Send now, Review first or Not now. "Auto-send on mailbox open"
+  (off unless you tick it) gets the first mail ready without asking.
 
 The game only sends mail from a real button press, so each mail needs one
 click of Send - even with auto-send. Forever Gold attaches the stacks, checks

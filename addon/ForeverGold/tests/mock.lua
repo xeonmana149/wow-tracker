@@ -86,6 +86,13 @@ function methods:SetPoint(point, ...)
         assert(v ~= nil, "SetPoint got a nil argument")
         if type(v) == "number" then assert(v == v, "SetPoint got NaN") end
     end
+    self._points = self._points or {}
+    self._points[#self._points + 1] = { point, ... }
+end
+function methods:ClearAllPoints() self._points = {} end
+function methods:GetPoint(i)
+    local p = self._points and self._points[i or 1]
+    if p then return unpack(p) end
 end
 function methods:SetStartPoint(point, rel, x, y) assert(type(x) == "number" and type(y) == "number" and x == x and y == y, "bad line start") end
 function methods:SetEndPoint(point, rel, x, y) assert(type(x) == "number" and type(y) == "number" and x == x and y == y, "bad line end") end
@@ -131,6 +138,7 @@ function CreateFrame(kind, name, parent, template)
 end
 
 UIParent = newWidget("Frame", "UIParent")
+WorldFrame = newWidget("Frame", "WorldFrame"); WorldFrame._h = 900
 Minimap = newWidget("Frame", "Minimap"); Minimap._w = 140
 GameTooltip = newWidget("GameTooltip", "GameTooltip")
 ItemRefTooltip = newWidget("GameTooltip", "ItemRefTooltip")
@@ -270,6 +278,15 @@ function C_Item.GetItemInfo(id)
     return it[1], "|cffffffff|Hitem:" .. id .. "|h[" .. it[1] .. "]|h|r", it[2], 10, 5, "Trade Goods", "Metal", stack, "", 134400, it[3], it[4], 0, it[5] or 0
 end
 function C_Item.GetItemNameByID(id) local it = M.items[id]; return it and it[1] or nil end
+-- Dressing room: weapons (2) and armour (4) can be tried on; Ctrl is the DRESSUP modifier.
+function C_Item.IsDressableItemByID(link)
+    local id = type(link) == "number" and link or tonumber(tostring(link):match("item:(%d+)"))
+    local it = id and M.items[id]
+    return it ~= nil and (it[4] == 2 or it[4] == 4)
+end
+function IsModifiedClick(what) return what == "DRESSUP" and M.ctrl or false end
+M.dressed = {}
+function DressUpItemLink(link) M.dressed[#M.dressed + 1] = link; return true end
 function C_Item.GetItemIconByID(id) return M.items[id] and (130000 + id % 1000) or nil end
 function C_Item.RequestLoadItemDataByID(id) M.requested = (M.requested or 0) + 1 end
 
@@ -567,14 +584,18 @@ end
 function C_AuctionHouse.GetNumCommoditySearchResults(id) return #(M.market[id] or {}) end
 function C_AuctionHouse.GetCommoditySearchResultInfo(id, i)
     local l = M.market[id][i]
-    return { itemID = id, unitPrice = l[1], quantity = l[2], containsOwnerItem = l[3] or false, containsAccountItem = false }
+    -- l[5]: the seller (or a list of sellers at that price)
+    local owners = type(l[5]) == "table" and l[5] or { l[5] or (l[3] and "Me" or "Someone") }
+    return { itemID = id, unitPrice = l[1], quantity = l[2], containsOwnerItem = l[3] or false, containsAccountItem = false,
+        owners = owners, totalNumberOfOwners = #owners, numOwnerItems = l[3] and l[2] or 0 }
 end
 function C_AuctionHouse.GetNumItemSearchResults(key) return #(M.market[key.itemID] or {}) end
 function C_AuctionHouse.GetItemSearchResultInfo(key, i)
     local l = M.market[key.itemID][i]
     -- l[4]: the next bid that would be accepted, for the whole auction
     return { itemKey = key, auctionID = key.itemID * 100 + i, buyoutAmount = l[1] * l[2], quantity = l[2],
-        containsOwnerItem = l[3] or false, containsAccountItem = false, owners = { l[3] and "player" or "Someone" },
+        containsOwnerItem = l[3] or false, containsAccountItem = false, owners = { l[5] or (l[3] and "player" or "Someone") },
+        totalNumberOfOwners = 1,
         timeLeftSeconds = 7200 * i, timeLeft = 2, minBid = l[4] }
 end
 function C_AuctionHouse.CalculateCommodityDeposit(id, duration, qty) assert(type(id) == "number" and duration >= 1 and duration <= 3); return qty * 2 end

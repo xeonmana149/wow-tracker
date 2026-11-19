@@ -1102,6 +1102,9 @@ local function redrawWorldMap()
     if not mapOverlay or not WorldMapFrame or not WorldMapFrame:IsShown() then
         return
     end
+    if ns.UpdateMapButton then
+        ns.Guard("map-button", ns.UpdateMapButton)()
+    end
     if ns.db.opts.worldMapSpots == false then
         mapPlot:Clear()
         return
@@ -1124,7 +1127,53 @@ local function redrawWorldMap()
     local scale = canvasScale()
     drawnScale = scale
     local unit = 1 / scale
-    mapPlot:Draw(mapID, w, h, { size = 15 * unit, unit = unit, route = ns.route, maps = maps, project = projection(mapID) })
+    local opts = ns.db.opts
+    mapPlot:Draw(mapID, w, h, { size = 15 * unit, unit = unit, maps = maps, project = projection(mapID),
+        kinds = ns.MapKinds(), route = opts.mapRoute ~= false and ns.route or nil })
+end
+
+-- Which kinds of spot the world map shows (nil: all of them).
+function ns.MapKinds()
+    local off = ns.db.opts.mapKinds
+    if type(off) ~= "table" or not next(off) then
+        return nil
+    end
+    local on = {}
+    for _, k in ipairs(ns.KIND_ORDER) do
+        if off[k] ~= false then
+            on[k] = true
+        end
+    end
+    return on
+end
+
+function ns.MapKindOn(kind)
+    local off = ns.db.opts.mapKinds
+    return not (type(off) == "table" and off[kind] == false)
+end
+
+function ns.SetMapKind(kind, on)
+    local opts = ns.db.opts
+    if type(opts.mapKinds) ~= "table" then
+        opts.mapKinds = {}
+    end
+    if on then
+        opts.mapKinds[kind] = nil
+    else
+        opts.mapKinds[kind] = false
+    end
+    ns.RedrawWorldMap()
+    if ns.RefreshMapButton then
+        ns.RefreshMapButton()
+    end
+end
+
+function ns.SetMapSpots(on)
+    ns.db.opts.worldMapSpots = on and true or false
+    ns.RedrawWorldMap()
+    if ns.RefreshMapButton then
+        ns.RefreshMapButton()
+    end
 end
 ns.RedrawWorldMap = function() ns.Guard("worldmap", redrawWorldMap)() end
 ns.WorldMapPlot = function() return mapPlot end
@@ -1161,6 +1210,259 @@ local function setupWorldMap()
     end
 end
 
+----------------------------------------------------------------------
+-- The map's gathering button
+--
+-- A small button on the world map (OpenMap's or the game's), top right,
+-- left of whatever buttons the game keeps in that corner. Click: a little
+-- menu to show or hide the spots, each kind, the route line and the
+-- minimap's spots. Right-click: everything on or off at once.
+----------------------------------------------------------------------
+
+local MAP_KIND_LABELS_T = { herb = "Herbs", ore = "Ore", fish = "Fishing pools", chest = "Chests" }
+
+local mapButton, mapMenu
+
+local function mapContainer()
+    if not WorldMapFrame then
+        return nil
+    end
+    local sc = rawget(WorldMapFrame, "ScrollContainer")
+    if type(sc) ~= "table" and WorldMapFrame.GetCanvasContainer then
+        sc = ns.try(WorldMapFrame.GetCanvasContainer, WorldMapFrame)
+    end
+    return type(sc) == "table" and sc or WorldMapFrame
+end
+
+-- Top right, left of the game's own buttons in that corner (as OpenMap does
+-- for its bottom corners).
+local function placeMapButton()
+    local sc = mapContainer()
+    if not mapButton or not sc then
+        return
+    end
+    local x = 8
+    local right, top = sc.GetRight and sc:GetRight(), sc.GetTop and sc:GetTop()
+    for _, f in ipairs(WorldMapFrame.overlayFrames or {}) do
+        local shown = f.IsShown and f:IsShown()
+        local fl, ft, fr = shown and f:GetLeft(), f.GetTop and f:GetTop(), f.GetRight and f:GetRight()
+        if fl and fr and ft and right and top and right - fr < 40 and top - ft < 40 and fr - fl < 220 then
+            x = math.max(x, right - fl + 4)
+        end
+    end
+    mapButton:ClearAllPoints()
+    mapButton:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -x, -8)
+end
+
+local function anySpotsShown()
+    return ns.db.opts.worldMapSpots ~= false
+end
+
+local function refreshMapButton()
+    if not mapButton then
+        return
+    end
+    local on = anySpotsShown()
+    if mapButton.icon.SetDesaturated then
+        mapButton.icon:SetDesaturated(not on)
+    end
+    mapButton.icon:SetAlpha(on and 1 or 0.5)
+    mapButton.off:SetShown(not on)
+    if mapMenu and mapMenu:IsShown() then
+        for _, row in ipairs(mapMenu.rows) do
+            local checked = row.get()
+            row.mark:SetShown(checked)
+            local dim = row.needsSpots and not on
+            row.text:SetAlpha(dim and 0.45 or 1)
+            if row.icon then
+                row.icon:SetAlpha(dim and 0.45 or 1)
+                if row.icon.SetDesaturated then
+                    row.icon:SetDesaturated(not checked or dim)
+                end
+            end
+        end
+    end
+end
+ns.RefreshMapButton = refreshMapButton
+
+local function buildMapMenu()
+    local K = ns.UIKit
+    local m = CreateFrame("Frame", "ForeverGoldMapFilter", mapButton)
+    m:SetFrameStrata("DIALOG")
+    m:EnableMouse(true)
+    m:SetPoint("TOPRIGHT", mapButton, "BOTTOMRIGHT", 0, -4)
+    if K and K.skin then
+        K.skin(m)
+    end
+    local title = m:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", 10, -9)
+    title:SetText("Gathering spots")
+    m.rows = {}
+    local y = -30
+    local function row(text, icon, get, set, needsSpots)
+        local r = CreateFrame("Button", nil, m)
+        r:SetSize(196, 20)
+        r:SetPoint("TOPLEFT", 6, y)
+        y = y - 21
+        local hl = r:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(1, 0.92, 0.7, 0.07)
+        local box = r:CreateTexture(nil, "ARTWORK")
+        box:SetSize(14, 14)
+        box:SetPoint("LEFT", 4, 0)
+        box:SetColorTexture(0.04, 0.04, 0.04, 1)
+        local edge = r:CreateTexture(nil, "BORDER")
+        edge:SetPoint("TOPLEFT", box, "TOPLEFT", -1, 1)
+        edge:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", 1, -1)
+        edge:SetColorTexture(0.55, 0.47, 0.3, 1)
+        r.mark = r:CreateTexture(nil, "OVERLAY")
+        r.mark:SetPoint("TOPLEFT", box, "TOPLEFT", 3, -3)
+        r.mark:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -3, 3)
+        r.mark:SetColorTexture(1, 0.82, 0.2, 1)
+        local x = 24
+        if icon then
+            r.icon = r:CreateTexture(nil, "ARTWORK")
+            r.icon:SetSize(16, 16)
+            r.icon:SetPoint("LEFT", x, 0)
+            r.icon:SetTexture(icon)
+            r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            x = x + 20
+        end
+        r.text = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        r.text:SetPoint("LEFT", x, 0)
+        r.text:SetText(text)
+        r.get, r.set, r.needsSpots = get, set, needsSpots
+        r:SetScript("OnClick", function()
+            local ok, err = pcall(set, not get())
+            if not ok then
+                ns.Err("map-filter", err)
+            end
+            refreshMapButton()
+        end)
+        m.rows[#m.rows + 1] = r
+        return r
+    end
+    row("Show on the map", nil, anySpotsShown, function(v) ns.SetMapSpots(v) end)
+    for _, k in ipairs(ns.KIND_ORDER) do
+        local kind = ns.KINDS[k]
+        row(MAP_KIND_LABELS_T[k] or k, kind and kind.icon, function() return ns.MapKindOn(k) end,
+            function(v) ns.SetMapKind(k, v) end, true)
+    end
+    row("Route line", "Interface\\Icons\\INV_Misc_Map_01", function() return ns.db.opts.mapRoute ~= false end,
+        function(v)
+            ns.db.opts.mapRoute = v and true or false
+            ns.RedrawWorldMap()
+        end, true)
+    row("On the minimap too", nil, function() return ns.db.opts.minimapSpots ~= false end,
+        function(v) ns.db.opts.minimapSpots = v and true or false end)
+    m:SetSize(208, -y + 8)
+    m:Hide()
+    return m
+end
+
+function ns.ToggleMapMenu(show)
+    if not mapButton then
+        return
+    end
+    if not mapMenu then
+        mapMenu = buildMapMenu()
+        ns.MapFilterMenu = mapMenu
+    end
+    if show == nil then
+        show = not mapMenu:IsShown()
+    end
+    mapMenu:SetShown(show)
+    refreshMapButton()
+end
+
+local function setupMapButton()
+    if mapButton or not WorldMapFrame then
+        return
+    end
+    local sc = mapContainer()
+    local b = CreateFrame("Button", "ForeverGoldMapButton", sc)
+    b:SetSize(30, 30)
+    b:SetFrameStrata(WorldMapFrame.GetFrameStrata and WorldMapFrame:GetFrameStrata() or "HIGH")
+    b.back = b:CreateTexture(nil, "BACKGROUND")
+    b.back:SetAllPoints()
+    b.back:SetColorTexture(0.05, 0.045, 0.035, 0.9)
+    b.edge = b:CreateTexture(nil, "BORDER")
+    b.edge:SetPoint("TOPLEFT", -1, 1)
+    b.edge:SetPoint("BOTTOMRIGHT", 1, -1)
+    b.edge:SetColorTexture(0.62, 0.5, 0.25, 1)
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetPoint("TOPLEFT", 3, -3)
+    b.icon:SetPoint("BOTTOMRIGHT", -3, 3)
+    b.icon:SetTexture(ns.KINDS.herb.icon)
+    b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    -- A red slash across it while everything is hidden.
+    b.off = b:CreateTexture(nil, "OVERLAY")
+    b.off:SetPoint("CENTER")
+    b.off:SetSize(34, 3)
+    b.off:SetColorTexture(0.9, 0.2, 0.15, 0.95)
+    if b.off.SetRotation then
+        b.off:SetRotation(-0.785)
+    end
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 0.9, 0.6, 0.15)
+    if b.RegisterForClicks then
+        b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    end
+    b:SetScript("OnClick", function(_, which)
+        if which == "RightButton" then
+            ns.SetMapSpots(not anySpotsShown())
+        else
+            ns.ToggleMapMenu()
+        end
+    end)
+    b:SetScript("OnEnter", function(self)
+        if not GameTooltip then
+            return
+        end
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("Forever Gold: gathering spots", 1, 0.82, 0)
+        GameTooltip:AddLine(anySpotsShown() and "Showing on the map." or "Hidden.", 1, 1, 1)
+        GameTooltip:AddLine("Click: choose herbs, ore, fishing, chests, route.", 0.8, 0.8, 0.8)
+        GameTooltip:AddLine("Right-click: show or hide them all.", 0.8, 0.8, 0.8)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function()
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+    mapButton = b
+    ns.MapButton = b
+    WorldMapFrame:HookScript("OnHide", function()
+        if mapMenu then mapMenu:Hide() end
+    end)
+end
+
+-- Every redraw: the button exists, sits above the map's art, and is in its corner.
+function ns.UpdateMapButton()
+    if not WorldMapFrame then
+        return
+    end
+    if not mapButton then
+        setupMapButton()
+    end
+    if not mapButton then
+        return
+    end
+    local sc = mapContainer()
+    local level = (sc.GetFrameLevel and sc:GetFrameLevel() or 1) + 50
+    local api = openMap()
+    if api and api.ArtTopLevel then
+        level = math.max(level, (ns.try(api.ArtTopLevel) or 0) + 20)
+    end
+    if mapOverlay then
+        level = math.max(level, mapOverlay:GetFrameLevel() + 20)
+    end
+    mapButton:SetFrameLevel(level)
+    mapButton:SetShown(ns.db.opts.mapButton ~= false)
+    placeMapButton()
+    refreshMapButton()
+end
+
 -- OpenMap: redraw when it switches between its map and Blizzard's, and put
 -- our switch in its menu.
 local openMapHooked
@@ -1177,9 +1479,22 @@ local function hookOpenMap()
         pcall(api.RegisterMenuToggle, "ForeverGold", { id = "spots", label = "Gathering spots and route",
             icon = ns.KINDS.herb.icon, section = "Forever Gold",
             get = function() return ns.db.opts.worldMapSpots ~= false end,
+            set = function(v) ns.SetMapSpots(v) end })
+        -- One switch per kind, so each can be starred onto OpenMap's bar too.
+        for _, k in ipairs(ns.KIND_ORDER) do
+            local kind = ns.KINDS[k]
+            pcall(api.RegisterMenuToggle, "ForeverGold", { id = "kind-" .. k, label = "  " .. (MAP_KIND_LABELS_T[k] or k),
+                icon = kind and kind.icon, section = "Forever Gold",
+                get = function() return ns.MapKindOn(k) end,
+                set = function(v) ns.SetMapKind(k, v) end })
+        end
+        pcall(api.RegisterMenuToggle, "ForeverGold", { id = "route", label = "  Route line",
+            icon = "Interface\\Icons\\INV_Misc_Map_01", section = "Forever Gold",
+            get = function() return ns.db.opts.mapRoute ~= false end,
             set = function(v)
-                ns.db.opts.worldMapSpots = v and true or false
+                ns.db.opts.mapRoute = v and true or false
                 ns.RedrawWorldMap()
+                if ns.RefreshMapButton then ns.RefreshMapButton() end
             end })
         pcall(api.RegisterMenuToggle, "ForeverGold", { id = "minimap", label = "Gathering spots on the minimap",
             icon = ns.KINDS.ore.icon, section = "Forever Gold",
@@ -1360,13 +1675,11 @@ ns.MinimapPins = mini
 --     else (a quest, your own pin), and it moves on from spots you've just
 --     been to.
 -- The beam is drawn in screen space and sized by distance, so it shrinks
--- as the spot gets further away.
+-- as the spot gets further away (down to a minimum, so it never vanishes).
 ----------------------------------------------------------------------
 
-local BEAM_ROUTE = { 1, 0.86, 0.12 }  -- bright gold: the next stop on your route
-local BEAM_SPOT = { 1, 1, 1 }         -- white: the nearest spot, no route running
-local BEAM_YARDS = 45                 -- how tall the column stands
-local BEAM_WIDTH = 2.4                -- and how wide, in yards
+local BEAM_ROUTE = { 1, 0.80, 0.16 }  -- gold: the next stop on your route
+local BEAM_SPOT = { 0.92, 0.94, 1 }   -- white: the nearest spot, no route running
 local NEAREST_RANGE = 400             -- further away than this isn't "nearby"
 local VISITED_FOR = 300               -- seconds a spot you've just been to is passed over
 local WHITE = "Interface\\Buttons\\WHITE8X8"
@@ -1499,9 +1812,49 @@ local function beamColor()
     return own and trackingPin(own.map, own.x, own.y) and BEAM_SPOT or nil
 end
 
-local function layer(f, drawLayer, sub)
+----------------------------------------------------------------------
+-- How a beam looks: a slim shaft of light, like a loot drop's.
+--
+--   * a thin, near-white hot core (normal blending, so it still reads on
+--     snow, sand and daylight - additive light alone washes out there);
+--   * three soft halos around it in the beam's colour, each wider and
+--     fainter, so the edges melt into the scene instead of stopping;
+--   * everything fades out going up, so the top dissolves into the air;
+--   * a short flare and a small soft pool where it meets the ground;
+--   * a few motes of light drifting up the shaft.
+-- It's drawn on the 3D world's layer (behind nameplates and the whole UI)
+-- and keeps a minimum size on screen, so a far one is still a clear line.
+----------------------------------------------------------------------
+
+local HALOS = { -- width (x the core), brightness at the foot
+    { 2.6, 0.50 },
+    { 5.0, 0.20 },
+    { 9.0, 0.08 },
+}
+local POOLS = { -- width, height (x the core), brightness
+    { 13, 3.4, 0.10 },
+    { 7, 2.0, 0.22 },
+    { 3, 1.0, 0.55 },
+}
+local MOTES = 4
+
+-- The beam's colour, lifted towards white for the hot centre.
+local function lighten(c, k)
+    return c[1] + (1 - c[1]) * k, c[2] + (1 - c[2]) * k, c[3] + (1 - c[3]) * k
+end
+
+local function flat(f, drawLayer, sub, additive)
     local t = f:CreateTexture(nil, drawLayer, nil, sub)
     t:SetTexture(WHITE)
+    if t.SetBlendMode then
+        t:SetBlendMode(additive and "ADD" or "BLEND")
+    end
+    return t
+end
+
+local function disc(f, drawLayer, sub)
+    local t = f:CreateTexture(nil, drawLayer, nil, sub)
+    t:SetTexture(DISC)
     if t.SetBlendMode then
         t:SetBlendMode("ADD")
     end
@@ -1509,34 +1862,49 @@ local function layer(f, drawLayer, sub)
 end
 
 -- Bright at the foot, fading out towards the top.
-local function shade(t, c, bottom, top)
+local function shade(t, r, g, b, bottom, top)
     if t.SetGradient and CreateColor then
-        t:SetGradient("VERTICAL", CreateColor(c[1], c[2], c[3], bottom), CreateColor(c[1], c[2], c[3], top))
+        t:SetGradient("VERTICAL", CreateColor(r, g, b, bottom), CreateColor(r, g, b, top))
     else
-        t:SetVertexColor(c[1], c[2], c[3], bottom)
+        t:SetVertexColor(r, g, b, bottom)
     end
 end
 
 local function buildBeam()
-    local f = CreateFrame("Frame", nil, UIParent)
+    -- On the world's layer when there is one: under nameplates and the UI.
+    local parent = WorldFrame or UIParent
+    local f = CreateFrame("Frame", nil, parent)
     f:SetFrameStrata("BACKGROUND")
+    f:SetFrameLevel(1)
     f:EnableMouse(false)
-    f:SetSize(20, 200)
-    -- Three nested columns give it soft edges: a wide faint glow, a body,
-    -- and a thin hot core.
-    f.glow = layer(f, "BACKGROUND")
-    f.body = layer(f, "BORDER")
-    f.core = layer(f, "ARTWORK")
-    for _, t in ipairs({ f.glow, f.body, f.core }) do
+    f:SetSize(20, 120)
+    f.halos = {}
+    for i = #HALOS, 1, -1 do
+        local t = flat(f, "BORDER", i, true)
         t:SetPoint("BOTTOM", f, "BOTTOM", 0, 0)
+        f.halos[i] = t
     end
-    -- A pool of light where it meets the ground.
-    f.pool = f:CreateTexture(nil, "OVERLAY")
-    f.pool:SetTexture(DISC)
-    if f.pool.SetBlendMode then
-        f.pool:SetBlendMode("ADD")
+    f.glow, f.body = f.halos[#HALOS], f.halos[1]
+    -- The flare: a short, wide burst of light at the foot.
+    f.flare = flat(f, "BORDER", 5, true)
+    f.flare:SetPoint("BOTTOM", f, "BOTTOM", 0, 0)
+    f.core = flat(f, "ARTWORK", 1, false)
+    f.core:SetPoint("BOTTOM", f, "BOTTOM", 0, 0)
+    f.pools = {}
+    for i, _ in ipairs(POOLS) do
+        local t = disc(f, "BACKGROUND", i)
+        t:SetPoint("CENTER", f, "BOTTOM", 0, 0)
+        f.pools[i] = t
     end
-    f.pool:SetPoint("CENTER", f, "BOTTOM", 0, 0)
+    f.pool = f.pools[#POOLS]
+    f.motes = {}
+    for i = 1, MOTES do
+        local t = disc(f, "OVERLAY", 1)
+        t.phase = (i - 1) / MOTES
+        t.speed = 0.42 + 0.09 * i
+        t.sway = (i % 2 == 0) and 1 or -1
+        f.motes[i] = t
+    end
     f:Hide()
     return f
 end
@@ -1546,28 +1914,54 @@ local function paint(f, c)
         return
     end
     f.color = c
-    shade(f.glow, c, 0.22, 0)
-    shade(f.body, c, 0.45, 0)
-    shade(f.core, c, 0.95, 0.05)
-    f.pool:SetVertexColor(c[1], c[2], c[3], 0.55)
+    local cr, cg, cb = lighten(c, 0.65)
+    shade(f.core, cr, cg, cb, 0.95, 0)
+    for i, spec in ipairs(HALOS) do
+        shade(f.halos[i], c[1], c[2], c[3], spec[2], 0)
+    end
+    shade(f.flare, c[1], c[2], c[3], 0.30, 0)
+    for i, spec in ipairs(POOLS) do
+        f.pools[i]:SetVertexColor(c[1], c[2], c[3], spec[3])
+    end
+    local mr, mg, mb = lighten(c, 0.5)
+    for _, m in ipairs(f.motes) do
+        m:SetVertexColor(mr, mg, mb, 1)
+    end
 end
 
--- Sized for how far away it is: roughly how many pixels a yard is there.
+-- Sized for how far away it is (roughly how many pixels a yard is there),
+-- but never so small it disappears or so big it fills the screen.
 local function sizeBeam(f, d, alpha)
-    local screen = (UIParent and UIParent:GetHeight()) or 0
+    local parent = f:GetParent() or UIParent
+    local screen = (parent and parent:GetHeight()) or 0
     if screen <= 0 then
         screen = 768
     end
     local perYard = screen * 0.55 / math.max(d, 5)
-    local h = math.max(28, math.min(screen * 0.9, BEAM_YARDS * perYard))
-    local w = math.max(5, math.min(70, BEAM_WIDTH * perYard))
-    f:SetSize(w * 2, h)
-    f.glow:SetSize(w * 2, h)
-    f.body:SetSize(w, h)
-    f.core:SetSize(math.max(2, w * 0.28), h)
-    f.pool:SetSize(w * 3.2, w * 1.1)
-    local pulse = 0.84 + 0.16 * math.sin(GetTime() * 2.6)
-    f:SetAlpha(alpha * pulse)
+    local h = math.max(48, math.min(screen * 0.34, 44 + 10 * perYard))
+    local core = math.max(1.6, math.min(4.5, 0.6 + 0.16 * perYard))
+    f:SetSize(core * HALOS[#HALOS][1], h)
+    f.core:SetSize(core, h)
+    for i, spec in ipairs(HALOS) do
+        f.halos[i]:SetSize(core * spec[1], h * (1 - 0.06 * i))
+    end
+    f.flare:SetSize(core * 6, h * 0.16)
+    for i, spec in ipairs(POOLS) do
+        f.pools[i]:SetSize(core * spec[1], core * spec[2])
+    end
+    -- Motes rise from the foot, sway a little, and fade as they go.
+    local now = GetTime()
+    for _, m in ipairs(f.motes) do
+        local t = (now * m.speed + m.phase) % 1
+        local size = math.max(1.5, core * 0.9)
+        m:SetSize(size, size)
+        m:ClearAllPoints()
+        m:SetPoint("CENTER", f, "BOTTOM", m.sway * core * 1.6 * math.sin((t + m.phase) * 6.28), h * 0.72 * t)
+        m:SetAlpha(math.min(1, t * 6) * (1 - t) * 0.9)
+    end
+    -- A slow breath, and a faint shimmer in the core.
+    f.core:SetAlpha(0.88 + 0.12 * math.sin(now * 7.3))
+    f:SetAlpha(alpha * (0.9 + 0.1 * math.sin(now * 2.2)))
     f:Show()
 end
 
@@ -1603,8 +1997,8 @@ local function drawBeam()
     end
     local alpha = N.GetTargetState and navAlpha(ns.try(N.GetTargetState)) or 1
     local d = (N.GetDistance and ns.try(N.GetDistance)) or 100
-    -- Standing in it: fade out rather than fill the screen.
-    alpha = alpha * math.max(0, math.min(1, (d - 4) / 10))
+    -- Standing on it: fade out over the last few yards.
+    alpha = alpha * math.max(0, math.min(1, (d - 2) / 5))
     if alpha <= 0 then
         hideBeam()
         return
@@ -1652,7 +2046,7 @@ beam.Draw = drawBeam
 --   light blue  something new - gather it and it's recorded
 ----------------------------------------------------------------------
 
-local BEAM_NEW = { 0.35, 0.82, 1 }
+local BEAM_NEW = { 0.36, 0.60, 1 }  -- magic blue
 beam.COLORS = { route = BEAM_ROUTE, recorded = BEAM_SPOT, new = BEAM_NEW }
 
 -- The game settings this needs, and what they're set to. What they were

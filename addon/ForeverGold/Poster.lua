@@ -184,7 +184,8 @@ local function readListings(l)
                     mine = (r.containsOwnerItem or r.containsAccountItem) and true or nil,
                     -- How much of this price tier is yours (the rest is someone else's).
                     own = r.numOwnerItems or ((r.containsOwnerItem or r.containsAccountItem) and (r.quantity or 1) or 0),
-                    sellers = r.totalNumberOfOwners, owner = r.owners and r.owners[1], left = r.timeLeftSeconds }
+                    sellers = r.totalNumberOfOwners, owner = r.owners and r.owners[1], owners = r.owners,
+                    left = r.timeLeftSeconds }
             end
         end
     else
@@ -208,7 +209,7 @@ local function readListings(l)
                 else
                     out.bidOnly = out.bidOnly + 1
                     out.bids[#out.bids + 1] = { bidOnly = true, q = q, bid = bid, mine = mine, aid = r.auctionID,
-                        left = r.timeLeftSeconds, band = r.timeLeft, link = r.itemLink }
+                        owner = r.owners and r.owners[1], left = r.timeLeftSeconds, band = r.timeLeft, link = r.itemLink }
                 end
             end
         end
@@ -362,6 +363,7 @@ end
 -- From the settings: how many go in each listing and how many listings.
 function P.Plan(e)
     local d = ns.DecidePrice(e.listings or {}, {
+        id = e.id,
         commodity = e.commodity,
         step = e.step or 1,
         floor = e.floor,
@@ -399,7 +401,7 @@ function P.Plan(e)
     e.posted = e.posted or 0
     e.lowest = nil
     for _, l in ipairs(e.listings or {}) do
-        if not l.mine then
+        if not l.mine and not ns.Suspicious(e.id, l.p) then
             e.lowest = l.p
             break
         end

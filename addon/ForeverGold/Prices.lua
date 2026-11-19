@@ -96,6 +96,80 @@ function ns.UsualPrice(id)
     return median, #vals
 end
 
+----------------------------------------------------------------------
+-- Prices that don't make sense
+--
+-- Gold sellers pass gold between accounts through the auction house: one
+-- lists vendor trash (usually a gray item) for a fortune, the other buys
+-- it. Nobody else ever should. Those listings also poison the "usual"
+-- price - a gray item is often listed by nobody else, so a 300g listing
+-- becomes that day's lowest price, and every normal listing afterwards
+-- looks like a 99%-off bargain. So:
+--   ns.Suspicious(id, price)  this price, for this item, makes no sense
+--   ns.PriceDoubt(id)         its usual price can't be trusted
+-- Each returns a sentence saying why, or nil.
+----------------------------------------------------------------------
+
+local GRAY_TIMES = 15     -- a gray item at over 15x what a vendor pays...
+local GRAY_OVER = 10000   -- ...and at least 1g over it
+local GRAY_NO_VENDOR = 10000 -- a gray item no vendor buys, listed over 1g
+local WILD_SWING = 25     -- daily lows 25x apart: that history is junk
+
+local function isGray(id)
+    local it = ns.Item(id)
+    return it and it.q == 0 or false
+end
+
+local function plainMoney(c)
+    return ns.StripCodes and ns.StripCodes(ns.Money(floor(c + 0.5))) or tostring(floor(c + 0.5))
+end
+
+function ns.Suspicious(id, price)
+    if not id or not price or price <= 0 or not isGray(id) then
+        return nil
+    end
+    local v = ns.VendorSell(id)
+    if v and v > 0 then
+        if price > v * GRAY_TIMES and price - v >= GRAY_OVER then
+            return "A gray item at " .. floor(price / v + 0.5) .. "x what a vendor pays (" .. plainMoney(v)
+                .. "). Gray items are vendor trash, so a price like this is almost always gold being passed"
+                .. " between accounts. Don't buy it, and don't price yours to match."
+        end
+    elseif price >= GRAY_NO_VENDOR then
+        return "A gray item listed at " .. plainMoney(price) .. ". Gray items are vendor trash, so a price like this"
+            .. " is almost always gold being passed between accounts. Don't buy it."
+    end
+    return nil
+end
+
+function ns.PriceDoubt(id)
+    local r = ns.R().prices[id]
+    if not r or not r.h then
+        return nil
+    end
+    local lo, hi, n = nil, nil, 0
+    for _, p in pairs(r.h) do
+        if p and p > 0 then
+            lo = (not lo or p < lo) and p or lo
+            hi = (not hi or p > hi) and p or hi
+            n = n + 1
+        end
+    end
+    if n == 0 then
+        return nil
+    end
+    local usual = ns.UsualPrice(id)
+    if usual and ns.Suspicious(id, usual) then
+        return "Its usual price (" .. plainMoney(usual) .. ") comes from listings that make no sense for a gray"
+            .. " item - most likely gold being passed between accounts - so it can't be compared with."
+    end
+    if n >= 2 and hi / lo >= WILD_SWING then
+        return "Its lowest price has swung from " .. plainMoney(lo) .. " to " .. plainMoney(hi)
+            .. " between days, so its usual price can't be trusted. Someone may be listing it at silly prices."
+    end
+    return nil
+end
+
 -- What you actually receive for one item sold at the current lowest price.
 function ns.AHNet(id)
     local p = ns.AHPrice(id)

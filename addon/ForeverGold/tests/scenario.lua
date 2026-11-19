@@ -130,6 +130,41 @@ check(#ns.VendorFlips() == 0, "raising the minimum profit to 1g hides the 6s fli
 ns.db.opts.dealMin = 500
 ns.Fire("PLAYER_CHANGED")
 
+out("== suspicious prices (gold changing hands)")
+do
+    local JUNK, BOOTS, LINEN_ID = 12345, 12346, 2589 -- gray sword (vendor 9s), white boots, linen
+    ns.Item(JUNK); ns.Item(BOOTS)
+    local why = ns.Suspicious(JUNK, 900 * 50)
+    check(why and why:find("50x") and why:find("gold"), "a gray item at 50x what a vendor pays is suspicious: " .. tostring(why))
+    check(not ns.Suspicious(JUNK, 1500), "a gray item a bit over vendor price isn't")
+    check(not ns.Suspicious(BOOTS, 900 * 50), "only gray items are judged against the vendor price")
+    local P = ns.R().prices
+    local savedJunk, savedLinen = P[JUNK], P[LINEN_ID]
+    local d = ns.Today()
+    -- Somebody lists the sword at 300g for days; then a normal one appears.
+    P[JUNK] = { p = 1000, q = 1, t = time(), b = true, h = { [d - 3] = 3000000, [d - 2] = 3000000, [d - 1] = 3000000, [d] = 1000 } }
+    ns.Fire("PLAYER_CHANGED")
+    check(ns.PriceDoubt(JUNK) and ns.PriceDoubt(JUNK):find("gold"), "its 300g 'usual price' isn't trusted")
+    local junkBargain = false
+    for _, b in ipairs(ns.Bargains()) do if b.id == JUNK then junkBargain = true end end
+    check(not junkBargain, "so the normal listing is NOT shown as a 99%-off bargain")
+    -- A white item whose daily low swings wildly can't be compared either.
+    P[LINEN_ID] = { p = 10, q = 50, t = time(), b = true, h = { [d - 3] = 5000, [d - 2] = 5000, [d - 1] = 5000, [d] = 10 } }
+    ns.Fire("PLAYER_CHANGED")
+    check(ns.PriceDoubt(LINEN_ID) and ns.PriceDoubt(LINEN_ID):find("swung"), "a price that swung 500x between days isn't trusted")
+    local linenBargain = false
+    for _, b in ipairs(ns.Bargains()) do if b.id == LINEN_ID then linenBargain = true end end
+    check(not linenBargain, "and isn't called a bargain")
+    -- Selling: never undercut a gold-trading listing.
+    local dd = ns.DecidePrice({ { p = 3000000, q = 1 } }, { id = JUNK, step = 1, usual = 3000000, usualDays = 4, last = 3000000 })
+    check(dd.ignored == 1 and not (dd.ok and dd.price and dd.price > 100000),
+        "selling your gray: the 300g listing, usual and last price are all ignored: " .. tostring(dd.price))
+    local plain = ns.DecidePrice({ { p = 3000000, q = 1 } }, { step = 1 })
+    check(plain.reason == "undercut", "(without the item's ID the old behaviour stands)")
+    P[JUNK], P[LINEN_ID] = savedJunk, savedLinen
+    ns.Fire("PLAYER_CHANGED")
+end
+
 out("== vendor visit")
 M.fire("MERCHANT_SHOW")
 M.advance(2)
@@ -750,6 +785,23 @@ do
     M.navDistance = 300
     M.update(0.05)
     check(f:IsShown() and f:GetHeight() < near, "further away, a shorter beam")
+    check(f:GetParent() == WorldFrame, "drawn on the world's layer, under nameplates and the UI")
+    check(#f.halos == 3 and f.halos[1]:GetWidth() < f.halos[3]:GetWidth() and f.core:GetWidth() < f.halos[1]:GetWidth()
+        and f.halos[3]._gradient and f.halos[3]._gradient.lo.a < f.halos[1]._gradient.lo.a,
+        "a thin bright core inside wider, fainter halos")
+    check(f.core._gradient.lo.r > f.color[1] - 0.001 and f.core._gradient.lo.b > f.color[3], "the core is lifted towards white")
+    M.navDistance = 3000
+    M.update(0.05)
+    check(f:IsShown() and f:GetHeight() >= 48 and f.core:GetWidth() >= 1.6, "a long way off it still stands out, never a speck: "
+        .. f:GetHeight())
+    M.navDistance = 8
+    M.update(0.05)
+    check(f:GetHeight() <= 900 * 0.34 + 0.01 and f.core:GetWidth() <= 4.5, "up close it stays slim, never filling the screen: "
+        .. f:GetHeight())
+    local y1 = select(5, f.motes[1]:GetPoint(1))
+    M.advance(0.4); M.update(0.05)
+    local y2 = select(5, f.motes[1]:GetPoint(1))
+    check(#f.motes == 4 and y1 and y2 and y1 ~= y2, "motes of light drift up the shaft")
     M.navOffscreen = true
     M.update(0.05)
     check(not f:IsShown(), "spot off screen: no beam")
@@ -788,6 +840,33 @@ do
     toggles.spots.set(false)
     check(wp.usedMarks == 0 and toggles.spots.get() == false and ns.db.opts.worldMapSpots == false, "its switch hides them")
     toggles.spots.set(true)
+
+    -- The map's gathering button and its filter
+    local mb = ForeverGoldMapButton
+    check(mb and mb:IsShown(), "the world map has a gathering button")
+    check(toggles["kind-herb"] and toggles["kind-ore"] and toggles["kind-fish"] and toggles["kind-chest"] and toggles.route,
+        "OpenMap's menu has a switch per kind and the route line (each can be starred onto its bar)")
+    mb:Click()
+    local menu = ForeverGoldMapFilter
+    check(menu and menu:IsShown() and #menu.rows == 7, "clicking it opens the filter")
+    local all, ores = wp.usedMarks, 0
+    for _, n in ipairs(ns.db.nodes[1413]) do if n.k == "ore" then ores = ores + 1 end end
+    menu.rows[3]:Click() -- Ore
+    check(ores > 0 and wp.usedMarks == all - ores and not ns.MapKindOn("ore") and toggles["kind-ore"].get() == false,
+        "untick Ore: only the ore spots go: " .. wp.usedMarks .. " of " .. all)
+    toggles["kind-ore"].set(true)
+    check(wp.usedMarks == all and ns.MapKindOn("ore") and menu.rows[3].get(), "OpenMap's switch brings them back, and the menu agrees")
+    menu.rows[6]:Click() -- Route line
+    check(wp.usedLines == 0 and wp.usedMarks == all, "untick Route line: the line goes, the spots stay")
+    menu.rows[6]:Click()
+    check(wp.usedLines > 0, "and back")
+    mb:Click("RightButton")
+    check(wp.usedMarks == 0 and ns.db.opts.worldMapSpots == false and toggles.spots.get() == false,
+        "right-click: everything off at once")
+    mb:Click("RightButton")
+    check(wp.usedMarks == all, "right-click again: back on")
+    mb:Click()
+    check(not menu:IsShown(), "clicking the button again closes the filter")
     OpenMapAPI = nil
     ns.RedrawWorldMap()
     -- the minimap: nearby spots, and the next stop on the edge when it's far
@@ -815,7 +894,8 @@ do
     M.update(1.1)
     check(B.own and M.waypoint and M.waypoint.uiMapID == 1413 and M.tracking == "waypoint",
         "no route: the nearest spot gets the map pin")
-    check(B.frame:IsShown() and B.frame.color[1] == 1 and B.frame.color[3] == 1, "and a white beam")
+    check(B.frame:IsShown() and B.frame.color == B.COLORS.recorded and B.frame.color[1] > 0.9 and B.frame.color[2] > 0.9,
+        "and a white beam")
     local first = B.own.node
     M.player.x, M.player.y = first.x, first.y
     M.update(1.1)
@@ -1444,6 +1524,23 @@ do
     check(sword == "Maybe - check buyouts" and swordHint:find("bid"),
         "a lowest price that's only a bid isn't called a deal: " .. tostring(sword))
 
+    -- Ctrl+click gear: try it on in the dressing room
+    dealText("Cheap Mail Boots")
+    local bootsRow
+    for _, row in ipairs(F.browse.results.rows) do
+        if row.d and row.d.id == 12346 then bootsRow = row end
+    end
+    local dressedBefore, selBefore = #M.dressed, F.browse.results.selected
+    M.ctrl = true
+    if bootsRow then bootsRow:Click() end
+    check(bootsRow and #M.dressed == dressedBefore + 1 and tostring(M.dressed[#M.dressed]):find("item:12346", 1, true)
+        and F.browse.results.selected == selBefore, "Ctrl+click on boots tries them on, and doesn't open the listing")
+    M.ctrl = false
+    check(not ns.TryDressUp(12346), "without Ctrl nothing is tried on")
+    M.ctrl = true
+    check(not ns.TryDressUp(2589) and #M.dressed == dressedBefore + 1, "Ctrl+click on cloth falls through to the normal click")
+    M.ctrl = false
+
     -- A category
     A.openCategory = nil
     F.browse.cats.onClick({ name = "Trade Goods", top = 2, filters = { { classID = 7 } } }); M.advance(5)
@@ -1524,6 +1621,60 @@ do
     local bidsBefore = #M.bids
     A.Buy()
     check(#M.bids == bidsBefore and strip(A.BUY.message or ""):find("no buyout"), "and Buy refuses it")
+
+    -- Sellers: a column, who lists the most, and who moved since you last looked
+    A.seen[12346] = nil
+    M.market[12346] = { { 300, 1, false, nil, "Grimbo" }, { 320, 2, false, nil, "Grimbo" }, { 400, 1, false, nil, "Vexa-Stormrage" },
+        { 0, 1, false, 90, "Bidder" } }
+    A.OpenItem({ id = 12346 }); M.advance(2)
+    A.Refresh()
+    local function sellerOf(p)
+        for _, row in ipairs(F.browse.listings.data) do
+            if row.l.p == p then return strip(row.cells.seller), row end
+        end
+    end
+    local function factsText() return strip(F.browse.box.facts:GetText() or "") end
+    check(sellerOf(300) == "Grimbo" and sellerOf(400) == "Vexa", "each listing shows its seller (realm left off): " .. tostring(sellerOf(400)))
+    local _, vexaRow = sellerOf(400)
+    check(vexaRow.hint:find("Seller: Vexa-Stormrage", 1, true), "the tooltip has the full name")
+    check(factsText():find("Most listed: Grimbo 3 (2 auctions), Vexa 1", 1, true) and factsText():find("Cheapest: Grimbo", 1, true),
+        "the side box says who lists the most and who's cheapest: " .. factsText())
+    check(not factsText():find("since you last looked", 1, true), "first look: nothing to compare with")
+    M.market[12346] = { { 250, 1, false, nil, "Vexa-Stormrage" }, { 300, 1, false, nil, "Grimbo" }, { 280, 1, false, nil, "Newbie" } }
+    A.OpenItem({ id = 12346 }); M.advance(2)
+    A.Refresh()
+    check(sellerOf(250) == "Vexa cut" and sellerOf(280) == "Newbie new" and sellerOf(300) == "Grimbo",
+        "next look: a price cut and a new seller are marked: " .. tostring(sellerOf(250)) .. " / " .. tostring(sellerOf(280)))
+    check(factsText():find("Cut their price since you last looked: Vexa", 1, true)
+        and factsText():find("New sellers since you last looked: Newbie", 1, true), "and summed up in the side box")
+    -- Commodities: several sellers can share one price
+    local linenBefore = M.market[2589]
+    M.market[2589] = { { 10, 20, false, nil, { "Ann", "Bob", "Cy" } }, { 12, 5, false, nil, "Dee" }, { 13, 5, true } }
+    A.OpenItem({ id = 2589 }); M.advance(2)
+    A.Refresh()
+    local annCell, annRow = sellerOf(10)
+    check(annCell == "Ann +2" and annRow.hint:find("3 sellers at this price: Ann, Bob, Cy", 1, true),
+        "a price shared by several sellers: " .. tostring(annCell))
+    check(sellerOf(13) == "You" and factsText():find("Cheapest: 3 sellers at", 1, true) and factsText():find("Most listed: Dee 5, You 5", 1, true),
+        "your own listing says You; a shared price isn't credited to one seller: " .. factsText():gsub("\n", " | "))
+    M.market[2589] = linenBefore
+
+    -- A gray item listed for a fortune is tagged, not offered
+    local swordBefore = M.market[12345]
+    M.market[12345] = { { 1200, 1, false, nil, "Normalguy" }, { 3000000, 1, false, nil, "Goldseller" } }
+    A.OpenItem({ id = 12345 }); M.advance(2)
+    A.Refresh()
+    local _, junkRow = sellerOf(3000000)
+    local _, fairRow = sellerOf(1200)
+    check(junkRow and strip(junkRow.cells.note) == "Suspicious" and junkRow.hint:find("gold being passed", 1, true),
+        "the 300g gray listing is tagged Suspicious, with why")
+    check(fairRow and strip(fairRow.cells.note) ~= "Suspicious", "the normal one isn't")
+    check(factsText():find("1 suspicious listing", 1, true), "the side box warns about it: " .. factsText():gsub("\n", " | "))
+    F.browse.listings.onClick({ l = junkRow.l })
+    A.Refresh()
+    check(strip(F.browse.box.buy.text:GetText() or ""):find("^Buy anyway") and strip(F.browse.box.cost:GetText()):find("^Suspicious"),
+        "picking it: a warning, and the button says Buy anyway")
+    M.market[12345] = swordBefore
     M.market[12346] = { { 300, 1, true } }
 
     -- Elsewhere in the addon, "search the auction house" lands here
@@ -2067,6 +2218,9 @@ do
     MB.ClearShipments()
     U.SetMode("banker"); U.SetMode("custom")
     U.form.to = "Xeon Banker"; U.form.picks = { ["0:2"] = true }; U.Refresh()
+    local panelH = 610 - 128 - 30
+    check(W.send.list:GetHeight() + 190 + 22 <= panelH and W.send.list.visible * 40 + 4 <= W.send.list:GetHeight(),
+        "custom mail: the list is shorter so it stays inside the window: " .. W.send.list:GetHeight())
     plan = U.CurrentPlan()
     check(not plan.problem and #plan.ships == 1 and plan.ships[1].atts[1].count == 15, "custom mail: picked stack attached")
     U.form.picks = { ["0:2"] = true, ["0:3"] = true }; U.form.moneyText = "2.5"; U.Refresh()
@@ -2077,6 +2231,40 @@ do
     check(plan.ships[1].cod == 25000 and plan.ships[1].money == 0, "C.O.D. instead of sending gold")
     U.form = { picks = {} }
     U.SetMode("banker")
+    check(W.send.list:GetHeight() == panelH - 72 - 40 and W.send.list.visible == 8, "other send methods: the list is full height again")
+
+    -- Asked when the mailbox opens, if the rules have mail to send
+    bags({ { LINEN, 20 }, { LINEN, 15 }, { LINEN, 5 } })
+    M.fire("MAIL_CLOSED"); M.advance(1)
+    before = sends()
+    M.fire("MAIL_SHOW"); M.advance(2)
+    check(U.PromptShown() and not MB.Busy() and sends() == before, "opening the mailbox asks about the rules' mail, sends nothing")
+    local pl = W.prompt.box.lines[1]:GetText() or ""
+    check(pl:find("Xeon Hexspark", 1, true) ~= nil and pl:find("Linen Cloth x20", 1, true) ~= nil,
+        "the box says who gets what (the rule keeps 20): " .. pl)
+    check((W.prompt.box.send.text:GetText() or ""):find("Send now (1 mail)", 1, true) ~= nil, "a Send now button")
+    W.prompt.box.later:Click()
+    check(not U.PromptShown() and not MB.Busy(), "Not now closes it")
+    M.fire("MAIL_CLOSED"); M.advance(1)
+    M.fire("MAIL_SHOW"); M.advance(2)
+    W.prompt.box.send:Click(); M.advance(0.3)
+    check(not U.PromptShown() and U.tab == "send" and U.mode == "rules" and MB.Busy() == "send"
+        and MB.Q.ships[1].status == "ready" and sends() == before, "Send now gets the first mail ready, still waiting for your click")
+    MB.Stop(); MB.ClearShipments()
+    M.fire("MAIL_CLOSED"); M.advance(1)
+    M.fire("MAIL_SHOW"); M.advance(2)
+    W.prompt.box.review:Click()
+    check(not U.PromptShown() and not MB.Busy() and U.tab == "send" and U.mode == "rules", "Review first only shows the preview")
+    ns.db.opts.mailPrompt = false
+    M.fire("MAIL_CLOSED"); M.advance(1)
+    M.fire("MAIL_SHOW"); M.advance(2)
+    check(not U.PromptShown(), "switched off: no box")
+    ns.db.opts.mailPrompt = true
+    bags({ { BAR, 1 } })
+    M.fire("MAIL_CLOSED"); M.advance(1)
+    M.fire("MAIL_SHOW"); M.advance(2)
+    check(not U.PromptShown(), "nothing in your bags matches a rule: no box")
+    U.SetTab("inbox")
 
     -- Auto-send on open (opt-in)
     bags({ { LINEN, 20 }, { LINEN, 15 }, { LINEN, 5 } })
@@ -2086,6 +2274,7 @@ do
     M.fire("MAIL_SHOW"); M.advance(2)
     check(MB.Busy() and MB.Q.auto and MB.Q.ships[1].status == "ready" and sends() == before,
         "auto-send gets the first mail ready, but still waits for your click")
+    check(not U.PromptShown(), "auto-send on: no box asking as well")
     MB.Stop()
     ns.db.opts.mailAuto = false
     MB.ClearShipments()

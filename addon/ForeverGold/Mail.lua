@@ -1894,6 +1894,27 @@ ns.On("MAIL_SHOW", function()
                 setStatus("idle", "Auto-send: nothing matches your rules right now.")
             end
         end))
+    elseif O().mailPrompt ~= false then
+        -- Not auto-sending: if your rules have mail to send, offer it.
+        C_Timer.After(0.8, ns.Guard("mail-prompt", function()
+            if not MB.open or Q.mode then
+                return
+            end
+            local any = false
+            for _, r in ipairs(MB.Rules()) do
+                if r.on then
+                    any = true
+                    break
+                end
+            end
+            if not any then
+                return
+            end
+            local plan = MB.PlanRules()
+            if #plan.ships > 0 and not plan.problem then
+                ns.Fire("MAIL_PROMPT", plan)
+            end
+        end))
     end
 end)
 

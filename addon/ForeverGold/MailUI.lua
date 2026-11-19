@@ -390,6 +390,9 @@ local function newRows(parent, w, h, rowH, opts)
             if not d then
                 return
             end
+            if d.id and ns.TryDressUp(d.id) then
+                return
+            end
             if d.id and IsShiftKeyDown and IsShiftKeyDown() then
                 local _, link = ns.try(C_Item.GetItemInfo, d.id)
                 if link and ChatEdit_InsertLink then
@@ -537,6 +540,20 @@ local function newRows(parent, w, h, rowH, opts)
     end
     function L:SetEmpty(text)
         self.empty:SetText(text or "")
+    end
+    -- Shrinks (or grows back, up to the rows it was built with) to fit h.
+    function L:SetListHeight(newH)
+        if self:GetHeight() == newH then
+            return
+        end
+        self:SetHeight(newH)
+        self.visible = min(#self.rows, max(1, floor((newH - 4) / rowH)))
+        for i = self.visible + 1, #self.rows do
+            self.rows[i]:Hide()
+        end
+        self.empty:ClearAllPoints()
+        self.empty:SetPoint("TOP", 0, -min(70, floor(newH / 3)))
+        self:Render()
     end
     return L
 end
@@ -1427,7 +1444,10 @@ local function refreshSend()
     local custom = U.mode == "custom"
     p.custom:SetShown(custom)
     p.list:ClearAllPoints()
-    p.list:SetPoint("TOPLEFT", PAD, custom and -190 or -72)
+    -- The custom fields push the list down, so it gets shorter to stay inside the window.
+    local listTop = custom and 190 or 72
+    p.list:SetPoint("TOPLEFT", PAD, -listTop)
+    p.list:SetListHeight(H - TOP - FOOT - listTop - (custom and 22 or 40))
     local plan, inQueue = currentPlan()
     local rows = rowsForPlan(plan, inQueue)
     if custom then
@@ -1567,13 +1587,23 @@ local function buildRules(f)
     p:SetSize(W, H - TOP - FOOT)
     p.title = heading(p, "A home for every material")
     p.title:SetPoint("TOPLEFT", PAD + 2, -2)
-    p.sub = label(p, "GameFontDisableSmall", "Applied from top to bottom. The first enabled rule that matches an item owns all of it.")
+    p.sub = label(p, "GameFontDisableSmall", "Top to bottom: the first enabled rule that matches owns the item.")
     p.sub:SetPoint("TOPLEFT", PAD + 2, -24)
+    p.sub:SetWidth(LIST_W - 220)
+    p.sub:SetWordWrap(false)
+    p.ask = checkbox(p, "Ask when a mailbox opens", 200, function(on)
+        ns.db.opts.mailPrompt = on and true or false
+        U.Refresh()
+    end)
+    p.ask:SetHeight(18)
+    p.ask:SetPoint("TOPRIGHT", p, "TOPLEFT", PAD + LIST_W, -1)
+    withTip(p.ask, { "Ask when a mailbox opens", "On by default. When a mailbox opens and items in your bags match your rules, a box shows what would go where, with Send now, Review first or Not now. Nothing is sent without your click." })
     p.auto = checkbox(p, "Auto-send on mailbox open", 200, function(on)
         ns.db.opts.mailAuto = on and true or false
         U.Refresh()
     end)
-    p.auto:SetPoint("TOPRIGHT", p, "TOPLEFT", PAD + LIST_W, -4)
+    p.auto:SetHeight(18)
+    p.auto:SetPoint("TOPRIGHT", p, "TOPLEFT", PAD + LIST_W, -20)
     withTip(p.auto, { "Auto-send on mailbox open", "Off unless you tick it. When a mailbox opens, your rules' mail is put together and the first one made ready. You still press Send once per mail: the game needs a real click for each." })
     local listH = H - TOP - FOOT - 40 - 92
     p.list = newRows(p, LIST_W, listH, 44, { check = true, prio = true, buttons = true })
@@ -1654,7 +1684,7 @@ local function buildRules(f)
     s.to:SetPoint("TOPLEFT", 14, -114)
     s.keepCap = smallCaps(s, "Keep in bags, of each matching item (all stacks)")
     s.keepCap:SetPoint("TOPLEFT", 14, -142)
-    s.keep = newEdit(s, 80, 22, function(text)
+    s.keep = newEdit(s, 60, 22, function(text)
         if U.draft then
             U.draft.keep = tonumber(text) or U.draft.keep
             U.draft.keepText = text
@@ -1668,8 +1698,9 @@ local function buildRules(f)
     s.scopeAll = button(s, "Account-wide", 100, 22, function()
         if U.draft then U.draft.scope = "account"; U.Refresh() end
     end)
-    s.scopeAll:SetPoint("TOPLEFT", 104, -156)
-    s.scopeMe = button(s, "This character", 104, 22, function()
+    -- Keep box + both buttons fit inside the panel's 14px margins (14 + 60 + 8 + 100 + 4 + 100 = 286).
+    s.scopeAll:SetPoint("TOPLEFT", 82, -156)
+    s.scopeMe = button(s, "This character", 100, 22, function()
         if U.draft then U.draft.scope = ns.charKey; U.Refresh() end
     end)
     s.scopeMe:SetPoint("LEFT", s.scopeAll, "RIGHT", 4, 0)
@@ -1808,6 +1839,7 @@ local function refreshRules()
     local p = win.rules
     local s = p.side
     p.auto:SetChecked(ns.db.opts.mailAuto)
+    p.ask:SetChecked(ns.db.opts.mailPrompt ~= false)
     local items = MB.ScanBags()
     local alloc = MB.Allocate(items, MB.ActiveRules(rulesWithDraft()))
     local byRule = {}
@@ -2274,8 +2306,167 @@ ns.Listen("MAIL_OPENED", function()
     end
 end)
 
+----------------------------------------------------------------------
+-- "Your rules have mail to send" - offered when a mailbox opens
+----------------------------------------------------------------------
+
+local PROMPT_W, PROMPT_LINES = 440, 6
+
+local function hidePrompt()
+    if win and win.prompt then
+        win.prompt:Hide()
+    end
+end
+U.HidePrompt = hidePrompt
+
+local function buildPrompt()
+    -- A dimmed cover over the whole window so the box reads as a question.
+    local cover = CreateFrame("Frame", nil, win)
+    cover:SetAllPoints()
+    cover:SetFrameLevel(win:GetFrameLevel() + 40)
+    cover:EnableMouse(true)
+    cover.shade = tex(cover, "BACKGROUND", 0, 0, 0, 0.55)
+    cover.shade:SetAllPoints()
+    local d = CreateFrame("Frame", nil, cover)
+    d:SetSize(PROMPT_W, 120)
+    d:SetPoint("CENTER", 0, 20)
+    d:SetFrameLevel(cover:GetFrameLevel() + 2)
+    skin(d)
+    d.title = label(d, "GameFontNormalLarge", "Your rules have mail to send")
+    d.title:SetTextColor(C.goldText[1], C.goldText[2], C.goldText[3])
+    d.title:SetPoint("TOPLEFT", 16, -14)
+    d.title:SetWidth(PROMPT_W - 32)
+    d.title:SetWordWrap(false)
+    d.lines = {}
+    for i = 1, PROMPT_LINES do
+        local l = label(d, "GameFontHighlightSmall")
+        l:SetPoint("TOPLEFT", 16, -40 - (i - 1) * 16)
+        l:SetWidth(PROMPT_W - 32)
+        l:SetWordWrap(false)
+        d.lines[i] = l
+    end
+    d.total = label(d, "GameFontDisableSmall")
+    d.total:SetWidth(PROMPT_W - 32)
+    d.total:SetWordWrap(false)
+    d.send = button(d, "Send now", 130, 26, function() U.PromptSend() end)
+    d.send:SetPrimary(true)
+    d.review = withTip(button(d, "Review first", 120, 26, function() U.PromptReview() end),
+        { "Review first", "Opens the Send mail tab with your rules' mail listed. Untick anything you want to keep, then press Send." })
+    d.later = button(d, "Not now", 90, 26, function() hidePrompt() end)
+    d.note = label(d, "GameFontDisableSmall", "Each mail still needs its own Send click. Switch this off on the Auto-send rules tab.")
+    d.note:SetWidth(PROMPT_W - 32)
+    d.note:SetWordWrap(true)
+    cover.box = d
+    cover:Hide()
+    return cover
+end
+
+-- Fills the box from a plan: one line per recipient.
+function U.ShowPrompt(plan)
+    if not win or not win:IsShown() or not plan or #(plan.ships or {}) == 0 then
+        return false
+    end
+    if not win.prompt then
+        win.prompt = buildPrompt()
+    end
+    local d = win.prompt.box
+    local by, order = {}, {}
+    local postage = 0
+    for _, sh in ipairs(plan.ships) do
+        local name = sh.name or "?"
+        local e = by[name]
+        if not e then
+            e = { stacks = 0, qty = {}, ids = {} }
+            by[name] = e
+            order[#order + 1] = name
+        end
+        e.stacks = e.stacks + #(sh.atts or {})
+        for _, it in ipairs(sh.items or {}) do
+            if not e.qty[it.id] then
+                e.ids[#e.ids + 1] = it.id
+            end
+            e.qty[it.id] = (e.qty[it.id] or 0) + it.qty
+        end
+        postage = postage + (sh.postage or 0)
+    end
+    for i, l in ipairs(d.lines) do
+        local name = order[i]
+        if i == #d.lines and #order > #d.lines then
+            l:SetText(GREY .. "+ " .. (#order - #d.lines + 1) .. " more characters|r")
+        elseif name then
+            local e = by[name]
+            local parts = {}
+            for k, id in ipairs(e.ids) do
+                if k > 3 then
+                    parts[#parts + 1] = "+" .. (#e.ids - 3) .. " more"
+                    break
+                end
+                parts[#parts + 1] = (ns.ItemName(id) or ("item " .. id)) .. " x" .. e.qty[id]
+            end
+            l:SetText(GOLD .. name .. "|r  " .. GREY .. plural(e.stacks, "stack") .. ":|r " .. table.concat(parts, ", "))
+        else
+            l:SetText("")
+        end
+    end
+    local shown = min(#order, #d.lines)
+    local y = -40 - shown * 16 - 6
+    d.total:ClearAllPoints()
+    d.total:SetPoint("TOPLEFT", 16, y)
+    d.total:SetText(plural(#plan.ships, "mail") .. "  -  postage " .. plain(postage))
+    y = y - 24
+    d.send:ClearAllPoints()
+    d.send:SetPoint("TOPLEFT", 16, y)
+    d.send:SetLabel("Send now (" .. plural(#plan.ships, "mail") .. ")")
+    d.review:ClearAllPoints()
+    d.review:SetPoint("LEFT", d.send, "RIGHT", 8, 0)
+    d.later:ClearAllPoints()
+    d.later:SetPoint("LEFT", d.review, "RIGHT", 8, 0)
+    y = y - 36
+    d.note:ClearAllPoints()
+    d.note:SetPoint("TOPLEFT", 16, y)
+    d:SetHeight(-y + 36)
+    U.promptPlan = plan
+    win.prompt:Show()
+    return true
+end
+
+function U.PromptShown()
+    return win ~= nil and win.prompt ~= nil and win.prompt:IsShown()
+end
+
+-- Starts the queue from a fresh read of your bags (they may have changed).
+function U.PromptSend()
+    hidePrompt()
+    if MB.Busy() then
+        return
+    end
+    if MB.Shipments() then
+        MB.ClearShipments()
+    end
+    U.mode = "rules"
+    MB.exclude = {}
+    local ok, why = MB.StartSend(MB.PlanRules())
+    if not ok and why then
+        MB.SetStatus("error", why)
+    end
+    U.SetTab("send")
+end
+
+function U.PromptReview()
+    hidePrompt()
+    U.SetMode("rules")
+    U.SetTab("send")
+end
+
+ns.Listen("MAIL_PROMPT", function(plan)
+    if U.IsShown() and not MB.Busy() then
+        U.ShowPrompt(plan)
+    end
+end)
+
 ns.Listen("MAIL_CLOSED_UI", function()
     hidePopup()
+    hidePrompt()
     if win then
         win:Hide()
     end

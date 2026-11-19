@@ -67,19 +67,32 @@ end
 -- The decision. A pure function of its inputs, so it can be tested.
 --
 -- listings: { { p = unit price, q = quantity, mine = true|nil }, ... }
--- info: { commodity, step, floor, usual, usualDays, last, cost }
--- Returns { ok, price, reason, competitor, lowballs, myLow, why }
+-- info: { id, commodity, step, floor, usual, usualDays, last, cost }
+-- Returns { ok, price, reason, competitor, lowballs, myLow, why, ignored }
 --   reason: "undercut" | "match-self" | "usual" | "last" | "markup"
 --   why (when not ok): "floor" | "noref"
+-- With info.id, listings at prices that make no sense (gold changing hands,
+-- see ns.Suspicious) are ignored - d.ignored counts them - and so is a
+-- usual or last price built from them.
 ----------------------------------------------------------------------
 function ns.DecidePrice(listings, info)
     local step = info.step or 1
+    local id = info.id
+    if id and ns.PriceDoubt and ns.PriceDoubt(id) then
+        info = setmetatable({ usual = false, usualDays = 0 }, { __index = info })
+    end
+    if id and info.last and ns.Suspicious and ns.Suspicious(id, info.last) then
+        info = setmetatable({ last = false }, { __index = info })
+    end
+    local ignored = 0
     local others, total, myLow = {}, 0, nil
     for _, l in ipairs(listings) do
         if l.mine then
             if not myLow or l.p < myLow then
                 myLow = l.p
             end
+        elseif id and ns.Suspicious and ns.Suspicious(id, l.p) then
+            ignored = ignored + 1
         else
             others[#others + 1] = l
             total = total + l.q
@@ -106,7 +119,7 @@ function ns.DecidePrice(listings, info)
     end
     local competitor = others[i]
 
-    local d = { lowballs = lowballs, competitor = competitor, myLow = myLow }
+    local d = { lowballs = lowballs, competitor = competitor, myLow = myLow, ignored = ignored }
     local target
     if competitor then
         if myLow and myLow <= competitor.p then
@@ -533,6 +546,7 @@ local function decide()
     job.floor, job.floorWhy, job.protects = floorPrice, floorWhy, protects
     job.listings = readListings()
     job.decision = ns.DecidePrice(job.listings, {
+        id = job.id,
         commodity = job.commodity,
         step = job.step,
         floor = floorPrice,

@@ -309,6 +309,9 @@ local function rowClick(self)
     if not d then
         return
     end
+    if d.id and ns.TryDressUp(d.id, d.link) then
+        return
+    end
     if self.list and self.list.onSelect and not d.type then
         -- Click picks the row for the details pane; the pane holds the action.
         if d.id and IsShiftKeyDown and IsShiftKeyDown() then
@@ -2176,6 +2179,7 @@ local function buildTips()
     optionRow(rows, "tooltip", "Show auction prices when I hover over an item")
     optionRow(rows, "waypoint", "Use the game's map waypoint for the next stop on a route")
     optionRow(rows, "worldMapSpots", "Show my gathering spots and route on the world map (OpenMap too)")
+    optionRow(rows, "mapButton", "A gathering button on the world map, to filter herbs, ore, fishing and chests")
     optionRow(rows, "minimapSpots", "Show my gathering spots and the next stop on the minimap")
     optionRow(rows, "revealMap", "Draw the whole zone on the Routes map, not just the parts I've explored")
     optionRow(rows, "lootBeam", "Loot beams: gold on a route stop, white on a spot I've recorded, light blue on one I haven't")
@@ -3633,6 +3637,9 @@ local function addTooltipLines(tooltip, data)
     elseif last then
         tooltip:AddDoubleLine("|cffffd100Auction|r  " .. GREY .. "none listed now, was|r", ns.Money(last))
         tooltip:AddLine(GREY .. "Last seen " .. agoColored(lastT) .. by .. "|r")
+    end
+    if (price or last) and (ns.Suspicious(id, price or last) or ns.PriceDoubt(id)) then
+        tooltip:AddLine("|cffff7070Suspicious auction price|r - looks like gold changing hands, not what it's worth.", 1, 1, 1, true)
     end
     -- A fresher (or the only) price from another of your characters.
     local sp, sq, st, who = ns.SharedPrice(id)

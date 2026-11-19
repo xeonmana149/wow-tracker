@@ -396,7 +396,10 @@ function ns.Bargains()
         local out = {}
         local least = dealMin()
         for id, r in pairs(ns.R().prices) do
-            if (r.q or 0) > 0 and r.h and ns.IsBuyout(id) then
+            -- Never a gray item (its value is what a vendor pays: that's a
+            -- vendor flip), and never against a usual price that makes no sense.
+            local it = ns.db.items[id]
+            if (r.q or 0) > 0 and r.h and ns.IsBuyout(id) and not (it and it.q == 0) and not ns.PriceDoubt(id) then
                 local usual, days = ns.UsualPrice(id)
                 if usual and days >= 3 and r.p <= usual * 0.6 then
                     local profit = usual * (1 - CUT) - r.p
@@ -426,7 +429,7 @@ function ns.PendingDeals()
                 if it and it.v and (it.st or 1) <= 1 then
                     local profit = it.v - r.p
                     local usual, days = ns.UsualPrice(id)
-                    if usual and days >= 3 and r.p <= usual * 0.6 then
+                    if usual and days >= 3 and r.p <= usual * 0.6 and it.q ~= 0 and not ns.PriceDoubt(id) then
                         profit = max(profit, usual * (1 - CUT) - r.p)
                     end
                     if profit >= least then

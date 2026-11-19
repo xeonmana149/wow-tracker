@@ -139,6 +139,9 @@ local function newTable(parent, w, h, cols)
         if not r.d then
             return
         end
+        if (r.d.id or r.d.link) and ns.TryDressUp(r.d.id, r.d.link) then
+            return
+        end
         if r.d.id and IsShiftKeyDown and IsShiftKeyDown() then
             local _, link = ns.try(C_Item.GetItemInfo, r.d.id)
             link = r.d.link or link
@@ -400,6 +403,10 @@ local function timeLeftText(secs, band)
     return band and names[band] or "-"
 end
 
+-- Prices that make no sense (see ns.Suspicious in Prices.lua).
+local SUSPICIOUS = "|cffff7070Suspicious|r"
+local SUSPICIOUS_HISTORY = "|cffff9a5aSuspicious price history|r"
+
 local function usualText(id)
     local usual, days = ns.UsualPrice(id)
     if usual and (days or 0) >= 2 then
@@ -616,12 +623,111 @@ function A.OpenItem(r, keepMessage)
         if BUY.item ~= item then
             return
         end
+        if listings then
+            A.MarkSellerMoves(r.id, listings)
+        end
         BUY.listings = listings or {}
         if not listings then
             BUY.message = "The auction house didn't answer. Click the item again."
         end
         A.Refresh()
     end)
+end
+
+----------------------------------------------------------------------
+-- Sellers: who's listing what, and what changed since you last looked
+----------------------------------------------------------------------
+
+local function shortName(name)
+    return (tostring(name or ""):gsub("%-.*$", ""))
+end
+
+-- One seller per row, unless several people sell at that exact price (commodities).
+local function soleOwner(l)
+    if l.mine and (l.sellers or 1) <= 1 then
+        return "You"
+    end
+    if (l.sellers or 1) > 1 or not l.owner or l.owner == "" then
+        return nil
+    end
+    return l.owner
+end
+A.SoleOwner = soleOwner
+
+-- Compares these listings with the last ones you saw for this item (this
+-- session) and marks each row: "new" for a seller who wasn't there,
+-- "cut" for one now asking less than their cheapest before.
+A.seen = {}
+function A.MarkSellerMoves(id, listings)
+    local now = {}
+    local function note(list)
+        for _, l in ipairs(list or {}) do
+            local o = soleOwner(l)
+            if o and o ~= "You" and l.p then
+                now[o] = min(now[o] or math.huge, l.p)
+            elseif o and o ~= "You" then
+                now[o] = now[o] or math.huge
+            end
+        end
+    end
+    note(listings)
+    note(listings.bids)
+    local prev = A.seen[id]
+    if prev then
+        local function mark(list)
+            for _, l in ipairs(list or {}) do
+                local o = soleOwner(l)
+                if o and o ~= "You" then
+                    if prev[o] == nil then
+                        l.move = "new"
+                    elseif l.p and prev[o] ~= math.huge and l.p < prev[o] - 0.5 and l.p <= now[o] then
+                        l.move = "cut"
+                    end
+                end
+            end
+        end
+        mark(listings)
+        mark(listings.bids)
+    end
+    A.seen[id] = now
+end
+
+local MOVE_TEXT = { new = "|cffffd100 new|r", cut = "|cffff7070 cut|r" }
+
+local function sellerCell(l)
+    local o = soleOwner(l)
+    local text
+    if o == "You" then
+        text = "|cffffffffYou|r"
+    elseif o then
+        text = shortName(o)
+    elseif (l.sellers or 1) > 1 then
+        text = shortName(l.owner ~= "" and l.owner or "?") .. GREY .. " +" .. (l.sellers - 1) .. "|r"
+    else
+        text = GREY .. "?|r"
+    end
+    return text .. (MOVE_TEXT[l.move] or "")
+end
+
+local function sellerHint(l)
+    if (l.sellers or 1) > 1 then
+        local names = {}
+        for k, n in ipairs(l.owners or {}) do
+            if k > 6 then break end
+            names[#names + 1] = n
+        end
+        local more = l.sellers - #names
+        return l.sellers .. " sellers at this price" .. (#names > 0 and (": " .. table.concat(names, ", ")
+            .. (more > 0 and (" and " .. more .. " more") or "")) or "") .. "."
+    end
+    local o = soleOwner(l)
+    local h = o == "You" and "Your auction." or (o and ("Seller: " .. o .. ".")) or "The seller's name hasn't loaded yet."
+    if l.move == "new" then
+        h = h .. " New since you last looked at this item."
+    elseif l.move == "cut" then
+        h = h .. " They've lowered their price since you last looked."
+    end
+    return h
 end
 
 function A.RefreshItem()
@@ -888,11 +994,12 @@ local function buildBrowse(f)
     p.item:SetPoint("TOPLEFT", x0, -TOP - 30)
     p.item:SetSize(rightW, tableH)
     p.listings = newTable(p.item, rightW - 236, tableH, {
-        { key = "price", title = "Buyout each", w = 96, right = true, sort = true },
-        { key = "qty", title = "Qty", w = 46, right = true, sort = true },
-        { key = "total", title = "Buyout total", w = 96, right = true },
-        { key = "bid", title = "Next bid", w = 88, right = true },
-        { key = "left", title = "Time left", w = 72 },
+        { key = "price", title = "Buyout each", w = 84, right = true, sort = true },
+        { key = "qty", title = "Qty", w = 40, right = true, sort = true },
+        { key = "total", title = "Buyout total", w = 84, right = true },
+        { key = "bid", title = "Next bid", w = 74, right = true },
+        { key = "left", title = "Time left", w = 58 },
+        { key = "seller", title = "Seller", w = 92, sort = true },
         { key = "note", title = "" },
     })
     p.listings:SetPoint("TOPLEFT", 0, 0)
@@ -1244,7 +1351,12 @@ local function refreshBrowse()
             local vs, pct = versus(r.price, usual)
             local vendor = ns.VendorSell(r.id)
             local hint
-            if vendor and r.price and vendor > r.price and verifiedBuyout(r, info) then
+            local odd = r.price and ns.Suspicious(r.id, r.price)
+            local doubt = not odd and ns.PriceDoubt(r.id)
+            if odd then
+                vs = SUSPICIOUS
+                hint = odd
+            elseif vendor and r.price and vendor > r.price and verifiedBuyout(r, info) then
                 vs = "|cff40e060Vendor pays " .. ns.StripCodes(ns.Money(vendor)) .. "|r"
                 hint = "A vendor pays " .. ns.StripCodes(ns.Money(vendor)) .. " each, more than the "
                     .. ns.StripCodes(ns.Money(r.price)) .. " buyout. Buy it and sell it to any vendor."
@@ -1254,6 +1366,10 @@ local function refreshBrowse()
                 hint = "The " .. ns.StripCodes(ns.Money(r.price)) .. " here may only be a bid, which you get only if"
                     .. " nobody outbids you. A vendor pays " .. ns.StripCodes(ns.Money(vendor))
                     .. " each. Click to see the real buyout prices."
+            elseif doubt and pct then
+                -- Its usual price is junk: no "under usual" from that.
+                vs = SUSPICIOUS_HISTORY
+                hint = doubt
             elseif r.why then
                 vs = r.why
             elseif pct then
@@ -1285,6 +1401,12 @@ local function refreshBrowse()
     local rows = {}
     local vendor = ns.VendorSell(id)
     local usual = usualText(id)
+    -- A usual price built from nonsense listings isn't compared with.
+    local doubt = ns.PriceDoubt(id)
+    if doubt then
+        usual = nil
+    end
+    local oddCount = 0
     local function money(c)
         return ns.StripCodes(ns.Money(floor(c + 0.5)))
     end
@@ -1294,7 +1416,12 @@ local function refreshBrowse()
         -- stack: what you pay against what a vendor pays for all of it.
         local total = item.commodity and (l.p * l.q) or (l.buyout or l.p * l.q)
         local hint
-        if l.mine and (l.own or 0) >= l.q then
+        local odd = ns.Suspicious(id, l.p)
+        if odd then
+            oddCount = oddCount + 1
+            note = SUSPICIOUS
+            hint = odd
+        elseif l.mine and (l.own or 0) >= l.q then
             note = GREY .. "Yours|r"
         elseif vendor and vendor > l.p then
             if item.commodity or l.q == 1 then
@@ -1316,12 +1443,13 @@ local function refreshBrowse()
                 hint = hint .. "\nOr bid " .. money(l.bid) .. ", but you only get it if nobody outbids you before it ends."
             end
         end
+        hint = (hint and (hint .. "\n") or "") .. sellerHint(l)
         rows[#rows + 1] = {
             key = "l" .. i, l = l, link = l.link, hint = hint,
             cells = { price = ns.Money(l.p), qty = ns.Commas(l.q), total = ns.Money(total),
                 bid = l.bid and (GREY .. money(l.bid) .. "|r") or "",
-                left = item.commodity and "" or timeLeftText(l.left, l.band), note = note },
-            sv = { price = l.p, qty = l.q },
+                left = item.commodity and "" or timeLeftText(l.left, l.band), seller = sellerCell(l), note = note },
+            sv = { price = l.p, qty = l.q, seller = (soleOwner(l) or "~"):lower() .. string.format("%016.2f", l.p) },
             dim = l.mine and (l.own or 0) >= l.q,
         }
         if BUY.sel == l then
@@ -1330,15 +1458,19 @@ local function refreshBrowse()
     end
     -- Bid-only auctions last, apart: no buyout, so never a deal.
     for i, l in ipairs(BUY.listings and BUY.listings.bids or {}) do
+        local odd = l.bid and ns.Suspicious(id, l.bid / max(1, l.q))
+        if odd then
+            oddCount = oddCount + 1
+        end
         rows[#rows + 1] = {
             key = "b" .. i, l = l, link = l.link, dim = true,
-            hint = "No buyout: you can only bid" .. (l.bid and (" (next bid " .. money(l.bid) .. " for "
+            hint = (odd and (odd .. "\n") or "") .. "No buyout: you can only bid" .. (l.bid and (" (next bid " .. money(l.bid) .. " for "
                 .. (l.q > 1 and ("all " .. l.q) or "it") .. ")") or "") .. ". You only get it if nobody outbids"
-                .. " you before it ends, so it's never counted as a deal.",
+                .. " you before it ends, so it's never counted as a deal.\n" .. sellerHint(l),
             cells = { price = GREY .. "Bid only|r", qty = ns.Commas(l.q), total = GREY .. "-|r",
-                bid = l.bid and money(l.bid) or "-", left = timeLeftText(l.left, l.band),
-                note = GREY .. (l.mine and "Yours" or "Only if you win") .. "|r" },
-            sv = { price = 1e12, qty = l.q },
+                bid = l.bid and money(l.bid) or "-", left = timeLeftText(l.left, l.band), seller = sellerCell(l),
+                note = odd and SUSPICIOUS or (GREY .. (l.mine and "Yours" or "Only if you win") .. "|r") },
+            sv = { price = 1e12, qty = l.q, seller = (soleOwner(l) or "~"):lower() .. "~" },
         }
         if BUY.sel == l then
             p.listings.selected = rows[#rows].key
@@ -1355,7 +1487,13 @@ local function refreshBrowse()
     edgeFor(box.iconEdge, id)
     box.title:SetText(ns.ItemName(id))
     local facts = {}
-    if usual then
+    if oddCount > 0 then
+        facts[#facts + 1] = "|cffff7070" .. plural(oddCount, "suspicious listing") .. ":|r priced like gold changing"
+            .. " hands, not a real sale. Don't buy " .. (oddCount == 1 and "it" or "them") .. "."
+    end
+    if doubt then
+        facts[#facts + 1] = "|cffff9a5aSuspicious price history.|r " .. doubt
+    elseif usual then
         facts[#facts + 1] = "Usual price: " .. ns.Money(usual)
     end
     if vendor and vendor > 0 then
@@ -1369,6 +1507,56 @@ local function refreshBrowse()
     local sale = ns.SaleText and ns.SaleText(id)
     if sale then
         facts[#facts + 1] = "Sells: " .. sale
+    end
+    -- Who's selling: the most listed, the cheapest, and what moved.
+    local tally, order, cheapest = {}, {}, nil
+    local newOnes, cuts = {}, {}
+    for _, l in ipairs(BUY.listings or {}) do
+        local o = soleOwner(l)
+        if not cheapest and not l.mine and (l.sellers or 1) > 1 then
+            cheapest = { name = l.sellers .. " sellers", p = l.p }
+        end
+        if o then
+            local name = o == "You" and "You" or shortName(o)
+            local t = tally[name]
+            if not t then
+                t = { name = name, q = 0, n = 0 }
+                tally[name] = t
+                order[#order + 1] = t
+            end
+            t.q, t.n = t.q + l.q, t.n + 1
+            if not cheapest and not l.mine then
+                cheapest = { name = name, p = l.p }
+            end
+            if l.move == "new" and not newOnes[name] then
+                newOnes[name] = true
+                newOnes[#newOnes + 1] = name
+            elseif l.move == "cut" and not cuts[name] then
+                cuts[name] = true
+                cuts[#cuts + 1] = name
+            end
+        end
+    end
+    table.sort(order, function(a, b)
+        if a.q ~= b.q then return a.q > b.q end
+        return a.name < b.name
+    end)
+    if #order > 0 then
+        local parts = {}
+        for k = 1, min(3, #order) do
+            local t = order[k]
+            parts[k] = t.name .. " " .. ns.Commas(t.q) .. (t.n > 1 and (GREY .. " (" .. t.n .. " auctions)|r") or "")
+        end
+        facts[#facts + 1] = "Most listed: " .. table.concat(parts, ", ")
+    end
+    if cheapest then
+        facts[#facts + 1] = "Cheapest: " .. cheapest.name .. " at " .. ns.Money(cheapest.p) .. (item.commodity and " each" or "")
+    end
+    if #cuts > 0 then
+        facts[#facts + 1] = "|cffff7070Cut their price|r since you last looked: " .. table.concat(cuts, ", ")
+    end
+    if #newOnes > 0 then
+        facts[#facts + 1] = "|cffffd100New sellers|r since you last looked: " .. table.concat(newOnes, ", ")
     end
     if BUY.listings and BUY.listings.bidOnly and BUY.listings.bidOnly > 0 then
         facts[#facts + 1] = GREY .. plural(BUY.listings.bidOnly, "bid-only auction") .. " at the bottom of the list."
@@ -1415,8 +1603,10 @@ local function refreshBrowse()
             box.buy:SetLabel("Buy")
             box.buy:SetDisabled(true)
         elseif l and l.aid and not l.mine then
-            box.cost:SetText(l.q .. " for " .. ns.Money(l.buyout or 0))
-            box.buy:SetLabel("Buy now: " .. ns.StripCodes(ns.Money(l.buyout or 0)))
+            local odd = ns.Suspicious(item.id, l.p)
+            box.cost:SetText((odd and ("|cffff7070Suspicious price - almost certainly gold changing hands, not a real"
+                .. " sale.|r\n") or "") .. l.q .. " for " .. ns.Money(l.buyout or 0))
+            box.buy:SetLabel((odd and "Buy anyway: " or "Buy now: ") .. ns.StripCodes(ns.Money(l.buyout or 0)))
             box.buy:SetDisabled(GetMoney() < (l.buyout or 0))
         else
             box.cost:SetText(GREY .. "Click a listing to buy it.|r")

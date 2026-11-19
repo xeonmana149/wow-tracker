@@ -18,7 +18,7 @@ local ADDON, ns = ...
 _G.ForeverGold = ns
 
 ns.TITLE = "Forever Gold"
-ns.VERSION = "1.8.0"
+ns.VERSION = "1.9.0"
 -- The auction house keeps 5% of every sale.
 ns.AH_CUT = 0.05
 
@@ -280,12 +280,14 @@ function ns.InitDB()
     opts.hideMapNodes = nil
     if opts.worldMapSpots == nil then opts.worldMapSpots = true end
     if opts.minimapSpots == nil then opts.minimapSpots = true end
+    if opts.mapButton == nil then opts.mapButton = true end
     if opts.revealMap == nil then opts.revealMap = true end
     if opts.lootBeam == nil then opts.lootBeam = true end
     if opts.nearestBeam == nil then opts.nearestBeam = true end
     if opts.beamUnrecorded == nil then opts.beamUnrecorded = true end
     -- The mailbox: auto-send and sending gold stay off until you switch them on.
     if opts.mailAuto == nil then opts.mailAuto = false end
+    if opts.mailPrompt == nil then opts.mailPrompt = true end
     if opts.mailGold == nil then opts.mailGold = false end
     if opts.mailReserve == nil then opts.mailReserve = 50000 end -- keep 5 gold
     ns.db = db
@@ -398,6 +400,35 @@ end
 function ns.ItemText(id)
     local it = ns.Item(id)
     return "|cff" .. ns.QualityHex(it and it.q) .. ns.ItemName(id) .. "|r"
+end
+
+-- Ctrl+click (the game's "dress up" modifier) on gear: try it on in the
+-- dressing room, like the game's own auction house. Returns true when it
+-- did, so the click does nothing else; anything that can't be worn falls
+-- through to the normal click.
+function ns.TryDressUp(id, link)
+    local held
+    if IsModifiedClick then
+        held = ns.try(IsModifiedClick, "DRESSUP")
+    elseif IsControlKeyDown then
+        held = ns.try(IsControlKeyDown)
+    end
+    if not held or (not id and not link) then
+        return false
+    end
+    if not link and C_Item then
+        local _, l = ns.try(C_Item.GetItemInfo, id)
+        link = l
+    end
+    link = link or (id and ("item:" .. id))
+    if C_Item and C_Item.IsDressableItemByID and not ns.try(C_Item.IsDressableItemByID, link) then
+        return false
+    end
+    local dress = DressUpItemLink or DressUpLink
+    if type(dress) ~= "function" then
+        return false
+    end
+    return ns.try(dress, link) and true or false
 end
 
 local QUESTION_MARK = 134400
