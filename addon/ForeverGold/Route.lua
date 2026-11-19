@@ -25,6 +25,10 @@ ns.KINDS = {
     -- a recorded spot is somewhere one turns up, not a promise.
     chest = { label = "Chests", one = "chest spot", many = "chest spots", none = "No chests recorded",
         icon = "Interface\\Icons\\INV_Box_02", color = { 0.95, 0.80, 0.45 } },
+    -- Where you've killed a mob: only used by a route through those places
+    -- (Farming > Mobs), never drawn as recorded spots.
+    mob = { label = "Mobs", one = "kill spot", many = "kill spots", none = "No kills recorded",
+        icon = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01", color = { 0.90, 0.35, 0.30 } },
 }
 ns.KIND_ORDER = { "herb", "ore", "fish", "chest" }
 
@@ -344,6 +348,14 @@ function ns.PlanRoute(mapID, kinds, start)
     local pts = ns.MatchingNodes(mapID, kinds)
     if #pts < 2 then
         return nil, "I need at least two recorded spots of that kind in this zone."
+    end
+    return ns.PlanRouteThrough(mapID, pts, kinds, start)
+end
+
+-- The same loop through any list of points ({ x =, y =, k =, n = }).
+function ns.PlanRouteThrough(mapID, pts, kinds, start)
+    if #pts < 2 then
+        return nil, "I need at least two spots for a loop."
     end
     if #pts > MAX_STOPS then
         table.sort(pts, function(a, b) return (a.c or 1) > (b.c or 1) end)
@@ -1132,19 +1144,25 @@ local function redrawWorldMap()
         kinds = ns.MapKinds(), route = opts.mapRoute ~= false and ns.route or nil })
 end
 
--- Which kinds of spot the world map shows (nil: all of them).
+-- Which kinds of spot the world map shows (nil: all of them): the ones
+-- ticked, and only those this character has the profession for.
 function ns.MapKinds()
     local off = ns.db.opts.mapKinds
-    if type(off) ~= "table" or not next(off) then
-        return nil
-    end
-    local on = {}
+    off = type(off) == "table" and off or {}
+    local on, all = {}, true
     for _, k in ipairs(ns.KIND_ORDER) do
-        if off[k] ~= false then
+        if off[k] ~= false and ns.CanGather(k) then
             on[k] = true
+        else
+            all = false
         end
     end
-    return on
+    return (not all) and on or nil
+end
+
+-- Whether a spot of this kind is shown to you at all (map, minimap, beams).
+local function shownKind(kind)
+    return ns.CanGather(kind)
 end
 
 function ns.MapKindOn(kind)
@@ -1684,7 +1702,7 @@ local function updateMinimap()
         p:SetPoint("CENTER", Minimap, "CENTER", x / radius * half, y / radius * half)
     end
     for _, n in ipairs(ns.db.nodes[mapID] or {}) do
-        if not n.skip and n ~= next then
+        if not n.skip and n ~= next and shownKind(n.k) then
             place(n, false)
         end
     end
@@ -1779,7 +1797,7 @@ local function nearestSpot()
     local now = GetTime()
     local best, bestD
     for _, n in ipairs(ns.db.nodes[mapID] or {}) do
-        if not n.skip then
+        if not n.skip and shownKind(n.k) then
             local c = nodeWorld(mapID, n)
             if c then
                 local dn, dw = c[1] - pn, c[2] - pw
@@ -2073,6 +2091,10 @@ end
 -- Stands the beam on the spot. (x, y) is the spot on screen, in the
 -- coordinates of `region`; `dist` is how far away it is; `up` is how far
 -- above the ground the screen point sits (a nameplate floats a little).
+-- `region` is what the game hangs on the thing (its marker or nameplate) and
+-- (x, y) where that is on screen; `up` is how many yards above the ground
+-- that point is. The beam stands on the ground under it: the frame is moved
+-- down from the anchor by the ground point's offset on screen.
 local function placeBeam(f, region, x, y, dist, alpha, up)
     local world = f:GetParent() or UIParent
     local sw, sh = world:GetWidth() or 0, world:GetHeight() or 0
@@ -2085,15 +2107,33 @@ local function placeBeam(f, region, x, y, dist, alpha, up)
     local zoom = tonumber(GetCameraZoom and ns.try(GetCameraZoom) or nil) or 12
     zoom = math.max(0, math.min(50, zoom))
     local eye = (IsMounted and ns.try(IsMounted)) and EYE_MOUNTED or EYE
-    local footZ = (up or 0) - eye
+    local anchorZ = (up or 0) - eye
+    local footZ = -eye
     dist = math.max(dist or 10, 1)
 
     -- The tilt moves smoothly, so a wobble in the reading doesn't shake the beam.
-    local tilt, bearing = solveCamera(sx, sy, dist, footZ, zoom, focal, f.tilt)
+    local tilt, bearing = solveCamera(sx, sy, dist, anchorZ, zoom, focal, f.tilt)
     f.tilt = f.tilt and (f.tilt + (tilt - f.tilt) * 0.3) or tilt
     tilt = f.tilt
     local u, r = dist * cos(bearing), dist * sin(bearing)
     local x0, y0, d0 = project(tilt, u, r, footZ, zoom, focal)
+    -- From the anchor down to the ground under it (never further than a
+    -- little of the screen, in case the distance is a guess).
+    local ox, oy = 0, 0
+    if (up or 0) > 0 then
+        local xa, ya = project(tilt, u, r, anchorZ, zoom, focal)
+        ox, oy = x0 - xa, y0 - ya
+        local reach = sqrt(ox * ox + oy * oy)
+        local most = sh * 0.12
+        if reach > most then
+            ox, oy = ox * most / reach, oy * most / reach
+        end
+    end
+    if f.rel and (not f.ox or math.abs(f.ox - ox) > 0.3 or math.abs(f.oy - oy) > 0.3) then
+        f:ClearAllPoints()
+        pcall(f.SetPoint, f, "BOTTOM", region, f.rel, ox, oy)
+        f.ox, f.oy = ox, oy
+    end
 
     -- The column, cut short if its top would come past the camera.
     local tall = BEAM_YARDS
@@ -2224,7 +2264,7 @@ local function drawBeam()
             hideBeam()
             return
         end
-        f.anchor = nav
+        f.anchor, f.rel, f.ox, f.oy = nav, "CENTER", 0, 0
     end
     paint(f, c)
     local nx, ny = nav:GetCenter()
@@ -2253,6 +2293,8 @@ beam.Draw = drawBeam
 ----------------------------------------------------------------------
 
 local BEAM_NEW = { 0.36, 0.60, 1 }  -- magic blue
+-- About how tall each kind of thing stands, in yards: its nameplate sits on top.
+local OBJECT_TOP = { herb = 1.0, ore = 1.7, chest = 1.1, fish = 0.2 }
 beam.COLORS = { route = BEAM_ROUTE, recorded = BEAM_SPOT, new = BEAM_NEW }
 
 -- The game settings this needs, and what they're set to. What they were
@@ -2428,6 +2470,9 @@ local function drawSoft()
         return
     end
     local o = softObject()
+    if o and not shownKind(o.kind) then
+        o = nil -- a herb without Herbalism, a vein without Mining...
+    end
     local plate = o and ns.try(C_NamePlate.GetNamePlateForUnit, "softinteract")
     if not plate then
         hideSoft()
@@ -2453,7 +2498,7 @@ local function drawSoft()
             hideSoft()
             return
         end
-        f.anchor = plate
+        f.anchor, f.rel, f.ox, f.oy = plate, "BOTTOM", 0, 0
     end
     beam.softNode, beam.softKind = node, (c == BEAM_ROUTE and "route") or (node and "recorded") or "new"
     paint(f, c)
@@ -2464,7 +2509,9 @@ local function drawSoft()
         hideSoft()
         return
     end
-    placeBeam(f, plate, px, py, d or 6, 1, 0.5)
+    -- The nameplate sits on top of the object: the beam stands on the
+    -- ground under it.
+    placeBeam(f, plate, px, py, d or 6, 1, OBJECT_TOP[o.kind] or 1)
 end
 beam.DrawSoft = drawSoft
 

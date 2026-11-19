@@ -569,21 +569,40 @@ export async function applyImport(
   ) {
     // Played time on the level-up (2026-11-09) - the addon's exact note
     // for that level when it has one (1.9.5+, also gives the real time),
-    // else total played as of this export
-    const levelNote = parsed.levelTimes?.[String(parsed.basic.level)];
-    const played =
-      typeof levelNote?.played === "number" ? levelNote.played : parsed.basic.timePlayedSeconds;
-    events.push({
-      character_id: characterId,
-      user_id: before.user_id,
-      kind: "level_up",
-      message: `${before.name} reached level ${parsed.basic.level}${
-        typeof played === "number" && played > 0 && !isFirstSync ? ` (${formatPlayed(played)} played)` : ""
-      }`,
-      ...(typeof levelNote?.t === "number" && levelNote.t > 0 && !isFirstSync
-        ? { created_at: new Date(levelNote.t * 1000).toISOString() }
-        : {}),
-    });
+    // else total played as of this export.
+    //
+    // 2026-11-19: one row per level gained, not just the newest - an alt
+    // played for an evening between syncs (3 to 7) used to post only
+    // "reached level 7". Levels in between are posted when the addon noted
+    // them, so each carries its own real time and played time.
+    const newLevel = parsed.basic.level;
+    const levelsGained: number[] = [];
+    if (!isFirstSync) {
+      for (let lvl = Math.max(before.level + 1, newLevel - 59); lvl < newLevel; lvl++) {
+        if (parsed.levelTimes?.[String(lvl)]) levelsGained.push(lvl);
+      }
+    }
+    levelsGained.push(newLevel);
+    for (const lvl of levelsGained) {
+      const levelNote = parsed.levelTimes?.[String(lvl)];
+      const played =
+        typeof levelNote?.played === "number"
+          ? levelNote.played
+          : lvl === newLevel
+            ? parsed.basic.timePlayedSeconds
+            : undefined;
+      events.push({
+        character_id: characterId,
+        user_id: before.user_id,
+        kind: "level_up",
+        message: `${before.name} reached level ${lvl}${
+          typeof played === "number" && played > 0 && !isFirstSync ? ` (${formatPlayed(played)} played)` : ""
+        }`,
+        ...(typeof levelNote?.t === "number" && levelNote.t > 0 && !isFirstSync
+          ? { created_at: new Date(levelNote.t * 1000).toISOString() }
+          : {}),
+      });
+    }
 
     if (parsed.basic.level >= MAX_CHARACTER_LEVEL) {
       const earned = await awardAchievement(supabase, characterId, "max_level");

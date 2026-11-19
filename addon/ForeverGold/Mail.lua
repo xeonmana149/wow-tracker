@@ -1532,9 +1532,17 @@ local function advance()
             end
         end
         Q.i = #Q.ships
+        local fresh = sent > 0 and bad == 0
         stopSending(bad > 0 and "error" or "done",
             (sent > 0 and ("Sent " .. plural(sent, "mail") .. ". ") or "")
-            .. (bad > 0 and (plural(bad, "mail") .. " didn't go. See the list.") or "All done."))
+            .. (bad > 0 and (plural(bad, "mail") .. " didn't go. See the list.")
+                or (fresh and "All done. Showing a new preview of what's left in your bags.") or "All done."))
+        if fresh then
+            -- Everything went: straight on to a fresh preview (a failed one
+            -- keeps the list up so you can see which).
+            Q.ships, Q.i, Q.plan = nil, 0, nil
+            ns.Fire("MAIL")
+        end
         return
     end
     later(PACE, prepare)

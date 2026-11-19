@@ -9,10 +9,10 @@
 // treated as "different, so out of date" by whoever's checking.
 export const LATEST_VERSIONS = {
   addon: "1.9.17",
-  tray: "2.2.32",
+  tray: "2.2.33",
   // The Forever Gold gold-making addon. The tray app updates copies that
   // are already installed when this changes (scripts/release.mjs sets it).
-  foreverGold: "1.9.2",
+  foreverGold: "1.9.3",
 };
 
 // Wherever people should go to grab the update. Both now point at GitHub
@@ -34,8 +34,8 @@ export const DOWNLOAD_URLS = {
   // tray installer (nsis.artifactName in tray-electron/package.json), but
   // for the addon zip that upload is a manual (or scripted) extra step you
   // do yourself - see the comment above.
-  addon: "https://github.com/xeonmana149/wow-tracker/releases/latest/download/WoWForeverTrackerAddon.zip",
-  tray: "https://github.com/xeonmana149/wow-tracker/releases/latest/download/WoWForeverTrackerSetup.exe",
+  addon: "1.9.17",
+  tray: "2.2.33",
   // Attached to every release by the tray's zip-addon-for-publish.js hook.
-  foreverGold: "https://github.com/xeonmana149/wow-tracker/releases/latest/download/ForeverGoldAddon.zip",
+  foreverGold: "1.9.3",
 };

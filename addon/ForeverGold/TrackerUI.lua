@@ -165,6 +165,14 @@ local function buildLoot()
         K.Tx(rows, nil, "Nothing looted yet - press Start first.")
         return rows
     end
+    -- The same haul sold two ways: all to a vendor, or auctioned.
+    K.Hd(rows, "Vendor or auction", K.GREY .. "total, per hour|r")
+    rows[#rows + 1] = { icon = K.COIN, title = "Vendor it all", onClick = false,
+        r2 = s.vendorPerHour and (ns.Money(s.vendorPerHour) .. K.GREY .. "/hr|r") or "", r1 = ns.Money(s.vendorTotal or 0),
+        tip = { "Coin plus what shopkeepers pay for everything you looted." } }
+    rows[#rows + 1] = { icon = "Interface\\Icons\\INV_Misc_Coin_02", title = "Auction it", onClick = false,
+        r2 = s.auctionPerHour and (ns.Money(s.auctionPerHour) .. K.GREY .. "/hr|r") or "", r1 = ns.Money(s.auctionTotal or 0),
+        tip = { "Coin plus the lowest auction price after the 5% cut;", "items with no auction price count at vendor price." } }
     K.Hd(rows, "Looted", ns.Money(s.made))
     if s.coin > 0 then
         rows[#rows + 1] = { icon = K.COIN, title = "Coin", r1 = ns.Money(s.coin), onClick = false,
@@ -483,15 +491,23 @@ local function create()
     local x = 4
     for _, t in ipairs({ { "kills", "Kills" }, { "loot", "Loot" }, { "money", "Money" } }) do
         local key = t[1]
-        local b = session(K.button(f, t[2], 56, 18, function()
+        local b = session(K.button(f, t[2], 46, 18, function()
             view.tab = key
             ns.RefreshTrackerWindow()
         end))
         b:SetPoint("TOPLEFT", x, y - ROW_H)
         f.tabs[key] = b
-        x = x + 59
+        x = x + 49
     end
-    f.sort = K.button(f, "Sort: Recent", 84, 18, function()
+    -- The full dashboard, in the main window.
+    f.stats = session(K.button(f, "Stats", 46, 18, function()
+        if ns.ShowMain then
+            ns.ShowMain()
+        end
+        ns.ShowTab("farming")
+    end))
+    f.stats:SetPoint("TOPLEFT", x, y - ROW_H)
+    f.sort = K.button(f, "Sort: Recent", 80, 18, function()
         view.sort = SORT_NEXT[view.sort] or "recent"
         ns.RefreshTrackerWindow()
     end)

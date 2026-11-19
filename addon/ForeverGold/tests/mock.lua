@@ -236,9 +236,12 @@ function GetCursorPosition() return M.cursorX or 300, M.cursorY or 300 end
 function GetLocale() return "enUS" end
 function IsShiftKeyDown() return M.shift end
 function IsFishingLoot() return M.fishing end
-function GetProfessions() return 1, 2, nil, 3, 4, 5 end
-local PROFS = { { "Blacksmithing", 120, 150 }, { "Mining", 98, 150 }, { "Fishing", 60, 150 }, { "Cooking", 80, 150 }, { "First Aid", 70, 150 } }
-function GetProfessionInfo(i) local p = PROFS[i]; if p then return p[1], 1, p[2], p[3] end end
+-- Herbalism rides in the archaeology slot (6) so a test can take it away (M.herbalism = false).
+function GetProfessions() return 1, 2, M.herbalism ~= false and 6 or nil, 3, 4, 5 end
+local PROFS = { { "Blacksmithing", 120, 150, 164 }, { "Mining", 98, 150, 186 }, { "Fishing", 60, 150, 356 }, { "Cooking", 80, 150, 185 },
+    { "First Aid", 70, 150, 129 }, { "Herbalism", 90, 150, 182 } }
+-- M.lostProf = "Mining": this character doesn't have it.
+function GetProfessionInfo(i) local p = PROFS[i]; if p and p[1] ~= M.lostProf then return p[1], 1, p[2], p[3], 0, 0, p[4] end end
 
 ----------------------------------------------------------------------
 -- Items
@@ -279,6 +282,13 @@ function C_Item.GetItemInfo(id)
     return it[1], "|cffffffff|Hitem:" .. id .. "|h[" .. it[1] .. "]|h|r", it[2], 10, 5, "Trade Goods", "Metal", stack, "", 134400, it[3], it[4], 0, it[5] or 0
 end
 function C_Item.GetItemNameByID(id) local it = M.items[id]; return it and it[1] or nil end
+-- Recipe items' subclass is the profession they teach (2 = Tailoring).
+M.itemSub = { [5772] = 2 }
+function C_Item.GetItemInfoInstant(id)
+    local it = M.items[id]
+    if not it then return nil end
+    return id, "", "", "", 134400, it[4], M.itemSub[id] or 0
+end
 -- Dressing room: weapons (2) and armour (4) can be tried on; Ctrl is the DRESSUP modifier.
 function C_Item.IsDressableItemByID(link)
     local id = type(link) == "number" and link or tonumber(tostring(link):match("item:(%d+)"))
@@ -720,7 +730,10 @@ do
     local guid, name = UnitGUID, UnitName
     UnitGUID = function(u) local x = M.units[u]; if x then return x.guid end return guid(u) end
     UnitName = function(u) local x = M.units[u]; if x then return x.name end return name(u) end
+    local level = UnitLevel
+    UnitLevel = function(u) local x = M.units[u]; if x then return x.level end return level(u) end
 end
+function IsInInstance() return M.inInstance or false end
 
 ----------------------------------------------------------------------
 -- Mailbox: inbox, send mail, and a server that answers (or doesn't)

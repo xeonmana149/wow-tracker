@@ -513,6 +513,16 @@ local function newGraph(parent)
         self.dot:SetPoint("CENTER", self, "BOTTOMLEFT", cx, y)
         self.dot:Show()
         GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+        if self.opts and self.opts.duration then
+            GameTooltip:SetText(ns.Duration(max(1, floor(t))) .. " in", 1, 1, 1)
+            GameTooltip:AddLine(ns.Money(v) .. GREY .. " made so far|r", 1, 1, 1)
+            local ref = self.opts.ref
+            if ref and ref > 0 then
+                GameTooltip:AddLine(GREY .. "Your usual pace: " .. ns.StripCodes(ns.Money(all[1][2] + ref * (t - all[1][1]))) .. "|r", 1, 1, 1)
+            end
+            GameTooltip:Show()
+            return
+        end
         GameTooltip:SetText(date("%a %d %b, %H:%M", floor(t)), 1, 1, 1)
         GameTooltip:AddLine(ns.Money(v), 1, 1, 1)
         local change = v - all[1][2]
@@ -542,17 +552,26 @@ local function newGraph(parent)
         return t
     end
 
-    function g:Draw(points, span)
+    -- o (optional): { duration = true } for seconds-into-a-session along the
+    -- bottom instead of dates; ref = copper a second for a dashed "your
+    -- usual" line from the first point; smooth = slopes instead of steps.
+    function g:Draw(points, span, o)
+        o = o or {}
+        self.opts = o
+        self.dash = self.dash or {}
         for _, l in ipairs(self.lines) do l:Hide() end
         for _, l in ipairs(self.grid) do l:Hide() end
+        for _, l in ipairs(self.dash) do l:Hide() end
         for _, t in ipairs(self.ylabels) do t:Hide() end
         for _, t in ipairs(self.xlabels) do t:Hide() end
+        if self.refLabel then self.refLabel:Hide() end
+        if self.endLabel then self.endLabel:Hide() end
         self.dot:Hide()
         self.cross:Hide()
         self.drawn, self.scale, self.lastX = {}, nil, nil
         local w, h = self:GetWidth() or 300, self:GetHeight() or 150
         if #points < 2 then
-            self.empty:SetText("Not enough history yet")
+            self.empty:SetText(o.emptyText or "Not enough history yet")
             return
         end
         self.all = points
@@ -570,6 +589,10 @@ local function newGraph(parent)
         local vmin, vmax = pts[1][2], pts[1][2]
         for _, p in ipairs(pts) do
             vmin, vmax = min(vmin, p[2]), max(vmax, p[2])
+        end
+        local refEnd = o.ref and o.ref > 0 and (pts[1][2] + o.ref * (t1 - t0)) or nil
+        if refEnd then
+            vmax = max(vmax, refEnd)
         end
         local spread = max(vmax - vmin, max(100, vmax * 0.02))
         local mid = (vmax + vmin) / 2
@@ -599,9 +622,42 @@ local function newGraph(parent)
             local xl = text(self.xlabels, i)
             local where = i == 1 and "BOTTOMLEFT" or (i == 3 and "BOTTOMRIGHT" or "BOTTOM")
             xl:SetJustifyH(i == 1 and "LEFT" or (i == 3 and "RIGHT" or "CENTER"))
-            xl:SetWidth(80)
+            xl:SetWidth(90)
             xl:SetPoint(where, self, "BOTTOMLEFT", X(t), 2)
-            xl:SetText(date(fmt, floor(t)))
+            if o.duration then
+                xl:SetText(i == 1 and "Start" or (ns.Duration(max(1, floor(t - t0))) .. (i == 3 and " farming" or "")))
+            else
+                xl:SetText(date(fmt, floor(t)))
+            end
+        end
+        -- Your usual pace, dashed.
+        if refEnd then
+            local x0, y0, x1, y1 = X(t0), Y(pts[1][2]), X(t1), Y(refEnd)
+            local len = math.sqrt((x1 - x0) ^ 2 + (y1 - y0) ^ 2)
+            local n = 0
+            local d = 0
+            while d < len and n < 200 do
+                local e = min(len, d + 6)
+                n = n + 1
+                local l = line(self.dash, n, "ARTWORK")
+                l:SetThickness(1.5)
+                l:SetColorTexture(1, 1, 1, 0.35)
+                l:SetStartPoint("BOTTOMLEFT", self, x0 + (x1 - x0) * d / len, y0 + (y1 - y0) * d / len)
+                l:SetEndPoint("BOTTOMLEFT", self, x0 + (x1 - x0) * e / len, y0 + (y1 - y0) * e / len)
+                d = d + 10
+            end
+            self.refLabel = self.refLabel or label(self, "GameFontDisableSmall")
+            self.refLabel:ClearAllPoints()
+            self.refLabel:SetPoint("BOTTOMRIGHT", self, "BOTTOMLEFT", x1 - 2, y1 + 3)
+            self.refLabel:SetText("Your usual")
+            self.refLabel:Show()
+        end
+        if o.endText then
+            self.endLabel = self.endLabel or label(self, "GameFontHighlightSmall")
+            self.endLabel:ClearAllPoints()
+            self.endLabel:SetPoint("BOTTOMRIGHT", self, "BOTTOMLEFT", X(t1) - 4, Y(pts[#pts][2]) + 4)
+            self.endLabel:SetText(o.endText)
+            self.endLabel:Show()
         end
         local up = pts[#pts][2] >= pts[1][2]
         local cr, cg, cb = C.goldEdge[1], C.goldEdge[2], C.goldEdge[3]
@@ -623,16 +679,273 @@ local function newGraph(parent)
             self.drawn[i] = { x = x, y = y, t = p[1], v = p[2] }
             if i > 1 then
                 local prev = self.drawn[i - 1]
-                if x > prev.x then
-                    seg(prev.x, prev.y, x, prev.y)
-                end
-                if y ~= prev.y then
-                    seg(x, prev.y, x, y)
+                if o.smooth then
+                    seg(prev.x, prev.y, x, y)
+                else
+                    if x > prev.x then
+                        seg(prev.x, prev.y, x, prev.y)
+                    end
+                    if y ~= prev.y then
+                        seg(x, prev.y, x, y)
+                    end
                 end
             end
         end
     end
     return g
+end
+
+----------------------------------------------------------------------
+-- Dashboard pieces (Farming tab)
+--
+--   { type = "cards", cards = { { cap =, value =, sub =, tip = }, ... } }
+--       a row of stat boxes side by side
+--   { type = "segbar", segs = { { value =, color = {r,g,b} }, ... } }
+--       one bar split by share
+--   { type = "meter", value = -1..1, left =, right = }
+--       red-to-green, with a marker (the luck meter)
+--   { type = "heat", cells = { { key =, v =, tip = }, ... } (oldest first,
+--       whole weeks, Monday first), legend = true }
+----------------------------------------------------------------------
+
+local function hideExtras(r)
+    for _, k in ipairs({ "cardsF", "segF", "meterF", "heatF" }) do
+        if r[k] then
+            r[k]:Hide()
+        end
+    end
+    if r.barBg then
+        r.barBg:Hide()
+        r.barFg:Hide()
+    end
+end
+
+local function cellEnter(self)
+    if not (self.tip and GameTooltip) then
+        return
+    end
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    for i, line in ipairs(self.tip) do
+        if i == 1 then
+            GameTooltip:SetText(line, 1, 0.82, 0)
+        else
+            GameTooltip:AddLine(line, 1, 1, 1, true)
+        end
+    end
+    GameTooltip:Show()
+end
+
+local function renderCards(r, d, width)
+    local f = r.cardsF
+    if not f then
+        f = CreateFrame("Frame", nil, r)
+        f.cards = {}
+        r.cardsF = f
+    end
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", 6, -6)
+    f:SetSize(width - 12, 54)
+    f:Show()
+    local n = #(d.cards or {})
+    local gap = 8
+    local cw = n > 0 and floor((width - 12 - gap * (n - 1)) / n) or 0
+    for i = 1, max(n, #f.cards) do
+        local c = f.cards[i]
+        local cd = d.cards[i]
+        if cd and not c then
+            c = CreateFrame("Frame", nil, f)
+            c.bg = tex(c, "BACKGROUND", 0, 0, 0, 0.25)
+            c.bg:SetAllPoints()
+            c.edge = tex(c, "BORDER", C.goldEdge[1], C.goldEdge[2], C.goldEdge[3], 0.9)
+            c.edge:SetPoint("TOPLEFT")
+            c.edge:SetPoint("BOTTOMLEFT")
+            c.edge:SetWidth(2)
+            c.cap = label(c, "GameFontDisableSmall")
+            c.cap:SetPoint("TOPLEFT", 10, -6)
+            c.value = label(c, "GameFontHighlightLarge")
+            c.value:SetPoint("TOPLEFT", 10, -19)
+            c.sub = label(c, "GameFontHighlightSmall")
+            c.sub:SetPoint("TOPLEFT", 10, -38)
+            for _, fs in ipairs({ c.cap, c.value, c.sub }) do
+                fs:SetJustifyH("LEFT")
+                fs:SetWordWrap(false)
+            end
+            c:EnableMouse(true)
+            c:SetScript("OnEnter", cellEnter)
+            c:SetScript("OnLeave", rowLeave)
+            f.cards[i] = c
+        end
+        if c then
+            c:SetShown(cd ~= nil)
+            if cd then
+                c:ClearAllPoints()
+                c:SetPoint("TOPLEFT", (i - 1) * (cw + gap), 0)
+                c:SetSize(cw, 54)
+                for _, fs in ipairs({ c.cap, c.value, c.sub }) do
+                    fs:SetWidth(cw - 14)
+                end
+                c.cap:SetText(cd.cap or "")
+                c.value:SetText(cd.value or "")
+                c.sub:SetText(cd.sub or "")
+                c.tip = cd.tip
+            end
+        end
+    end
+    r:EnableMouse(false)
+    r.sep:Hide()
+    return 66
+end
+
+local function renderSegbar(r, d, width)
+    local f = r.segF
+    if not f then
+        f = CreateFrame("Frame", nil, r)
+        f.bg = tex(f, "BACKGROUND", 1, 1, 1, 0.06)
+        f.bg:SetAllPoints()
+        f.segs = {}
+        r.segF = f
+    end
+    f:ClearAllPoints()
+    f:SetPoint("LEFT", 12, 0)
+    f:SetSize(width - 24, 12)
+    f:Show()
+    local total = 0
+    for _, s in ipairs(d.segs or {}) do
+        total = total + max(0, s.value or 0)
+    end
+    local x, used = 0, 0
+    local inner = width - 24
+    for _, s in ipairs(d.segs or {}) do
+        local v = max(0, s.value or 0)
+        if total > 0 and v > 0 then
+            used = used + 1
+            local t = f.segs[used]
+            if not t then
+                t = f:CreateTexture(nil, "ARTWORK")
+                f.segs[used] = t
+            end
+            local w = max(1, v / total * inner - (used > 1 and 2 or 0))
+            t:ClearAllPoints()
+            t:SetPoint("LEFT", x + (used > 1 and 2 or 0), 0)
+            t:SetSize(w, 12)
+            t:SetColorTexture(s.color[1], s.color[2], s.color[3], 1)
+            t:Show()
+            x = x + v / total * inner
+        end
+    end
+    for i = used + 1, #f.segs do
+        f.segs[i]:Hide()
+    end
+    r:EnableMouse(false)
+    r.sep:Hide()
+    return 26
+end
+
+local METER_STEPS = 24
+local function renderMeter(r, d, width)
+    local f = r.meterF
+    if not f then
+        f = CreateFrame("Frame", nil, r)
+        f.blocks = {}
+        for i = 1, METER_STEPS do
+            f.blocks[i] = f:CreateTexture(nil, "ARTWORK")
+        end
+        f.mid = tex(f, "OVERLAY", 1, 1, 1, 0.5)
+        f.mark = tex(f, "OVERLAY", 1, 0.86, 0.45, 1)
+        f.left = label(f, "GameFontDisableSmall")
+        f.right = label(f, "GameFontDisableSmall")
+        r.meterF = f
+    end
+    local w = min(420, width - 24)
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", 12, -6)
+    f:SetSize(w, 30)
+    f:Show()
+    local bw = w / METER_STEPS
+    for i, b in ipairs(f.blocks) do
+        local k = (i - 0.5) / METER_STEPS -- 0 red .. 1 green
+        local rr = k < 0.5 and 0.75 or 0.75 - (k - 0.5) * 1.1
+        local gg = k < 0.5 and 0.22 + k * 0.6 or 0.52 + (k - 0.5) * 0.5
+        local bb = 0.22 + k * 0.2
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", (i - 1) * bw, 0)
+        b:SetSize(bw + 0.5, 6)
+        b:SetColorTexture(rr, gg, bb, 0.85)
+    end
+    f.mid:ClearAllPoints()
+    f.mid:SetPoint("TOPLEFT", w / 2 - 0.5, 4)
+    f.mid:SetSize(1, 14)
+    local v = max(-1, min(1, d.value or 0))
+    f.mark:ClearAllPoints()
+    f.mark:SetPoint("TOPLEFT", (v + 1) / 2 * w - 1.5, 5)
+    f.mark:SetSize(3, 16)
+    f.left:ClearAllPoints()
+    f.left:SetPoint("TOPLEFT", 0, -12)
+    f.left:SetText(d.left or "Less lucky")
+    f.right:ClearAllPoints()
+    f.right:SetPoint("TOPRIGHT", 0, -12)
+    f.right:SetText(d.right or "Luckier")
+    r:EnableMouse(false)
+    r.sep:Hide()
+    return 38
+end
+
+local HEAT_CELL, HEAT_GAP = 13, 3
+local function renderHeat(r, d, width)
+    local f = r.heatF
+    if not f then
+        f = CreateFrame("Frame", nil, r)
+        f.cells = {}
+        f.keys = {}
+        r.heatF = f
+    end
+    local cells = d.cells or {}
+    local weeks = math.ceil(#cells / 7)
+    local step = HEAT_CELL + HEAT_GAP
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", 12, -6)
+    f:SetSize(weeks * step, 7 * step)
+    f:Show()
+    local top = 0
+    for _, cd in ipairs(cells) do
+        top = max(top, cd.v or 0)
+    end
+    for i = 1, max(#cells, #f.cells) do
+        local c = f.cells[i]
+        local cd = cells[i]
+        if cd and not c then
+            c = CreateFrame("Frame", nil, f)
+            c:SetSize(HEAT_CELL, HEAT_CELL)
+            c.t = c:CreateTexture(nil, "ARTWORK")
+            c.t:SetAllPoints()
+            c:EnableMouse(true)
+            c:SetScript("OnEnter", cellEnter)
+            c:SetScript("OnLeave", rowLeave)
+            f.cells[i] = c
+        end
+        if c then
+            c:SetShown(cd ~= nil)
+            if cd then
+                local col, row = floor((i - 1) / 7), (i - 1) % 7
+                c:ClearAllPoints()
+                c:SetPoint("TOPLEFT", col * step, -row * step)
+                local v = cd.v or 0
+                if cd.future then
+                    c.t:SetColorTexture(1, 1, 1, 0)
+                elseif v <= 0 then
+                    c.t:SetColorTexture(1, 1, 1, cd.played and 0.16 or 0.07)
+                else
+                    local k = top > 0 and v / top or 0
+                    local lvl = k > 0.75 and 1 or (k > 0.45 and 0.75 or (k > 0.2 and 0.5 or 0.3))
+                    c.t:SetColorTexture(C.goldText[1] * lvl + 0.08, C.goldText[2] * lvl + 0.05, C.goldText[3] * lvl * 0.4, 1)
+                end
+                c.tip = cd.tip
+            end
+        end
+    end
+    r:EnableMouse(false)
+    r.sep:Hide()
+    return 7 * step + 10
 end
 
 -- Fills a row from its description and returns the height it needs.
@@ -669,6 +982,7 @@ local function renderRow(r, d, width)
     if r.graph then
         r.graph:Hide()
     end
+    hideExtras(r)
     if d.type == "graph" then
         r.title:SetText("")
         r:EnableMouse(false)
@@ -679,8 +993,20 @@ local function renderRow(r, d, width)
         r.graph:SetPoint("TOPLEFT", 8, -6)
         r.graph:SetSize(width - 16, h - 12)
         r.graph:Show()
-        r.graph:Draw(d.points or {}, d.span)
+        r.graph:Draw(d.points or {}, d.span, d.graph)
         return h
+    elseif d.type == "cards" then
+        r.title:SetText("")
+        return renderCards(r, d, width)
+    elseif d.type == "segbar" then
+        r.title:SetText("")
+        return renderSegbar(r, d, width)
+    elseif d.type == "meter" then
+        r.title:SetText("")
+        return renderMeter(r, d, width)
+    elseif d.type == "heat" then
+        r.title:SetText("")
+        return renderHeat(r, d, width)
     elseif d.type == "chips" then
         r.title:SetText("")
         return renderChips(r, d, width, compact)
@@ -767,6 +1093,15 @@ local function renderRow(r, d, width)
     r.icon:ClearAllPoints()
     r.icon:SetPoint("TOPLEFT", 7, -6)
     placeEdge()
+    if d.swatch then
+        -- A small colour square instead of an icon (a key to a bar above).
+        r.icon:SetColorTexture(d.swatch[1], d.swatch[2], d.swatch[3], 1)
+        r.icon:SetTexCoord(0, 1, 0, 1)
+        r.icon:SetSize(12, 12)
+        r.icon:ClearAllPoints()
+        r.icon:SetPoint("TOPLEFT", 16, -9)
+        r.iconEdge:Hide()
+    end
     -- An optional action button (for example "Sell") sits at the far right
     -- and pushes the numbers left.
     local pad, rightW = 10, RIGHT_W
@@ -776,10 +1111,29 @@ local function renderRow(r, d, width)
         r.btn.onClick = function() d.btn.onClick(d) end
         r.btn:Show()
     end
-    local tx = d.noIcon and 12 or 46
+    -- An optional bar (share of the best), just left of the numbers.
+    local barW = 0
+    if d.bar then
+        barW = 110
+        if not r.barBg then
+            r.barBg = tex(r, "ARTWORK", 1, 1, 1, 0.07)
+            r.barFg = tex(r, "OVERLAY", 1, 1, 1, 1)
+        end
+        r.barBg:ClearAllPoints()
+        r.barBg:SetPoint("TOPRIGHT", -(pad + rightW + 10), -12)
+        r.barBg:SetSize(96, 6)
+        r.barBg:Show()
+        local bc = d.barColor or C.goldText
+        r.barFg:SetColorTexture(bc[1], bc[2], bc[3], 0.9)
+        r.barFg:ClearAllPoints()
+        r.barFg:SetPoint("TOPLEFT", r.barBg, "TOPLEFT", 0, 0)
+        r.barFg:SetSize(max(1, 96 * max(0, min(1, d.bar))), 6)
+        r.barFg:Show()
+    end
+    local tx = (d.noIcon and 12) or (d.swatch and 36) or 46
     setFont(r.title, "GameFontHighlight")
     r.title:SetPoint("TOPLEFT", tx, -6)
-    r.title:SetWidth(width - tx - rightW - pad - 4)
+    r.title:SetWidth(width - tx - rightW - pad - 4 - barW)
     r.title:SetWordWrap(true)
     if r.title.SetMaxLines then
         r.title:SetMaxLines(2)
@@ -789,7 +1143,7 @@ local function renderRow(r, d, width)
     local titleH = max(14, r.title:GetStringHeight() or 14)
     local subY = floor(6 + titleH + 3 + 0.5)
     r.sub:SetPoint("TOPLEFT", tx, -subY)
-    r.sub:SetWidth(width - tx - rightW - pad - 4)
+    r.sub:SetWidth(width - tx - rightW - pad - 4 - barW)
     r.sub:SetJustifyV("TOP")
     r.sub:SetWordWrap(true)
     if r.sub.SetMaxLines then
@@ -1583,8 +1937,18 @@ local function buildTodo()
                 farms[#farms + 1] = f
             end
         end
-        if #farms > 0 then
+        -- Your own measured farms that beat the general ones go first.
+        local mine = {}
+        for _, e in ipairs(ns.FarmSuggestions(2)) do
+            if not farms[1] or e.perHour >= (farms[1].perHour or 0) * 0.8 then
+                mine[#mine + 1] = e
+            end
+        end
+        if #farms > 0 or #mine > 0 then
             Hd(rows, "Got an hour? Go farm")
+            for _, e in ipairs(mine) do
+                rows[#rows + 1] = ns.FarmSuggestionRow(e, "todo:mob:")
+            end
             for _, f in ipairs(farms) do
                 rows[#rows + 1] = { icon = f.items[1] and f.items[1].id and ns.Icon(f.items[1].id) or COIN,
                     key = "todo:farm:" .. f.farm.title, title = f.farm.title, sub = "Farm  ·  " .. (f.where or ""),
@@ -1817,6 +2181,15 @@ local function buildFarm()
     if not ns.R().lastScan then
         Tx(rows, "No prices yet", "The farms below are sorted properly once I've read the auction house.")
     end
+    -- Measured on your own characters first: the mobs that pay best for
+    -- this one, with a route through where you killed them.
+    local mine = ns.FarmSuggestions(5)
+    if #mine > 0 then
+        Hd(rows, "From your own kills", "measured, at today's prices")
+        for _, e in ipairs(mine) do
+            rows[#rows + 1] = ns.FarmSuggestionRow(e)
+        end
+    end
     Hd(rows, "Good for " .. (c.name or "you") .. " right now")
     local any = false
     for _, f in ipairs(farms) do
@@ -1856,6 +2229,386 @@ local function buildFarm()
     end
     return rows
 end
+
+----------------------------------------------------------------------
+-- Tab: Farming - how your farming is going, and which mobs pay
+--
+--   This session  the tracker's session as a dashboard
+--   Overall       everything measured, the days you farmed, level times
+--   Mobs          every mob you've killed enough of, best per kill first
+----------------------------------------------------------------------
+
+local FROM = {
+    { "kills", "Loot from kills", { 0.95, 0.78, 0.30 }, "What mobs dropped (not greys), at today's prices." },
+    { "coin", "Coin off corpses", { 0.86, 0.86, 0.80 }, "Money looted from mobs and chests." },
+    { "gather", "Herbs, ore and gathering", { 0.38, 0.80, 0.42 }, "Mining, Herbalism and Skinning." },
+    { "fish", "Fishing", { 0.32, 0.60, 0.95 }, "Everything fished up." },
+    { "grey", "Greys for the vendor", { 0.55, 0.55, 0.55 }, "Grey items, worth what a vendor pays." },
+    { "other", "Chests and other", { 0.82, 0.52, 0.30 }, "Chests, clams and anything else opened." },
+}
+
+local function farmView()
+    local v = UI.farmView
+    return (v == "overall" or v == "mobs") and v or "session"
+end
+
+local function vsUsual(perHour, usual)
+    if not (perHour and usual and usual > 0) then
+        return usual and "" or (GREY .. "your usual shows after a saved trip|r")
+    end
+    local pct = floor((perHour / usual - 1) * 100 + 0.5)
+    if pct >= 0 then
+        return "|cff40e060" .. pct .. "% above your usual|r"
+    end
+    return "|cffff7070" .. -pct .. "% below your usual|r"
+end
+
+local function fromRows(rows, from)
+    local segs, total = {}, 0
+    for _, f in ipairs(FROM) do
+        total = total + max(0, from[f[1]] or 0)
+    end
+    for _, f in ipairs(FROM) do
+        segs[#segs + 1] = { value = from[f[1]] or 0, color = f[3] }
+    end
+    if total <= 0 then
+        Tx(rows, nil, "Nothing yet.")
+        return
+    end
+    rows[#rows + 1] = { type = "segbar", segs = segs }
+    for _, f in ipairs(FROM) do
+        local v = from[f[1]] or 0
+        rows[#rows + 1] = { swatch = f[3], title = f[2], key = "from:" .. f[1], onClick = false,
+            r1 = v > 0 and ns.Money(v) or (GREY .. "-|r"), r2 = v > 0 and (floor(v / total * 100 + 0.5) .. "%") or "",
+            tip = { f[4] } }
+    end
+end
+
+-- The last ten weeks, Monday first.
+local function heatRows(rows)
+    local fd = ns.FarmDays()
+    local now = time()
+    local wd = tonumber(date("%w", now)) or 0
+    local monIdx = (wd + 6) % 7
+    local start = now - (9 * 7 + monIdx) * 86400
+    local cells = {}
+    local today = ns.FarmDayKey(now)
+    for i = 0, 69 do
+        local t = start + i * 86400
+        local key = ns.FarmDayKey(t)
+        local d = fd.days[key]
+        local v = d and d.v or 0
+        cells[#cells + 1] = { key = key, v = v, played = d and (d.s or 0) >= 60, future = key > today,
+            tip = { date("%a %d %b", t), d and (ns.StripCodes(ns.Money(v)) .. " in " .. ns.Duration(max(1, d.s or 0))
+                .. ((d.k or 0) > 0 and (", " .. d.k .. " kills") or "")) or "No farming" } }
+    end
+    rows[#rows + 1] = { type = "heat", cells = cells }
+    local bits = {}
+    if fd.streak > 0 then
+        bits[#bits + 1] = "|cff40e060" .. fd.streak .. (fd.streak == 1 and " day" or " days") .. " in a row|r"
+    end
+    bits[#bits + 1] = "Your longest: " .. fd.longest
+    if fd.best then
+        local y, m, d = fd.best.key:match("^(%d+)-(%d+)-(%d+)$")
+        local bt = y and time({ year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 12 })
+        bits[#bits + 1] = "Best day: " .. ns.Money(fd.best.v) .. (bt and (" on " .. date("%d %b", bt)) or "")
+    end
+    Tx(rows, nil, table.concat(bits, "   ·   ") .. "\n" .. GREY .. "Brighter is more gold. Only time with the tracker recording counts.|r")
+end
+
+local function levelRows(rows)
+    local list, cur = ns.LevelTimes()
+    local soFar = ns.LevelSoFar()
+    if cur then
+        rows[#rows + 1] = { noIcon = true, key = "lvl:now", onClick = false,
+            title = "Level " .. cur.level .. GREY .. "  (now)|r", sub = cur.partial and "counting since the addon was installed" or nil,
+            r1 = ns.Duration(max(1, floor(soFar))), r2 = "so far" }
+    end
+    for i = 1, min(12, #list) do
+        local e = list[i]
+        rows[#rows + 1] = { noIcon = true, key = "lvl:" .. e.level, onClick = false,
+            title = "Level " .. e.level .. " to " .. (e.level + 1),
+            sub = e.partial and "only part of it: the addon arrived mid-level" or nil,
+            r1 = ns.Duration(max(1, e.secs)), r2 = e.at and date("%d %b", e.at) or "" }
+    end
+    if #list == 0 then
+        Tx(rows, nil, "Each level's time shows up here after you level, counted while you play.")
+    end
+end
+
+local function bestMobRows(rows, list, valueOf, extra)
+    local top = 0
+    for i = 1, min(5, #list) do
+        top = max(top, valueOf(list[i]))
+    end
+    for i = 1, min(5, #list) do
+        local m = list[i]
+        local d = { title = m.name, key = "best:" .. m.name, onClick = false, bar = top > 0 and valueOf(m) / top or 0,
+            icon = m.drops and m.drops[1] and ns.Icon(m.drops[1].id) or "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01" }
+        extra(d, m)
+        rows[#rows + 1] = d
+    end
+end
+
+local function farmSession(rows)
+    local s = ns.TrackerSummary()
+    if not s then
+        Tx(rows, "No session recording", "Press Start on the Farming Session window (the button above) and go farm. "
+            .. "This page fills in as you go: gold an hour against your usual, where it came from, your luck and your best mobs.")
+        Hd(rows, "Days you farmed", "Last 10 weeks")
+        heatRows(rows)
+        Hd(rows, "How long each level took", "This character, time played")
+        levelRows(rows)
+        return
+    end
+    local usual = ns.FarmUsualPerHour(s.started)
+    local most = s.mobs[1]
+    rows[#rows + 1] = { type = "cards", cards = {
+        { cap = "Gold an hour", value = s.perHour and ns.Money(s.perHour) or (GREY .. "after 1 min|r"), sub = vsUsual(s.perHour, usual),
+            tip = { "Gold an hour", "What you've made (coin plus loot at today's prices) for the time recorded.",
+                usual and ("Your usual: " .. ns.StripCodes(ns.Money(usual)) .. " an hour, from your saved trips.") or nil } },
+        { cap = "Gold this session", value = ns.Money(s.made), sub = GREY .. "In " .. ns.Duration(max(1, s.secs)) .. " of farming|r",
+            tip = { "Gold this session", "Coin looted plus everything looted, valued the better way to sell it." } },
+        { cap = "Kills this session", value = tostring(s.kills),
+            sub = GREY .. (s.secs > 60 and (floor(s.kills / s.secs * 3600 + 0.5) .. " kills an hour") or "kills an hour after 1 min") .. "|r" },
+        { cap = "Killed most", value = most and most.name or (GREY .. "nobody yet|r"), sub = most and (GREY .. most.n .. " kills|r") or "" },
+    } }
+    Hd(rows, "Gold this session", usual and "Your gold so far vs. your usual pace" or "Your gold so far")
+    local pts = {}
+    pts[1] = { 0, 0 }
+    for _, p in ipairs(s.timeline or {}) do
+        if p[1] > pts[#pts][1] then
+            pts[#pts + 1] = { p[1], p[2] }
+        end
+    end
+    if s.secs > pts[#pts][1] then
+        pts[#pts + 1] = { s.secs, floor(s.made) }
+    end
+    rows[#rows + 1] = { type = "graph", points = pts, height = 170,
+        graph = { duration = true, smooth = true, ref = usual and usual / 3600 or nil,
+            endText = #pts > 1 and (ns.StripCodes(ns.Money(s.made)) .. " so far") or nil,
+            emptyText = "The line starts after your first minute." } }
+    Hd(rows, "Vendor or auction", "Everything looted this session, both ways")
+    rows[#rows + 1] = { icon = COIN, key = "sell:vendor", onClick = false, title = "Sell it all to a vendor",
+        sub = "Coin plus what shopkeepers pay for every item",
+        r1 = ns.Money(s.vendorTotal), r2 = s.vendorPerHour and (ns.Money(s.vendorPerHour) .. GREY .. " an hour|r") or "" }
+    rows[#rows + 1] = { icon = "Interface\\Icons\\INV_Misc_Coin_02", key = "sell:auction", onClick = false,
+        title = "Auction it (vendor what has no price)",
+        sub = "Coin plus the lowest auction price after the 5% cut",
+        r1 = ns.Money(s.auctionTotal), r2 = s.auctionPerHour and (ns.Money(s.auctionPerHour) .. GREY .. " an hour|r") or "" }
+    Hd(rows, "Where your gold came from", "This session")
+    fromRows(rows, s.from or {})
+    Hd(rows, "Best mobs for gold", "Mobs you killed this session")
+    local mobs = ns.TrackerMobs("value")
+    if #mobs == 0 then
+        Tx(rows, nil, "No kills yet.")
+    end
+    bestMobRows(rows, mobs, function(m) return m.value end, function(d, m)
+        d.sub = m.k .. " kills  ·  " .. ns.StripCodes(ns.Money(m.perKill)) .. " a kill"
+        d.r1 = ns.Money(m.value)
+    end)
+    Hd(rows, "Your luck this session", "Your drops vs. your own usual drop rates")
+    local luck = ns.FarmLuck()
+    if luck then
+        local pct = floor(luck.pct * 100 + 0.5)
+        rows[#rows + 1] = { noIcon = true, key = "luck", onClick = false,
+            title = (pct >= 0 and ("|cff40e060" .. pct .. "% luckier|r") or ("|cffff7070" .. -pct .. "% less lucky|r")),
+            sub = "Over " .. luck.kills .. " kills of mobs you've killed before" }
+        rows[#rows + 1] = { type = "meter", value = luck.pct }
+        for i = 1, min(4, #luck.items) do
+            local e = luck.items[i]
+            rows[#rows + 1] = { id = e.id, key = "luck:" .. e.id, title = ns.ItemName(e.id), onClick = false,
+                r1 = tostring(e.got), r2 = "about " .. (floor(e.expected * 10 + 0.5) / 10) .. " expected" }
+        end
+    else
+        Tx(rows, nil, "Once you've killed " .. 20 .. " of a mob in earlier sessions, this compares what drops now with what usually drops.")
+    end
+    Hd(rows, "Days you farmed", "Last 10 weeks")
+    heatRows(rows)
+    Hd(rows, "How long each level took", "This character, time played")
+    levelRows(rows)
+end
+
+local function farmOverall(rows)
+    local o = ns.FarmOverall()
+    rows[#rows + 1] = { type = "cards", cards = {
+        { cap = "Gold an hour", value = o.perHour and ns.Money(o.perHour) or (GREY .. "-|r"),
+            sub = GREY .. "every recorded minute|r" },
+        { cap = "Gold farmed", value = ns.Money(o.value), sub = GREY .. "In " .. ns.Duration(max(1, o.secs)) .. " of farming|r",
+            tip = { "Gold farmed", "Everything the tracker recorded over the last 120 days." } },
+        { cap = "Kills", value = tostring(o.kills), sub = GREY .. "recorded|r" },
+        { cap = "Killed most", value = o.most and o.most.name or (GREY .. "nobody yet|r"),
+            sub = o.most and (GREY .. o.most.k .. " kills, all time|r") or "" },
+    } }
+    Hd(rows, "Gold farmed over time", "Day by day, added up")
+    local keys = {}
+    for key in pairs(ns.db.farmDays or {}) do
+        keys[#keys + 1] = key
+    end
+    table.sort(keys)
+    local pts, sum = {}, 0
+    for _, key in ipairs(keys) do
+        local y, m, d = key:match("^(%d+)-(%d+)-(%d+)$")
+        local t = y and time({ year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 12 })
+        if t then
+            if #pts == 0 then
+                pts[1] = { t - 86400, 0 }
+            end
+            sum = sum + (ns.db.farmDays[key].v or 0)
+            pts[#pts + 1] = { t, sum }
+        end
+    end
+    rows[#rows + 1] = { type = "graph", points = pts, height = 150,
+        graph = { smooth = true, emptyText = "Record a session or two and this fills in." } }
+    Hd(rows, "Where your gold came from", "Everything recorded")
+    fromRows(rows, o.from)
+    Hd(rows, "Best mobs for gold", "Per kill, all your characters")
+    local ranked = ns.MobRanking()
+    if #ranked == 0 then
+        Tx(rows, nil, "Mobs are ranked after " .. ns.FARM_RANK_MIN .. " kills with the tracker on.")
+    end
+    bestMobRows(rows, ranked, function(m) return m.perKill end, function(d, m)
+        d.sub = m.k .. " kills" .. (m.where and ("  ·  " .. m.where) or "")
+        d.r1 = ns.Money(m.perKill)
+        d.r2 = "a kill"
+    end)
+    Hd(rows, "Days you farmed", "Last 10 weeks")
+    heatRows(rows)
+    Hd(rows, "How long each level took", "This character, time played")
+    levelRows(rows)
+end
+
+local function levelText(m)
+    if not m.lo then
+        return nil
+    end
+    return "level " .. (m.lo == m.hi and m.lo or (m.lo .. "-" .. m.hi))
+end
+
+-- The details pane for a ranked mob: drops, pace, and a route.
+local function mobDetail(m)
+    local lines = {
+        { "Worth a kill", ns.Money(m.perKill), total = true },
+        { "Coin a kill", ns.Money(m.coin / max(1, m.k)) },
+        { "Kills an hour", floor(m.killsHr + 0.5) .. (m.speedMeasured and "" or GREY .. " (typical)|r") },
+        { "Gold an hour", "~" .. ns.Money(m.perHour) },
+        { "Killed", m.k .. " times" },
+        " ",
+    }
+    for i = 1, min(8, #m.drops) do
+        local d = m.drops[i]
+        lines[#lines + 1] = { ns.ItemName(d.id), floor(d.rate * 100 + 0.5) .. "%  " .. GREY .. ns.StripCodes(ns.Money(d.each)) .. "|r" }
+    end
+    local zones = {}
+    for i = 1, min(3, #m.zones) do
+        zones[i] = m.zones[i].name
+    end
+    local canRoute = m.spots >= 2
+    return { sub = table.concat(zones, ", ") .. (levelText(m) and ("  ·  " .. levelText(m)) or ""),
+        lines = lines,
+        caption = "drops: share of kills, worth each",
+        note = "Measured on your own characters, at today's prices." .. (m.speedMeasured and "" or " Kills an hour is a typical pace until you've killed a few in a row."),
+        action = canRoute and { label = "Route through where you killed them", onClick = function()
+            if ns.StartMobRoute(m.name) then
+                ns.ShowTab("routes")
+            end
+        end } or { label = "Kill a few more for a route", disabled = true, onClick = function() end },
+        action2 = false }
+end
+ns.FarmMobDetail = mobDetail
+
+local function farmMobs(rows)
+    local ranked = ns.MobRanking({ outside = UI.mobOutside, skipGood = UI.mobSkipGood })
+    if #ranked == 0 then
+        Tx(rows, "No mobs ranked yet", "Turn on the Farming Session tracker and kill things: every mob you've killed "
+            .. ns.FARM_RANK_MIN .. " times shows here, ranked by what a kill is worth at today's prices, with where and how fast.")
+        return
+    end
+    Hd(rows, "Your kills, best per kill first", plural(#ranked, "mob") .. "  ·  coin included")
+    local top = ranked[1].perKill
+    for i, m in ipairs(ranked) do
+        local where = {}
+        if m.best then
+            where[#where + 1] = "Best drop: " .. ns.ItemName(m.best.id) .. " (" .. floor(m.best.rate * 100 + 0.5) .. "%)"
+        end
+        if m.where then
+            where[#where + 1] = m.where
+        end
+        if levelText(m) then
+            where[#where + 1] = levelText(m)
+        end
+        if m.inst then
+            where[#where + 1] = "dungeon"
+        end
+        local rank = i <= 3 and ("|cffffd100" .. i .. ".|r ") or (GREY .. i .. ".|r ")
+        rows[#rows + 1] = { key = "mob:" .. m.name, title = rank .. m.name,
+            id = m.best and m.best.id, sub = table.concat(where, "  ·  "),
+            bar = top > 0 and m.perKill / top or 0,
+            r1 = ns.Money(m.perKill) .. GREY .. " a kill|r",
+            r2 = m.k .. " kills  ·  ~" .. ns.StripCodes(ns.Money(m.perHour)) .. "/hr",
+            detail = function() return mobDetail(m) end }
+    end
+end
+
+local function buildFarming()
+    local rows = {}
+    local v = farmView()
+    if v == "overall" then
+        farmOverall(rows)
+    elseif v == "mobs" then
+        farmMobs(rows)
+    else
+        farmSession(rows)
+    end
+    return rows
+end
+
+local function farmingToolbar()
+    local bar = {}
+    for _, m in ipairs({ { "session", "This session" }, { "overall", "Overall" }, { "mobs", "Mobs" } }) do
+        local key = m[1]
+        bar[#bar + 1] = { label = m[2], width = 92, on = farmView() == key, onClick = function()
+            UI.farmView = key
+            ns.RefreshUI()
+        end }
+    end
+    bar[#bar].gap = 24
+    if farmView() == "mobs" then
+        bar[#bar + 1] = { label = "Outside dungeons", width = 120, on = UI.mobOutside and true or false, onClick = function()
+            UI.mobOutside = not UI.mobOutside or nil
+            ns.RefreshUI()
+        end }
+        bar[#bar + 1] = { label = "Skip green+", width = 90, on = UI.mobSkipGood and true or false, onClick = function()
+            UI.mobSkipGood = not UI.mobSkipGood or nil
+            ns.RefreshUI()
+        end }
+        bar.text = "Ranked after " .. ns.FARM_RANK_MIN .. " kills."
+    else
+        bar[#bar + 1] = { label = "Farming Session", width = 130, on = ns.TrackerWindowShown and ns.TrackerWindowShown(),
+            onClick = function() ns.ToggleTrackerWindow() end }
+        bar.text = farmView() == "session" and "Updates as you farm." or "Every recorded minute, all characters."
+    end
+    return bar
+end
+
+-- Suggested farms from your own kills, as rows (Make > Farm and To do).
+local function suggestionRow(e, prefix)
+    local bits = {}
+    if e.where then
+        bits[#bits + 1] = e.where
+    end
+    if levelText(e) then
+        bits[#bits + 1] = levelText(e)
+    end
+    bits[#bits + 1] = floor(e.killsHr + 0.5) .. " kills an hour" .. (e.speedMeasured and "" or " (typical)")
+    return { icon = e.best and ns.Icon(e.best.id) or "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01",
+        key = (prefix or "farm:") .. e.name, title = "Kill " .. e.name,
+        sub = (prefix and "Farm  ·  " or "") .. table.concat(bits, "  ·  "),
+        r1 = "~" .. ns.Money(e.perHour), r2 = e.vsUsual and (e.vsUsual >= 0 and ("|cff40e060+" .. floor(e.vsUsual * 100 + 0.5) .. "%|r vs your usual")
+            or "an hour, measured") or "an hour, measured",
+        detail = function() return mobDetail(e) end }
+end
+ns.FarmSuggestionRow = suggestionRow
 
 ----------------------------------------------------------------------
 -- Tab: Bags
@@ -2365,6 +3118,7 @@ local function buildTips()
     optionRow(rows, "worldMapSpots", "Show my gathering spots and route on the world map (OpenMap too)")
     optionRow(rows, "mapButton", "A gathering button on the world map, to filter herbs, ore, fishing and chests")
     optionRow(rows, "minimapSpots", "Show my gathering spots and the next stop on the minimap")
+    optionRow(rows, "onlyMyProfs", "Only show herbs, ore and fishing spots (map, minimap and beams) when this character has Herbalism, Mining or Fishing")
     optionRow(rows, "revealMap", "Draw the whole zone on the Routes map, not just the parts I've explored")
     optionRow(rows, "lootBeam", "Loot beams: gold on a route stop, white on a spot I've recorded, light blue on one I haven't")
     optionRow(rows, "nearestBeam", "With no route running, put a white beam on the nearest spot I've recorded (only when I'm not tracking anything else)")
@@ -2456,6 +3210,8 @@ local TABS = {
     { key = "buy", label = "Buy", build = buildDeals },
     { key = "make", label = "Make", build = buildMake, toolbar = makeToolbar,
         plot = function() return makeMode() == "routes" end },
+    { key = "farming", label = "Farming", build = buildFarming, toolbar = farmingToolbar,
+        wide = function() return farmView() ~= "mobs" end },
     { key = "chars", label = "Characters", build = buildChars, toolbar = charsToolbar },
 }
 -- Opened with the Settings button at the top right, not a tab of its own.
@@ -2463,7 +3219,7 @@ local SETTINGS = { key = "settings", label = "Settings", build = buildTips }
 
 -- Older names for the tabs, still used in a few places.
 local TAB_ALIAS = { characters = { "chars" }, today = { "todo" }, bags = { "sell" }, deals = { "buy" }, tips = { "settings" },
-    craft = { "make", "craft" }, farm = { "make", "farm" }, routes = { "make", "routes" } }
+    craft = { "make", "craft" }, farm = { "make", "farm" }, routes = { "make", "routes" }, mobs = { "farming" } }
 
 ----------------------------------------------------------------------
 -- The main window
@@ -3052,7 +3808,11 @@ function ns.RefreshUI(keepScroll)
     end
     -- List on the left; on the right the route map, or the details of the
     -- picked row. Settings use the whole width.
-    local withPane = not plot and tab ~= SETTINGS
+    local wide = tab.wide
+    if type(wide) == "function" then
+        wide = wide()
+    end
+    local withPane = not plot and tab ~= SETTINGS and not wide
     local right = plot and (MAP_W + 12) or (withPane and (PANE_W + 10) or 0)
     list.viewW = W - 24 - right
     list.rightW = (withPane and 150) or (plot and 16) or nil
@@ -3069,7 +3829,7 @@ function ns.RefreshUI(keepScroll)
     end
 
     -- Keep the picked row picked across refreshes; otherwise the first one.
-    UI.selKey = tab.key .. (tab.key == "make" and (":" .. makeMode()) or "")
+    UI.selKey = tab.key .. (tab.key == "make" and (":" .. makeMode()) or "") .. (tab.key == "farming" and (":" .. farmView()) or "")
     local want, first, picked = UI.sel[UI.selKey], nil, nil
     if withPane then
         for _, d in ipairs(rows) do
@@ -3282,6 +4042,13 @@ function ns.ToggleUI()
         main:Hide()
     else
         main:Show()
+    end
+end
+
+-- Opens the main window (if it isn't already).
+function ns.ShowMain()
+    if not (main and main:IsShown()) then
+        ns.ToggleUI()
     end
 end
 
@@ -3772,6 +4539,60 @@ local function stackSellPrice(data)
     return nil
 end
 
+-- How many are in the stack you're hovering: the bag slot under the
+-- tooltip's owner, else worked out from Blizzard's stack sell price.
+local function stackCount(tooltip, id, data)
+    local owner = tooltip.GetOwner and tooltip:GetOwner()
+    if type(owner) == "table" and C_Container and C_Container.GetContainerItemInfo then
+        local bag = owner.GetBagID and ns.try(owner.GetBagID, owner)
+        if bag == nil and owner.GetParent then
+            local parent = owner:GetParent()
+            bag = parent and parent.GetID and parent:GetID()
+        end
+        local slot = owner.GetID and owner:GetID()
+        if type(bag) == "number" and type(slot) == "number" and slot > 0 then
+            local info = ns.try(C_Container.GetContainerItemInfo, bag, slot)
+            if type(info) == "table" and info.itemID == id and (info.stackCount or 0) > 0 then
+                return info.stackCount
+            end
+        end
+    end
+    local each, stack = ns.VendorSell(id), stackSellPrice(data)
+    if each and each > 0 and stack and stack > each then
+        return floor(stack / each + 0.5)
+    end
+    return 1
+end
+
+-- "x 20: 1g 40s" under a per-item line, for a stack of n.
+local function stackTotal(tooltip, n, each, text)
+    if n > 1 and each and each ~= 0 then
+        tooltip:AddDoubleLine(GREY .. "  stack of " .. n .. "|r", text and text(each * n) or (GREY .. ns.Money(each * n) .. "|r"))
+    end
+end
+
+-- A recipe, pattern, plans or formula: which of your characters already
+-- know what it teaches, and which have the profession but don't.
+local function addRecipeKnownLines(tooltip, id)
+    local info = ns.RecipeItem and ns.RecipeItem(id)
+    if not info then
+        return
+    end
+    if #info.known > 0 then
+        tooltip:AddLine("|cff40e060Already known by:|r " .. table.concat(info.known, ", "), 1, 1, 1, true)
+    end
+    if #info.can > 0 then
+        tooltip:AddLine("|cffffd100Could learn it:|r " .. table.concat(info.can, ", "), 1, 1, 1, true)
+    end
+    if #info.unread > 0 then
+        tooltip:AddLine(GREY .. "Open " .. info.prof .. " once on " .. table.concat(info.unread, ", ")
+            .. " to check them too.|r", 1, 1, 1, true)
+    end
+    if #info.known == 0 and #info.can == 0 and #info.unread == 0 then
+        tooltip:AddLine(GREY .. "None of your characters has " .. info.prof .. ".|r", 1, 1, 1, true)
+    end
+end
+
 local function addVendorLine(tooltip, id, data)
     local each = ns.VendorSell(id)
     local stack = stackSellPrice(data)
@@ -3813,15 +4634,18 @@ local function addTooltipLines(tooltip, data)
         return
     end
     addVendorLine(tooltip, id, data)
+    local n = stackCount(tooltip, id, data)
     local R = ns.R()
     local by = R.lastScanBy and (" by " .. R.lastScanBy) or ""
     local price, listed, when = ns.AHPrice(id)
     local last, lastT = ns.LastPrice(id)
     if price then
         tooltip:AddDoubleLine("|cffffd100Auction|r  " .. GREY .. listed .. " listed|r", ns.Money(price))
+        stackTotal(tooltip, n, price)
         tooltip:AddLine(GREY .. "Last scanned " .. agoColored(when) .. by .. "|r")
     elseif last then
         tooltip:AddDoubleLine("|cffffd100Auction|r  " .. GREY .. "none listed now, was|r", ns.Money(last))
+        stackTotal(tooltip, n, last)
         tooltip:AddLine(GREY .. "Last seen " .. agoColored(lastT) .. by .. "|r")
     end
     if (price or last) and (ns.Suspicious(id, price or last) or ns.PriceDoubt(id)) then
@@ -3880,9 +4704,11 @@ local function addTooltipLines(tooltip, data)
                 local m = e.cost > 0 and floor(e.profit / e.cost * 100 + 0.5)
                 local pct = m and ("  " .. (m > 0 and "|cff40e060" or m < 0 and "|cffff6060" or GREY) .. m .. "%|r" .. GREY .. " margin|r") or ""
                 tooltip:AddDoubleLine("|cffffd100Profit if you craft and sell it|r", ns.Profit(e.profit) .. pct)
+                stackTotal(tooltip, n, e.profit, ns.Profit)
             end
         end
     end
+    addRecipeKnownLines(tooltip, id)
     -- Auction against vendor: what listing it earns over just vendoring it.
     local ah = price or last or sp
     local vendor = ns.VendorSell(id)
@@ -3892,6 +4718,7 @@ local function addTooltipLines(tooltip, data)
         if gain > 0 then
             tooltip:AddDoubleLine("|cffffd100Auction over vendor|r  " .. GREY .. "after the 5% cut|r",
                 ns.Profit(gain) .. "  |cff40e060+" .. pct .. "%|r")
+            stackTotal(tooltip, n, floor(gain + 0.5), ns.Profit)
         else
             tooltip:AddDoubleLine("|cffffd100Auction over vendor|r", "|cffff7070vendor pays more|r")
         end

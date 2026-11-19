@@ -134,9 +134,9 @@ local function refreshProfessions()
     local any = false
     for _, idx in ipairs({ a or false, b or false, d or false, e or false, f or false, g or false }) do
         if idx then
-            local name, _, skill, maxSkill = ns.try(GetProfessionInfo, idx)
+            local name, _, skill, maxSkill, _, _, line = ns.try(GetProfessionInfo, idx)
             if name then
-                found[name] = { skill = skill or 0, max = maxSkill or 0 }
+                found[name] = { skill = skill or 0, max = maxSkill or 0, line = line }
                 any = true
             end
         end
@@ -144,7 +144,37 @@ local function refreshProfessions()
     if any then
         c.profs = found
         ns.Fire("PLAYER_CHANGED")
+        if ns.RedrawWorldMap then
+            ns.RedrawWorldMap()
+        end
     end
+end
+
+-- Which profession gathers each kind of spot (chests are anyone's), by
+-- name and by skill line so it works in any language.
+local GATHER_PROF = {
+    herb = { "Herbalism", 182 },
+    ore = { "Mining", 186 },
+    fish = { "Fishing", 356 },
+}
+
+-- Can this character gather this kind of spot? True until the professions
+-- have been read, and always when the option to hide the others is off.
+function ns.CanGather(kind)
+    local need = GATHER_PROF[kind]
+    if not need or ns.db.opts.onlyMyProfs == false then
+        return true
+    end
+    local profs = ns.Char().profs
+    if not next(profs) then
+        return true
+    end
+    for name, p in pairs(profs) do
+        if name == need[1] or p.line == need[2] then
+            return true
+        end
+    end
+    return false
 end
 
 ----------------------------------------------------------------------
@@ -309,8 +339,82 @@ ns.On("SKILL_LINES_CHANGED", function()
     end
 end)
 
-ns.On("PLAYER_LEVEL_UP", function()
+----------------------------------------------------------------------
+-- How long each level took
+--
+-- Time logged in at each level, counted by the addon: c.lvl = { level,
+-- secs, partial } is the level you're on (partial when the addon arrived
+-- part-way through it), and c.levels[level] = { s = seconds, at = when,
+-- partial } once it's done.
+----------------------------------------------------------------------
+
+local lvlFrom -- time() this login's count started from
+
+local function lvlBank(c)
+    if lvlFrom and c.lvl then
+        local now = time()
+        c.lvl.secs = (c.lvl.secs or 0) + math.max(0, now - lvlFrom)
+        lvlFrom = now
+    end
+end
+
+local function lvlStart()
+    local c = ns.Char()
+    local level = ns.try(UnitLevel, "player")
+    if not level then
+        return
+    end
+    if not c.lvl or c.lvl.level ~= level then
+        c.lvl = { level = level, secs = 0, partial = true }
+    end
+    lvlFrom = time()
+end
+
+local function lvlUp(newLevel)
+    local c = ns.Char()
+    lvlBank(c)
+    local cur = c.lvl
+    newLevel = tonumber(newLevel) or ((cur and cur.level or 0) + 1)
+    if cur and cur.level and cur.level < newLevel then
+        c.levels = c.levels or {}
+        c.levels[cur.level] = { s = floor(cur.secs or 0), at = time(), partial = cur.partial or nil }
+    end
+    c.lvl = { level = newLevel, secs = 0 }
+    lvlFrom = time()
+end
+ns.LevelUp = lvlUp
+
+-- { {level, secs, at, partial}, ... } newest first.
+function ns.LevelTimes(ch)
+    ch = ch or ns.Char()
+    local out = {}
+    for level, e in pairs(ch.levels or {}) do
+        out[#out + 1] = { level = level, secs = e.s or 0, at = e.at, partial = e.partial }
+    end
+    table.sort(out, function(a, b) return a.level > b.level end)
+    return out, ch.lvl
+end
+
+-- The current level's time so far.
+function ns.LevelSoFar()
+    local c = ns.Char()
+    lvlBank(c)
+    return c.lvl and c.lvl.secs or 0, c.lvl
+end
+
+ns.Listen("READY", function()
+    lvlStart()
+end)
+
+ns.On("PLAYER_LOGOUT", function()
     if ns.ready then
+        lvlBank(ns.Char())
+    end
+end)
+
+ns.On("PLAYER_LEVEL_UP", function(level)
+    if ns.ready then
+        lvlUp(level)
         ns.Later("basics", 1.0, refreshBasics)
     end
 end)

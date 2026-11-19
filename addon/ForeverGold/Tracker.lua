@@ -50,6 +50,8 @@ local function blank()
         gathers = 0,
         streak = 0, -- kills since you last died
         best = 0,
+        -- Gold over the session: { {seconds recorded, value made}, ... }, one a minute.
+        tl = {},
     }
 end
 
@@ -64,7 +66,11 @@ local function T()
 end
 
 -- All-time numbers across every trip (account-wide, by name):
--- life.mobs[name] = { k = kills, v = value looted, good = green-or-better drops }
+-- life.mobs[name] = { k = kills, v = value looted (at the time), good = green-or-better drops,
+--   drops = { [id] = corpses that dropped it }, items = { [id] = how many looted }, coin = copper,
+--   z = { [zone] = kills }, lo, hi = levels seen, inst = killed in a dungeon, out = killed outside one,
+--   gapS, gapN = seconds between kills in a row (how fast you kill them),
+--   spots = { [mapID] = { {x, y, c}, ... } } where you killed them }
 -- life.nodes[name] = { n = times gathered, v = value }
 local function Life()
     local l = ns.db.life
@@ -195,6 +201,32 @@ function ns.TrackerSummary()
     s.lootValue = lootValue
     s.made = lootValue + s.coin
     s.perHour = s.secs > 60 and s.made / s.secs * 3600 or nil
+    -- Vendor everything, or auction it (vendoring only what has no
+    -- auction price); coin counts in both. And where it all came from.
+    local c = ns.Char()
+    local vend, auct = s.coin, s.coin
+    local from = { kills = 0, coin = s.coin, gather = 0, fish = 0, grey = 0, other = 0 }
+    for _, it in ipairs(s.items) do
+        local ve = ns.VendorSell(it.id) or 0
+        local an = not (c.bound and c.bound[it.id]) and ns.AHNet and ns.AHNet(it.id) or nil
+        vend = vend + ve * it.n
+        auct = auct + (an or ve) * it.n
+        local info = ns.Item(it.id)
+        if info and info.q == 0 then
+            from.grey = from.grey + it.v
+        elseif it.cat == "mob" then
+            from.kills = from.kills + it.v
+        elseif it.cat == "Fishing" then
+            from.fish = from.fish + it.v
+        elseif it.cat == "other" then
+            from.other = from.other + it.v
+        else
+            from.gather = from.gather + it.v
+        end
+    end
+    s.vendorTotal, s.auctionTotal, s.from = vend, auct, from
+    s.vendorPerHour = s.secs > 60 and vend / s.secs * 3600 or nil
+    s.auctionPerHour = s.secs > 60 and auct / s.secs * 3600 or nil
     s.inc, s.out = t.inc, t.out
     s.cashIn = (t.inc.ah or 0) + (t.inc.vendor or 0) + (t.inc.mail or 0) + (t.inc.other or 0) + s.coin
     s.cashOut = (t.out.ah or 0) + (t.out.vendor or 0) + (t.out.other or 0)
@@ -212,6 +244,8 @@ function ns.TrackerSummary()
     s.zone = t.zone
     s.running = t.runAt and true or false
     s.streak, s.best, s.gathers = t.streak or 0, t.best or 0, t.gathers or 0
+    s.timeline = t.tl or {}
+    s.started = t.started
     return s
 end
 
@@ -317,8 +351,83 @@ function ns.StartSession()
     ns.TrackerStart()
 end
 
+----------------------------------------------------------------------
+-- Gold over the session, and the days you farmed
+--
+-- Once a minute while recording: a point on the session's line, and what
+-- was made since the last one goes onto today's total (db.farmDays, by
+-- date) and the all-time "where it came from" totals (db.farmFrom).
+----------------------------------------------------------------------
+
+local DAY_KEEP = 120
+local FROM_KEYS = { "kills", "coin", "gather", "fish", "grey", "other" }
+
+local function dayKey(t)
+    return date("%Y-%m-%d", t or time())
+end
+ns.FarmDayKey = dayKey
+
+local function bookMinute(force)
+    local t = T()
+    if not t or (not t.runAt and not force) then
+        return
+    end
+    local secs = ns.TrackerSeconds()
+    t.tl = t.tl or {}
+    local last = t.tl[#t.tl]
+    if not force and last and secs - last[1] < 60 then
+        return
+    end
+    local s = ns.TrackerSummary()
+    if not s then
+        return
+    end
+    local made = floor(s.made)
+    if not last or last[1] ~= secs then
+        t.tl[#t.tl + 1] = { secs, made }
+    end
+    -- Long sessions: thin the oldest half to every other point.
+    if #t.tl > 600 then
+        local keep = {}
+        for i, p in ipairs(t.tl) do
+            if i > 300 or i % 2 == 1 then
+                keep[#keep + 1] = p
+            end
+        end
+        t.tl = keep
+    end
+    -- What's new since the last booking.
+    local booked = t.booked or { secs = 0, made = 0, kills = 0, from = {} }
+    local ds, dv, dk = max(0, secs - booked.secs), max(0, made - booked.made), max(0, s.kills - booked.kills)
+    if ds > 0 or dv > 0 or dk > 0 then
+        ns.db.farmDays = ns.db.farmDays or {}
+        local key = dayKey()
+        local d = ns.db.farmDays[key] or { s = 0, v = 0, k = 0 }
+        d.s, d.v, d.k = d.s + ds, d.v + dv, (d.k or 0) + dk
+        ns.db.farmDays[key] = d
+        ns.db.farmFrom = ns.db.farmFrom or {}
+        local from = {}
+        for _, k in ipairs(FROM_KEYS) do
+            local now = floor(s.from[k] or 0)
+            from[k] = now
+            local add = max(0, now - (booked.from[k] or 0))
+            ns.db.farmFrom[k] = (ns.db.farmFrom[k] or 0) + add
+        end
+        t.booked = { secs = secs, made = made, kills = s.kills, from = from }
+    end
+    -- Only the last DAY_KEEP days are kept.
+    local cutoff = dayKey(time() - DAY_KEEP * 86400)
+    for k in pairs(ns.db.farmDays or {}) do
+        if k < cutoff then
+            ns.db.farmDays[k] = nil
+        end
+    end
+end
+ns.FarmBookMinute = bookMinute
+
 -- Saves the trip to "Your measured farming sessions" and clears the tracker.
 function ns.StopSession()
+    bookMinute(true)
     local s = ns.TrackerSummary()
     if not s then
         return
@@ -400,7 +509,40 @@ local function lifeMob(name)
     return e
 end
 
-local function addKill(guid, name)
+-- Where you were when it died, kept as a handful of spots per map (kills
+-- close together share one), for a route through them later.
+local SPOT_MERGE, SPOTS_PER_MAP = 0.012, 40
+local function noteSpot(lm)
+    if not ns.PlayerMapPos then
+        return
+    end
+    local mapID, x, y = ns.PlayerMapPos()
+    if not (mapID and x and y) then
+        return
+    end
+    lm.spots = lm.spots or {}
+    local list = lm.spots[mapID]
+    if not list then
+        list = {}
+        lm.spots[mapID] = list
+    end
+    for _, p in ipairs(list) do
+        local dx, dy = (p[1] - x) * 1.5, p[2] - y
+        if dx * dx + dy * dy < SPOT_MERGE * SPOT_MERGE then
+            local c = p[3] or 1
+            p[1], p[2], p[3] = (p[1] * c + x) / (c + 1), (p[2] * c + y) / (c + 1), c + 1
+            return
+        end
+    end
+    if #list < SPOTS_PER_MAP then
+        list[#list + 1] = { floor(x * 10000 + 0.5) / 10000, floor(y * 10000 + 0.5) / 10000, 1 }
+    end
+end
+
+local lastKill = {} -- [name] = GetTime() of the last kill this login, for how fast you kill them
+local KILL_GAP = 180
+
+local function addKill(guid, name, level)
     local t = T()
     if not t or not t.runAt or not guid or counted[guid] then
         return
@@ -428,6 +570,29 @@ local function addKill(guid, name)
         end
         local lm = lifeMob(name)
         lm.k = lm.k + 1
+        if zone ~= "" then
+            lm.z = lm.z or {}
+            lm.z[zone] = (lm.z[zone] or 0) + 1
+        end
+        level = tonumber(level)
+        if level and level > 0 then
+            lm.lo = math.min(lm.lo or level, level)
+            lm.hi = math.max(lm.hi or level, level)
+        end
+        if ns.try(IsInInstance) then
+            lm.inst = true
+        else
+            lm.out = true
+            noteSpot(lm)
+        end
+        -- One after another: how long each took, for kills an hour.
+        local now = GetTime()
+        local prev = lastKill[name]
+        if prev and now - prev > 0 and now - prev < KILL_GAP then
+            lm.gapS = (lm.gapS or 0) + (now - prev)
+            lm.gapN = (lm.gapN or 0) + 1
+        end
+        lastKill[name] = now
     end
     ns.Later("track-ui", 0.5, function() ns.Fire("SESSION") end)
 end
@@ -458,7 +623,7 @@ ns.On("UNIT_HEALTH", function(unit)
     end
     local guid = ns.try(UnitGUID, unit)
     if type(guid) == "string" and (guid:find("^Creature") or guid:find("^Vehicle")) then
-        addKill(guid, ns.try(UnitName, unit))
+        addKill(guid, ns.try(UnitName, unit), ns.try(UnitLevel, unit))
     end
 end)
 
@@ -637,6 +802,8 @@ ns.On("LOOT_SLOT_CLEARED", function(slot)
         m.items[p.id] = (m.items[p.id] or 0) + p.n
         local lm = lifeMob(p.mob)
         lm.v = lm.v + worth
+        lm.items = lm.items or {}
+        lm.items[p.id] = (lm.items[p.id] or 0) + p.n
         if q and q >= 2 then
             m.good = m.good + 1
             m.since = 0
@@ -727,6 +894,7 @@ ns.On("PLAYER_MONEY", function()
                 m.coin = m.coin + delta
                 local lm = lifeMob(coinMob)
                 lm.v = lm.v + delta
+                lm.coin = (lm.coin or 0) + delta
             end
         elseif mailOpen then
             if invoice and GetTime() - invoice.at < 10 then
@@ -785,4 +953,19 @@ ns.Listen("READY", function()
         t.autoPaused = nil
         t.runAt = time()
     end
+    -- The once-a-minute booking (see bookMinute).
+    local f = CreateFrame("Frame")
+    local since = 0
+    f:SetScript("OnUpdate", function(_, elapsed)
+        since = since + elapsed
+        if since < 5 then
+            return
+        end
+        since = 0
+        local ok, err = pcall(bookMinute)
+        if not ok then
+            ns.Err("farm-minute", err)
+            f:SetScript("OnUpdate", nil)
+        end
+    end)
 end)

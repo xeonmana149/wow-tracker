@@ -330,6 +330,50 @@ check(hide and hide(GameTooltip, { type = 11, price = 10 }) == true and hide({},
 GameTooltip._lines = {}
 M.tooltipHook(GameTooltip, { id = 2840, lines = { { type = 11, price = 200 } } })
 check(strip(GameTooltip._lines[2] or ""):find("stack of 20"), "hovering a stack also shows the stack's vendor value: " .. strip(GameTooltip._lines[2] or ""))
+do
+    local all = {}
+    for _, l in ipairs(GameTooltip._lines) do all[#all + 1] = strip(l) end
+    out("    " .. table.concat(all, "\n    "))
+    local p = ns.AHPrice(2840)
+    local stacks = 0
+    for _, l in ipairs(all) do if l:find("stack of 20", 1, true) then stacks = stacks + 1 end end
+    check(p and stacks >= 2 and table.concat(all, " "):find(strip(ns.Money(p * 20)), 1, true),
+        "the auction price and profits get a total for the stack too: " .. stacks .. " stack lines")
+    -- the bag slot under the mouse says how many, even for things a vendor won't buy
+    local slot
+    for i, b in ipairs(M.bags) do if b[1] == 2840 then slot = i end end
+    if slot then
+        GameTooltip.GetOwner = function() return { GetBagID = function() return 0 end, GetID = function() return slot end } end
+        GameTooltip._lines = {}
+        M.tooltipHook(GameTooltip, { id = 2840 })
+        local n = M.bags[slot][2]
+        local found = false
+        for _, l in ipairs(GameTooltip._lines) do if strip(l):find("stack of " .. n, 1, true) then found = true end end
+        check(n == 1 or found, "the stack size comes from the bag slot: " .. n)
+        GameTooltip.GetOwner = nil
+    end
+end
+-- Recipe items: which of your characters know it already
+do
+    local me = ns.Char()
+    ns.db.chars["Tailor-PvP"] = { name = "Tailor-PvP", profs = { Tailoring = { skill = 150, max = 150, line = 197 } },
+        recipes = { Tailoring = { [1] = { n = "Red Woolen Bag", o = 5763, y = 1, r = {} } } }, bags = {} }
+    ns.db.chars["Stitch-PvP"] = { name = "Stitch-PvP", profs = { Tailoring = { skill = 75, max = 150, line = 197 } },
+        recipes = { Tailoring = { [2] = { n = "Linen Bag", o = 4238, y = 1, r = {} } } }, bags = {} }
+    ns.db.chars["Newbie-PvP"] = { name = "Newbie-PvP", profs = { Tailoring = { skill = 5, max = 75, line = 197 } }, recipes = {}, bags = {} }
+    ns.Fire("RECIPES_UPDATED")
+    GameTooltip._lines = {}
+    M.tooltipHook(GameTooltip, { id = 5772 })
+    local all = {}
+    for _, l in ipairs(GameTooltip._lines) do all[#all + 1] = strip(l) end
+    out("    " .. table.concat(all, "\n    "))
+    local text = table.concat(all, " | ")
+    check(text:find("Already known by: Tailor", 1, true) and text:find("Could learn it: Stitch (75)", 1, true)
+        and text:find("Open Tailoring once on Newbie", 1, true) and not text:find("learn it: " .. (me.name or "?"), 1, true),
+        "a pattern's tooltip says who knows it, who could learn it, and who to check")
+    ns.db.chars["Tailor-PvP"], ns.db.chars["Stitch-PvP"], ns.db.chars["Newbie-PvP"] = nil, nil, nil
+    ns.Fire("RECIPES_UPDATED")
+end
 ns.db.opts.tooltip = false
 check(hide(GameTooltip, { type = 11 }) == false, "Sell Price line stays when Forever Gold tooltips are off")
 ns.db.opts.tooltip = true
@@ -915,6 +959,20 @@ do
         "right-click: everything off at once")
     mb:Click("RightButton")
     check(wp.usedMarks == all, "right-click again: back on")
+    -- A character without Mining doesn't see veins
+    M.lostProf = "Mining"
+    M.fire("SKILL_LINES_CHANGED")
+    M.advance(1.1)
+    check(not ns.CanGather("ore") and ns.CanGather("herb") and ns.CanGather("chest")
+        and wp.usedMarks == all - ores, "no Mining: the veins leave the map, the rest stay: " .. wp.usedMarks .. " of " .. all)
+    ns.db.opts.onlyMyProfs = false
+    ns.RedrawWorldMap()
+    check(wp.usedMarks == all, "the setting off: every spot again")
+    ns.db.opts.onlyMyProfs = true
+    M.lostProf = nil
+    M.fire("SKILL_LINES_CHANGED")
+    M.advance(1.1)
+    check(wp.usedMarks == all and ns.CanGather("ore"), "learn Mining: the veins come back")
     mb:Click()
     check(not menu:IsShown(), "clicking the button again closes the filter")
     -- Other addons' round buttons (Krowi_WorldMapButtons) down the top left: ours goes under them
@@ -1020,12 +1078,33 @@ do
         "the game's Interact Key and object icons are switched on, the old settings kept")
     M.player.x, M.player.y = 0.12, 0.88 -- nowhere near a recorded spot
     M.units.softinteract = { guid = "GameObject-0-1-2-3-1731-0001", name = "Copper Vein" }
-    M.update(0.05)
+    -- Its nameplate where a camera tilted down a little would see the top of a vein 6 yards ahead, a bit right.
+    local focal = 450 / (math.tan(math.rad(45)) * 0.75)
+    local zoom = GetCameraZoom and GetCameraZoom() or 12
+    local ptx, pty = B.Project(0.5, 6 * math.cos(0.3), 6 * math.sin(0.3), 1.7 - 1.9, zoom, focal)
+    local gx, gy = B.Project(0.5, 6 * math.cos(0.3), 6 * math.sin(0.3), -1.9, zoom, focal)
+    M.softPlate.GetCenter = function() return 800 + ptx, 450 + pty + 8 end
+    M.softPlate.GetBottom = function() return 450 + pty end
+    for _ = 1, 20 do M.update(0.05) end -- the tilt settles
     local f = B.softFrame
     check(f and f:IsShown() and f.color == B.COLORS.new and B.softKind == "new", "an unrecorded vein in front of you: a light blue beam")
+    local _, _, srp, sox, soy = f:GetPoint()
+    check(srp == "BOTTOM" and soy and math.abs(sox - (gx - ptx)) < 1.5 and math.abs(soy - (gy - pty)) < 1.5 and soy < -3,
+        string.format("it stands on the ground under the vein, not on its nameplate up top: %.1f,%.1f (ground %.1f,%.1f)",
+            sox or 0, soy or 0, gx - ptx, gy - pty))
     M.units.softinteract = { guid = "GameObject-0-1-2-3-2041-0005", name = "Kingsblood" }
     M.update(0.3)
     check(f:IsShown() and B.softKind == "new", "a herb you've never picked is recognised too")
+    M.herbalism = false
+    M.fire("SKILL_LINES_CHANGED")
+    M.advance(1.1)
+    M.update(0.3)
+    check(not f:IsShown(), "without Herbalism, no beam on a herb")
+    M.herbalism = nil
+    M.fire("SKILL_LINES_CHANGED")
+    M.advance(1.1)
+    M.update(0.3)
+    check(f:IsShown(), "with it, the beam is back")
     local ore
     for _, n in ipairs(ns.db.nodes[1413]) do if n.k == "ore" and not ore then ore = n end end
     M.player.x, M.player.y = ore.x, ore.y + 0.0005
@@ -1264,6 +1343,159 @@ local before = #ns.db.sessions
 ns.StopSession()
 check(#ns.db.sessions == before + 1 and ns.SessionActive() == nil and ns.db.sessions[1].kills == 1, "trip saved")
 ns.RefreshUI(); pokeRows()
+
+out("== farming: rankings, suggestions, a mob route, luck and the dashboard")
+do
+    local spotX = { 0.40, 0.43, 0.46, 0.49, 0.52 }
+    local serial = 0
+    local function killCoyote(drop)
+        serial = serial + 1
+        M.player.x, M.player.y = spotX[(serial % 5) + 1], 0.30 + (serial % 3) * 0.03
+        local guid = string.format("Creature-0-1-2-3-99-%08X", 0xC000 + serial)
+        M.units.target = { guid = guid, name = "Coyote", dead = true, level = 11 }
+        M.fire("UNIT_HEALTH", "target")
+        M.units = {}
+        M.loot = { { type = 2, src = guid } }
+        if drop then
+            table.insert(M.loot, 1, { type = 1, id = 2589, qty = 1, quality = 1, src = guid })
+        end
+        M.fire("LOOT_READY", true)
+        M.player.money = M.player.money + 20; M.fire("PLAYER_MONEY")
+        for i = 1, #M.loot do M.fire("LOOT_SLOT_CLEARED", i) end
+        M.fire("LOOT_CLOSED")
+        M.advance(30)
+        M.update(6)
+    end
+    ns.TrackerStart()
+    for _ = 1, 22 do killCoyote(true) end
+    local lm = ns.db.life.mobs.Coyote or {}
+    lm.z, lm.items = lm.z or {}, lm.items or {}
+    check(lm.k == 22 and lm.lo == 11 and lm.hi == 11 and lm.z["The Barrens"] == 22 and lm.coin == 440
+        and lm.items[2589] == 22, "all-time: kills, level, zone, coin and items looted")
+    check(lm.gapN and lm.gapN >= 20 and lm.spots and lm.spots[1413] and #lm.spots[1413] >= 3,
+        "how fast you kill them and where: " .. tostring(lm.gapN) .. " gaps, " .. #(lm.spots[1413] or {}) .. " spots")
+    local tr = ns.Tracker()
+    check(#tr.tl >= 8, "a point on the session's gold line every minute: " .. #tr.tl)
+    local today = ns.db.farmDays[ns.FarmDayKey()]
+    check(today and today.s >= 600 and today.v > 0 and today.k >= 21, "today's farming is booked: "
+        .. tostring(today and today.s) .. "s, " .. tostring(today and today.v) .. ", " .. tostring(today and today.k) .. " kills")
+    check((ns.db.farmFrom.kills or 0) > 0 and (ns.db.farmFrom.coin or 0) >= 400, "and where it came from")
+    local s = ns.TrackerSummary()
+    check(s.vendorTotal >= 440 + 22 * 13 and s.auctionTotal >= 440 and s.vendorPerHour and s.auctionPerHour,
+        "vendor or auction, total and per hour: " .. s.vendorTotal .. " / " .. s.auctionTotal)
+    check(s.from.kills > 0 and s.from.coin == 440, "this session's gold by where it came from")
+
+    -- Rankings and suggestions
+    local ranked = ns.MobRanking()
+    local coyote
+    for _, e in ipairs(ranked) do if e.name == "Coyote" then coyote = e end end
+    check(coyote and coyote.k == 22 and coyote.speedMeasured and coyote.killsHr > 100 and coyote.killsHr < 130
+        and coyote.best and coyote.best.id == 2589 and coyote.best.rate == 1 and coyote.where == "The Barrens",
+        "Coyote ranked: per kill, kills an hour measured, best drop, where: "
+        .. (coyote and (math.floor(coyote.perKill) .. "c, " .. math.floor(coyote.killsHr) .. "/hr") or "missing"))
+    check(not (function() for _, e in ipairs(ranked) do if e.name == "Plainstrider" then return true end end end)(),
+        "a mob killed once isn't ranked yet")
+    local sugg = ns.FarmSuggestions()
+    check(sugg[1] and sugg[1].name == "Coyote" and sugg[1].perHour > 2000, "suggested: farm Coyotes, ~" .. tostring(sugg[1] and math.floor(sugg[1].perHour)))
+    M.player.level = 60
+    check(#ns.FarmSuggestions() == 0, "not suggested to a character far above them")
+    M.player.level = 25
+
+    -- A route through where you killed them
+    local plan = ns.PlanMobRoute("Coyote")
+    check(plan and plan.n >= 3 and plan.map == 1413 and plan.pts[1].k == "mob" and plan.pts[1].n == "Coyote",
+        "a loop through your kill spots: " .. tostring(plan and plan.n))
+    local started = ns.StartMobRoute("Coyote")
+    check(started and ns.route == started and ns.route.mob == "Coyote" and ns.RouteStatus().name == "Coyote",
+        "the route starts, and the guide says what to look for")
+    ns.StopRoute()
+    C_Map.ClearUserWaypoint()
+    check(ns.PlanMobRoute("Nobody") == nil, "no spots: no route")
+
+    -- Save, then a short unlucky session: luck against your own rates
+    ns.StopSession()
+    check(ns.FarmUsualPerHour() and ns.FarmUsualPerHour() > 0, "your usual gold an hour")
+    ns.TrackerStart()
+    for _ = 1, 6 do killCoyote(false) end
+    local luck = ns.FarmLuck()
+    check(luck and luck.pct < -0.3 and luck.kills == 6 and luck.items[1] and luck.items[1].id == 2589
+        and luck.items[1].got == 0 and luck.items[1].expected > 5, "six Coyotes and no linen: unlucky, about 6 expected")
+
+    -- Level times
+    M.advance(300)
+    M.fire("PLAYER_LEVEL_UP", 26)
+    M.player.level = 26
+    local lv = ns.LevelTimes()
+    check(lv[1] and lv[1].level == 25 and lv[1].secs > 0 and lv[1].partial, "a level's time is kept when you level: " .. tostring(lv[1] and lv[1].secs))
+    M.player.level = 25
+
+    -- Days farmed
+    local fd = ns.FarmDays()
+    check(fd.streak >= 1 and fd.best and fd.best.v > 0, "days in a row and your best day")
+
+    -- The dashboard
+    ns.ShowTab("farming")
+    local list = ForeverGoldFrame.list
+    local function has(kind)
+        for i = 1, list.count do if list.rows[i].d.type == kind then return true end end
+        return false
+    end
+    dumpRows("Farming: this session", 50)
+    check(has("cards") and has("graph") and has("segbar") and has("meter") and has("heat") and not ForeverGoldFrame.pane:IsShown(),
+        "this session: stat cards, the gold line, where it came from, luck, the days, full width")
+    pokeRows()
+    local function toolbarClick(text)
+        for _, b in ipairs(ForeverGoldFrame.toolbar.buttons) do
+            if b:IsShown() and b.text:GetText() == text then b._scripts.OnClick(b) return true end
+        end
+        return false
+    end
+    check(toolbarClick("Overall"), "Overall button")
+    dumpRows("Farming: overall", 40)
+    check(has("cards") and has("graph") and has("heat"), "overall: cards, gold over time, days")
+    pokeRows()
+    check(toolbarClick("Mobs"), "Mobs button")
+    dumpRows("Farming: mobs", 10)
+    local first
+    for i = 1, list.count do
+        local d = list.rows[i].d
+        if not d.type and d.key == "mob:Coyote" then first = d end
+    end
+    check(first and first.bar == 1 and ForeverGoldFrame.pane:IsShown(), "Mobs: Coyote ranked first, with the details pane")
+    local det = first and ns.FarmMobDetail(coyote)
+    check(det and det.action and det.action.label:find("Route", 1, true), "its details offer a route")
+    toolbarClick("Outside dungeons")
+    toolbarClick("Skip green+")
+    pokeRows()
+    toolbarClick("This session")
+    -- Make > Farm and To do suggest it too
+    local realUsual = ns.FarmUsualPerHour
+    local function farmListed()
+        ns.ShowTab("farm")
+        for i = 1, list.count do
+            if list.rows[i].d.title == "Kill Coyote" then return true end
+        end
+        return false
+    end
+    ns.FarmUsualPerHour = function() return 1000 end
+    check(farmListed(), "Make > Farm lists Coyotes under your own kills")
+    ns.FarmUsualPerHour = function() return 1000000 end
+    check(not farmListed(), "but not when your usual farming pays far better")
+    ns.FarmUsualPerHour = realUsual
+    -- The session window shows vendor against auction
+    TW.tabs.loot._scripts.OnClick(TW.tabs.loot)
+    local vend = false
+    for i = 1, TW.list.count do
+        if (TW.list.rows[i].d.title or ""):find("Vendor it all", 1, true) then vend = true end
+    end
+    check(vend, "Farming Session > Loot: vendor it all vs auction it")
+    TW.tabs.kills._scripts.OnClick(TW.tabs.kills)
+    TW.stats._scripts.OnClick(TW.stats)
+    check(ForeverGoldFrame:IsShown(), "Stats opens the dashboard")
+    ns.TrackerReset()
+    ns.TrackerPause(true)
+    ns.db.track[ns.charKey] = nil
+end
 
 out("== options + scroll + misc")
 ns.ShowTab("tips"); dumpRows("Tips", 6)
@@ -2395,8 +2627,11 @@ do
     M.advance(1.5)
     check(MB.Q.ships[1].status == "sent" and M.sentMail[#M.sentMail].name == "Xeon Hexspark", "confirmed by the server")
     check(MB.Q.ships[2].status == "ready" and M.send.atts[1].id == LEATHER, "the next mail gets ready by itself")
+    local second = MB.Q.ships[2]
     MB.SendNext(); M.advance(1)
-    check(MB.Q.ships[2].status == "sent" and not MB.Busy() and MB.status.kind == "done", "both sent: done")
+    check(second.status == "sent" and not MB.Busy() and MB.status.kind == "done", "both sent: done")
+    check(MB.Shipments() == nil and MB.status.text:find("new preview", 1, true),
+        "and it goes straight on to a new preview: " .. MB.status.text)
     check(M.player.money == 100000 - 60, "postage paid: " .. M.player.money)
     MB.ClearShipments()
 
@@ -2480,10 +2715,11 @@ do
     M.sendDelay = 8
     MB.StartSend(MB.PlanRules()); M.advance(0.3)
     before = sends()
+    local slow = MB.Q.ships[1]
     MB.SendNext(); M.advance(5)
-    check(MB.Q.ships[1].status == "sending" and sends() == before + 1, "a slow server: still waiting, nothing resent")
+    check(slow.status == "sending" and sends() == before + 1, "a slow server: still waiting, nothing resent")
     M.advance(5)
-    check(MB.Q.ships[1].status == "sent", "the slow answer arrives and counts")
+    check(slow.status == "sent", "the slow answer arrives and counts")
     M.sendDelay = 0.5
     MB.ClearShipments()
 

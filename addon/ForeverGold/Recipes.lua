@@ -90,6 +90,71 @@ function ns.RecipeKnownBy(prof, name)
     return known[prof .. "|" .. name]
 end
 
+-- Recipe items by their subclass: the profession they teach (name, skill line).
+local RECIPE_CLASS = 9
+local RECIPE_PROF = {
+    [1] = { "Leatherworking", 165 }, [2] = { "Tailoring", 197 }, [3] = { "Engineering", 202 },
+    [4] = { "Blacksmithing", 164 }, [5] = { "Cooking", 185 }, [6] = { "Alchemy", 171 },
+    [7] = { "First Aid", 129 }, [8] = { "Enchanting", 333 }, [9] = { "Fishing", 356 },
+    [10] = { "Jewelcrafting", 755 }, [11] = { "Inscription", 773 },
+}
+
+local function shortName(c)
+    local n = c.name or "another character"
+    return n:match("^([^%-]+)") or n
+end
+
+-- A recipe item ("Pattern: Red Linen Shirt"...): what it teaches and, for
+-- each of your characters, whether they know it already. Returns
+-- { prof =, name =, known = {names}, can = {"Name (skill)"}, unread = {names} }
+-- or nil for anything that isn't a recipe.
+function ns.RecipeItem(id)
+    local get = C_Item and C_Item.GetItemInfoInstant
+    if not get then
+        return nil
+    end
+    local _, _, _, _, _, classID, sub = ns.try(get, id)
+    local P = classID == RECIPE_CLASS and RECIPE_PROF[sub]
+    if not P then
+        return nil
+    end
+    local item = ns.ItemName(id)
+    if not item or item:find("^Item #") then
+        return nil
+    end
+    local what = item:match("^[^:]+:%s*(.+)$") or item
+    local out = { prof = P[1], name = what, known = {}, can = {}, unread = {} }
+    for _, c in pairs(ns.db.chars or {}) do
+        local profName, skill
+        for pn, p in pairs(c.profs or {}) do
+            if pn == P[1] or (p.line and p.line == P[2]) then
+                profName, skill = pn, p.skill
+            end
+        end
+        local recs = c.recipes and c.recipes[profName or P[1]]
+        local knows = false
+        for _, r in pairs(recs or {}) do
+            if r.n == what then
+                knows = true
+                break
+            end
+        end
+        if knows then
+            out.known[#out.known + 1] = shortName(c)
+        elseif profName then
+            if (recs and next(recs)) or (c.seenProf and c.seenProf[profName]) then
+                out.can[#out.can + 1] = shortName(c) .. " (" .. (skill or 0) .. ")"
+            else
+                out.unread[#out.unread + 1] = shortName(c)
+            end
+        end
+    end
+    table.sort(out.known)
+    table.sort(out.can)
+    table.sort(out.unread)
+    return out
+end
+
 -- For the tooltip: "Tailoring 5, First Aid 2", total count, how many you know.
 function ns.RecipeUseSummary(id)
     local list = ns.RecipeUses(id)
