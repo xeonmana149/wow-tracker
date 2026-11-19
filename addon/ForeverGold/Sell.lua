@@ -173,6 +173,136 @@ local function throttleReady()
 end
 
 ----------------------------------------------------------------------
+-- "The auction house is busy" and "You are doing that too fast"
+--
+-- The auction house only takes so many requests at once. When it says it's
+-- busy or drops a request, posting waits until it says it's ready again
+-- (and at least a second), and the Post buttons say "Wait" instead of
+-- letting you click straight into another refusal. Shared by the Sell
+-- window here and the post queue (Poster.lua).
+----------------------------------------------------------------------
+
+local hold = {}
+
+local function refreshPosting()
+    ns.Fire("SELL")
+    ns.Fire("POSTER")
+end
+
+local function holdUntil(t)
+    hold.untilT = t
+    C_Timer.After(max(0, t - GetTime()) + 0.05, ns.Guard("ah-hold", function()
+        if hold.untilT == t then
+            hold.untilT, hold.minT = nil, nil
+            refreshPosting()
+        end
+    end))
+end
+
+function ns.AHWaiting()
+    if hold.untilT and GetTime() < hold.untilT then
+        return true
+    end
+    hold.untilT = nil
+    return false
+end
+
+-- Hold posting for up to `seconds` (ended early when the game says it's ready).
+function ns.AHHold(seconds)
+    local now = GetTime()
+    local t = now + (seconds or 3)
+    hold.minT = max(hold.minT or 0, now + 1)
+    if hold.untilT and hold.untilT >= t then
+        return
+    end
+    holdUntil(t)
+    refreshPosting()
+end
+
+-- True when posting can go ahead now; otherwise starts (or keeps) a wait.
+function ns.AHReadyToPost()
+    if ns.AHWaiting() then
+        return false
+    end
+    if not throttleReady() then
+        ns.AHHold(3)
+        return false
+    end
+    return true
+end
+
+-- The auction house errors that mean "not now", rather than "not that".
+function ns.AHBusyError(err)
+    local E = Enum and Enum.AuctionHouseError
+    return (E and err ~= nil and (err == E.IsBusy or err == E.Unavailable or err == E.DatabaseError)) and true or false
+end
+
+ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
+    ns.AHHold(4)
+end)
+
+ns.On("AUCTION_HOUSE_SHOW_ERROR", function(err)
+    if ns.AHBusyError(err) then
+        ns.AHHold(4)
+    end
+end)
+
+ns.On("AUCTION_HOUSE_THROTTLED_SYSTEM_READY", function()
+    if hold.untilT then
+        if hold.minT and hold.minT > GetTime() + 0.05 then
+            holdUntil(hold.minT)
+        else
+            hold.untilT, hold.minT = nil, nil
+        end
+        refreshPosting()
+    end
+end)
+
+-- Everything of one item in your bags, locked or not, and whether any of it
+-- is locked (the game locks what's being posted until the post settles).
+function ns.BagTotal(id)
+    if not C_Container then
+        return 0, false
+    end
+    local n, locked = 0, false
+    local last = (NUM_BAG_SLOTS or 4) + (NUM_REAGENTBAG_SLOTS or 0)
+    for bag = 0, last do
+        for slot = 1, ns.try(C_Container.GetContainerNumSlots, bag) or 0 do
+            local info = ns.try(C_Container.GetContainerItemInfo, bag, slot)
+            if type(info) == "table" and info.itemID == id then
+                n = n + (info.stackCount or 1)
+                locked = locked or (info.isLocked and true) or false
+            end
+        end
+    end
+    return n, locked
+end
+
+-- After a post whose answer never came (or that may have been dropped),
+-- the bags say whether it went up. `p` = { id =, qty =, before = bag count
+-- before posting }. done(true) = it went up, done(false) = it didn't,
+-- done(nil) = still can't tell after a few looks.
+function ns.CheckPostInBags(p, done, tries)
+    tries = tries or 0
+    local n, locked = ns.BagTotal(p.id)
+    if p.before and n <= p.before - p.qty then
+        done(true)
+        return
+    end
+    if p.before and not locked and n >= p.before then
+        done(false)
+        return
+    end
+    if not p.before or tries >= 4 then
+        done(nil)
+        return
+    end
+    C_Timer.After(1.5, ns.Guard("post-check", function()
+        ns.CheckPostInBags(p, done, tries + 1)
+    end))
+end
+
+----------------------------------------------------------------------
 -- Step 1: ask what it sells for right now
 ----------------------------------------------------------------------
 
@@ -361,7 +491,7 @@ function ns.StopPostAll()
 end
 
 function ns.SellRecheck()
-    if job and job.state ~= "posting" and job.state ~= "confirm" then
+    if job and job.state ~= "posting" and job.state ~= "confirm" and job.state ~= "verify" then
         sendSearch()
         ns.Fire("SELL")
     end
@@ -491,12 +621,19 @@ local function stillThere()
     return false
 end
 
+local watchSellPost
+
 function ns.SellPost()
     if not job then
         return
     end
     if job.state == "confirm" then
         -- The auction house asked "are you sure?" - this click is the yes.
+        if not ns.AHReadyToPost() then
+            job.message = "The auction house is busy. Confirm comes back as soon as it's ready."
+            ns.Fire("SELL")
+            return
+        end
         local a = job.args
         local ok
         if job.commodity then
@@ -506,7 +643,9 @@ function ns.SellPost()
         end
         job.state = ok and "posting" or "error"
         job.message = (not ok) and "The auction house refused the confirmation." or nil
-        job.postedAt = GetTime()
+        if ok then
+            watchSellPost()
+        end
         ns.Fire("SELL")
         return
     end
@@ -519,8 +658,8 @@ function ns.SellPost()
         ns.Fire("SELL")
         return
     end
-    if not throttleReady() then
-        job.message = "The auction house is busy. Press Post again in a second."
+    if not ns.AHReadyToPost() then
+        job.message = "The auction house is busy. Post comes back as soon as it's ready."
         ns.Fire("SELL")
         return
     end
@@ -531,6 +670,7 @@ function ns.SellPost()
     end
     local price, qty = job.decision.price, job.qty
     job.args = { job.loc, job.duration, qty, price }
+    job.before = ns.BagTotal(job.id)
     local ok, needsConfirm
     if job.commodity then
         ok, needsConfirm = pcall(AH.PostCommodity, job.loc, job.duration, qty, price)
@@ -547,23 +687,67 @@ function ns.SellPost()
     else
         job.state = "posting"
         job.message = nil
+        watchSellPost()
     end
-    job.postedAt = GetTime()
-    local stamp = job.postedAt
-    C_Timer.After(12, ns.Guard("sell-post-timeout", function()
-        if job and job.state == "posting" and job.postedAt == stamp then
-            job.state = "error"
-            job.message = "I didn't hear back from the auction house. Check the Auctions tab to see whether it was listed."
-            ns.Fire("SELL")
-        end
-    end))
     ns.Fire("SELL")
 end
 
-ns.On("AUCTION_HOUSE_AUCTION_CREATED", function()
-    if not job or (job.state ~= "posting" and job.state ~= "confirm") then
+local sellPosted
+
+-- A post with no answer yet, or one the auction house may have dropped:
+-- the bags settle whether it went up before anything can be posted again,
+-- so a slow answer never turns into a second listing.
+local function verifySellPost(why)
+    if not job or (job.state ~= "posting" and job.state ~= "verify") then
         return
     end
+    local mine = job
+    job.state = "verify"
+    job.message = why
+    local a = job.args
+    ns.CheckPostInBags({ id = job.id, qty = a[3], before = job.before }, function(went)
+        if job ~= mine or job.state ~= "verify" then
+            return
+        end
+        if went then
+            sellPosted("That one went up - the auction house was just slow to say so.")
+        elseif went == false then
+            job.state = "ready"
+            job.message = "That post didn't go through - nothing left your bags. Press Post when it's ready."
+            ns.Fire("SELL")
+        else
+            job.state = "error"
+            job.unsure = true
+            job.message = "I couldn't tell whether it was listed. Check the Auctions tab before posting it again."
+            ns.Fire("SELL")
+        end
+    end)
+    ns.Fire("SELL")
+end
+
+watchSellPost = function()
+    job.postedAt = GetTime()
+    local stamp, mine = job.postedAt, job
+    C_Timer.After(12, ns.Guard("sell-post-timeout", function()
+        if job == mine and job.state == "posting" and job.postedAt == stamp then
+            verifySellPost("No answer from the auction house yet - checking your bags to see whether it went up...")
+        end
+    end))
+end
+
+ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
+    if job and job.state == "posting" then
+        verifySellPost("The auction house said that was too fast. Checking whether the post went through...")
+    end
+end)
+
+ns.On("AUCTION_HOUSE_AUCTION_CREATED", function()
+    if job and (job.state == "posting" or job.state == "confirm" or job.state == "verify" or job.unsure) then
+        sellPosted(job.unsure and "It did go up after all." or nil)
+    end
+end)
+
+sellPosted = function(note)
     local a = job.args
     local posts = ns.db.posts
     if type(posts) ~= "table" then
@@ -573,7 +757,8 @@ ns.On("AUCTION_HOUSE_AUCTION_CREATED", function()
     table.insert(posts, 1, { id = job.id, q = a[3], p = a[4], t = time() })
     posts[201] = nil
     job.state = "done"
-    job.message = nil
+    job.message = note
+    job.unsure = nil
     ns.Print("listed " .. a[3] .. " x " .. ns.ItemText(job.id) .. " at " .. ns.Money(a[4]) .. " each.")
     ns.Fire("SELL")
     if queue then
@@ -596,14 +781,10 @@ ns.On("AUCTION_HOUSE_AUCTION_CREATED", function()
             nextInQueue()
         end))
     end
-    if AH.QueryOwnedAuctions then
-        C_Timer.After(2, function()
-            if ns.ahOpen then
-                pcall(AH.QueryOwnedAuctions, {})
-            end
-        end)
-    end
-end)
+    -- Your auctions are read again a few seconds after the last post (see
+    -- readOwnedSoon below); one read per post used up the allowance and made
+    -- the next Post find the auction house busy.
+end
 
 -- The auction house asking "are you sure?". Blizzard's own popup for this
 -- only knows about posts made from its Sell tab, so ours takes over.
@@ -628,8 +809,18 @@ local function postFailed()
     end
 end
 ns.On("AUCTION_HOUSE_POST_ERROR", postFailed)
-ns.On("AUCTION_HOUSE_SHOW_ERROR", postFailed)
 ns.On("AUCTION_MULTISELL_FAILURE", postFailed)
+ns.On("AUCTION_HOUSE_SHOW_ERROR", function(err)
+    if not (job and job.state == "posting") then
+        return
+    end
+    if ns.AHBusyError(err) then
+        -- "Busy" means it most likely didn't go, but the bags have the last word.
+        verifySellPost("The auction house was busy. Checking whether the post went through...")
+    else
+        postFailed()
+    end
+end)
 
 ns.Listen("AH_CLOSED", function()
     if queue then

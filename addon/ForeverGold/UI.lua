@@ -1939,7 +1939,7 @@ end
 -- Tab: Routes
 ----------------------------------------------------------------------
 
-UI.routeKinds = { ore = true, herb = true, fish = false }
+UI.routeKinds = { ore = true, herb = true, fish = false, chest = false }
 UI.routeStart = {} -- [mapID] = the spot you chose to start from
 UI.zoneMenu = nil  -- nil, "open" or "confirm"
 
@@ -1972,8 +1972,9 @@ local function selectZone(mapID)
     local saved = ns.db.routes[mapID]
     local k = UI.routeKinds
     if saved and saved.kinds then
-        k.ore, k.herb, k.fish = saved.kinds.ore and true or false, saved.kinds.herb and true or false,
-            saved.kinds.fish and true or false
+        for _, kind in ipairs(ns.KIND_ORDER) do
+            k[kind] = saved.kinds[kind] and true or false
+        end
         UI.routeStart[mapID] = UI.routeStart[mapID] or ns.SavedStart(mapID)
     end
     local z = zoneInfo(mapID)
@@ -1996,7 +1997,8 @@ local function currentPlan()
     end
     local k = UI.routeKinds
     local start = UI.routeStart[mapID]
-    local key = mapID .. ":" .. (k.ore and "o" or "") .. (k.herb and "h" or "") .. (k.fish and "f" or "") .. ":"
+    local key = mapID .. ":" .. (k.ore and "o" or "") .. (k.herb and "h" or "") .. (k.fish and "f" or "")
+        .. (k.chest and "c" or "") .. ":"
         .. planVersion .. ":" .. tostring(start)
     if UI.planKey ~= key then
         UI.planKey = key
@@ -2176,6 +2178,9 @@ local function buildTips()
     optionRow(rows, "worldMapSpots", "Show my gathering spots and route on the world map (OpenMap too)")
     optionRow(rows, "minimapSpots", "Show my gathering spots and the next stop on the minimap")
     optionRow(rows, "revealMap", "Draw the whole zone on the Routes map, not just the parts I've explored")
+    optionRow(rows, "lootBeam", "Loot beams: gold on a route stop, white on a spot I've recorded, light blue on one I haven't")
+    optionRow(rows, "nearestBeam", "With no route running, put a white beam on the nearest spot I've recorded (only when I'm not tracking anything else)")
+    optionRow(rows, "beamUnrecorded", "Beam on herbs, veins and chests right in front of me, recorded or not (turns on the game's Interact Key and its icons)")
     Hd(rows, "Sale rates")
     Tx(rows, nil, ns.MarketStatus and ns.MarketStatus() or "")
     local have = ns.AccountProfessions()
@@ -2638,7 +2643,7 @@ local function createRoutePanel(f)
     inc:SetPoint("TOPLEFT", 0, -5)
     P.checks = {}
     local x = 52
-    for _, spec in ipairs({ { "herb", 78 }, { "ore", 62 }, { "fish", 88 } }) do
+    for _, spec in ipairs({ { "herb", 72 }, { "ore", 58 }, { "fish", 82 }, { "chest", 80 } }) do
         local cb = checkbox(P, spec[1], spec[2], function(kind)
             UI.routeKinds[kind] = not UI.routeKinds[kind]
             refreshRoutePanel()
@@ -2710,8 +2715,9 @@ local function createRoutePanel(f)
     legendBg:SetPoint("BOTTOMRIGHT", -1, 1)
     legendBg:SetHeight(20)
     local legend = label(over, "GameFontHighlightSmall",
-        "|T" .. ns.KINDS.herb.icon .. ":13|t herb   |T" .. ns.KINDS.ore.icon .. ":13|t ore   |T" .. ns.KINDS.fish.icon
-        .. ":13|t fishing   |TInterface\\Minimap\\MinimapArrow:14|t you   |cffffd100gold ring|r = start / next   crossed out = left out")
+        "|T" .. ns.KINDS.herb.icon .. ":13|t herb  |T" .. ns.KINDS.ore.icon .. ":13|t ore  |T" .. ns.KINDS.fish.icon
+        .. ":13|t fishing  |T" .. ns.KINDS.chest.icon .. ":13|t chest  |TInterface\\Minimap\\MinimapArrow:14|t you  "
+        .. "|cffffd100gold ring|r = start / next  crossed out = left out")
     legend:SetPoint("BOTTOMLEFT", 8, 5)
     P.legend = legend
 
@@ -3323,7 +3329,7 @@ local function refreshSellPanel()
     f.title:SetText(ns.ItemName(job.id))
     f.have:SetText(GREY .. "You have " .. job.have .. " to sell"
         .. (q and ("  -  Post all: item " .. q.i .. " of " .. #q.ids .. ", " .. q.posted .. " posted") or "") .. "|r")
-    f.skip:SetShown(q ~= nil and job.state ~= "posting")
+    f.skip:SetShown(q ~= nil and job.state ~= "posting" and job.state ~= "verify")
 
     local d = job.decision
     local parts = ns.SellExplain()
@@ -3364,6 +3370,10 @@ local function refreshSellPanel()
     if job.state == "checking" then
         f.post:SetLabel("Checking...")
         f.post:SetDisabled(true)
+    elseif ((job.state == "ready" and canPost) or job.state == "confirm") and ns.AHWaiting() then
+        -- The auction house said busy / too fast: no clicking into another refusal.
+        f.post:SetLabel("Wait...")
+        f.post:SetDisabled(true)
     elseif job.state == "ready" then
         f.post:SetLabel(q and "Post, then next" or "Post")
         f.post:SetDisabled(not canPost)
@@ -3375,6 +3385,9 @@ local function refreshSellPanel()
         f.post:SetDisabled(false)
     elseif job.state == "posting" then
         f.post:SetLabel("Posting...")
+        f.post:SetDisabled(true)
+    elseif job.state == "verify" then
+        f.post:SetLabel("Checking...")
         f.post:SetDisabled(true)
     elseif job.state == "done" then
         f.post:Hide()

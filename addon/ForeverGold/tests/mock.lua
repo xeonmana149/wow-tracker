@@ -103,6 +103,11 @@ function methods:GetScale() return self._scale or 1 end
 function methods:SetAlpha(a) assert(type(a) == "number", "SetAlpha needs a number"); self._alpha = a end
 function methods:GetAlpha() return self._alpha or 1 end
 function methods:EnableMouse(on) self._mouse = on and true or false end
+function methods:SetGradient(orientation, lo, hi)
+    assert((orientation == "VERTICAL" or orientation == "HORIZONTAL") and type(lo) == "table" and type(hi) == "table",
+        "SetGradient needs an orientation and two colours")
+    self._gradient = { lo = lo, hi = hi }
+end
 function methods:Click(which) if self._scripts.OnClick then self._scripts.OnClick(self, which or "LeftButton") end end
 
 widgetMT = { __index = function(t, k)
@@ -277,7 +282,7 @@ function C_Container.GetContainerNumSlots(bag) if bag == 0 then return 16 end re
 function C_Container.GetContainerItemInfo(bag, slot)
     local b = M.bags[slot]
     if bag ~= 0 or not b then return nil end
-    return { itemID = b[1], stackCount = b[2], isBound = b[3] or false }
+    return { itemID = b[1], stackCount = b[2], isBound = b[3] or false, isLocked = b[4] or false }
 end
 
 ----------------------------------------------------------------------
@@ -346,7 +351,8 @@ local function page()
     return out
 end
 C_AuctionHouse = {}
-function C_AuctionHouse.IsThrottledMessageSystemReady() return true end
+-- M.throttle = false: the auction house is busy ("you are doing that too fast").
+function C_AuctionHouse.IsThrottledMessageSystemReady() return M.throttle ~= false end
 function C_AuctionHouse.SendBrowseQuery(q)
     assert(type(q) == "table" and type(q.searchString) == "string" and #q.filters >= 7 and #q.sorts == 2, "bad browse query")
     M.queries = (M.queries or 0) + 1
@@ -471,11 +477,49 @@ function C_Map.GetMapArtLayerTextures(map, layer)
     for i = 1, 12 do t[i] = 100000 + i end
     return t
 end
-function C_Map.SetUserWaypoint(p) M.waypoint = p end
-function C_Map.ClearUserWaypoint() M.waypoint = nil end
-UiMapPoint = { CreateFromCoordinates = function(map, x, y) return { map = map, x = x, y = y } end }
-C_SuperTrack = { SetSuperTrackedUserWaypoint = function() end }
-C_Spell = { GetSpellName = function(id) return ({ [2575] = "Mining", [2366] = "Herb Gathering", [7620] = "Fishing", [2657] = "Smelt Copper" })[id] end }
+function C_Map.SetUserWaypoint(p) M.waypoint = p; M.waypointSets = (M.waypointSets or 0) + 1 end
+function C_Map.ClearUserWaypoint() M.waypoint = nil; if M.tracking == "waypoint" then M.tracking = nil end end
+function C_Map.HasUserWaypoint() return M.waypoint ~= nil end
+function C_Map.GetUserWaypoint() return M.waypoint end
+UiMapPoint = { CreateFromCoordinates = function(map, x, y)
+    return { map = map, x = x, y = y, uiMapID = map, position = vec(x, y) }
+end }
+-- M.tracking: "waypoint" when the map pin is tracked, or "quest" etc. for something else.
+C_SuperTrack = {
+    SetSuperTrackedUserWaypoint = function(on) M.tracking = on and "waypoint" or nil end,
+    IsSuperTrackingUserWaypoint = function() return M.tracking == "waypoint" end,
+    IsSuperTrackingAnything = function() return M.tracking ~= nil end,
+}
+-- The game's on-screen waypoint marker (follows the tracked pin).
+Enum.NavigationState = { Invalid = 0, Occluded = 1, InRange = 2, Disabled = 3 }
+M.navFrame = newWidget("Frame", nil, nil)
+M.navDistance = 60
+C_Navigation = {
+    GetFrame = function() return (M.tracking == "waypoint" and not M.navGone) and M.navFrame or nil end,
+    GetDistance = function() return M.navDistance end,
+    GetTargetState = function() return M.navState or 2 end,
+    HasValidScreenPosition = function() return not M.navOffscreen end,
+    WasClampedToScreen = function() return M.navOffscreen and true or false end,
+}
+function CreateColor(r, g, b, a) return { r = r, g = g, b = b, a = a } end
+-- Game settings (console variables): only the ones this client has.
+M.cvars = { rotateMinimap = "0", softTargetInteract = "1", SoftTargetIconInteract = "1", SoftTargetIconGameObject = "0",
+    SoftTargetNameplateInteract = "0" }
+function GetCVar(name) return M.cvars[name] end
+function SetCVar(name, value)
+    assert(type(name) == "string" and value ~= nil, "SetCVar needs a name and a value")
+    if M.cvars[name] == nil then return false end
+    M.cvars[name] = tostring(value)
+    return true
+end
+function InCombatLockdown() return M.combat or false end
+-- The thing the Interact Key has picked out (M.units.softinteract) wears a nameplate.
+M.softPlate = newWidget("Frame", nil, nil)
+C_NamePlate = { GetNamePlateForUnit = function(unit)
+    if unit == "softinteract" and M.units and M.units.softinteract then return M.softPlate end
+    return nil
+end }
+C_Spell = { GetSpellName = function(id) return ({ [2575] = "Mining", [2366] = "Herb Gathering", [7620] = "Fishing", [2657] = "Smelt Copper", [3365] = "Opening" })[id] end }
 
 TooltipDataProcessor = {
     AddTooltipPostCall = function(kind, fn) M.tooltipHook = fn end,
@@ -487,9 +531,12 @@ Enum.TooltipDataLineType = { SellPrice = 11 }
 -- Selling: per-item search results and posting
 ----------------------------------------------------------------------
 for _, e in ipairs({ "COMMODITY_SEARCH_RESULTS_UPDATED", "ITEM_SEARCH_RESULTS_UPDATED", "AUCTION_HOUSE_AUCTION_CREATED",
-    "AUCTION_HOUSE_POST_WARNING", "AUCTION_HOUSE_POST_ERROR", "AUCTION_HOUSE_SHOW_ERROR", "AUCTION_MULTISELL_FAILURE" }) do
+    "AUCTION_HOUSE_POST_WARNING", "AUCTION_HOUSE_POST_ERROR", "AUCTION_HOUSE_SHOW_ERROR", "AUCTION_MULTISELL_FAILURE",
+    "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED" }) do
     KNOWN_EVENTS[e] = true
 end
+Enum.AuctionHouseError = { NotEnoughMoney = 0, HigherBid = 1, BidIncrement = 2, BidOwn = 3, ItemNotFound = 4,
+    RestrictedAccountTrial = 5, HasRestriction = 6, IsBusy = 7, Unavailable = 8, ItemHasQuote = 9, DatabaseError = 10 }
 Enum.ItemCommodityStatus = { Unknown = 0, Item = 1, Commodity = 2 }
 Enum.AuctionHouseSortOrder.Buyout = 4
 ItemLocation = {}
@@ -525,13 +572,18 @@ end
 function C_AuctionHouse.GetNumItemSearchResults(key) return #(M.market[key.itemID] or {}) end
 function C_AuctionHouse.GetItemSearchResultInfo(key, i)
     local l = M.market[key.itemID][i]
+    -- l[4]: the next bid that would be accepted, for the whole auction
     return { itemKey = key, auctionID = key.itemID * 100 + i, buyoutAmount = l[1] * l[2], quantity = l[2],
         containsOwnerItem = l[3] or false, containsAccountItem = false, owners = { l[3] and "player" or "Someone" },
-        timeLeftSeconds = 7200 * i, timeLeft = 2 }
+        timeLeftSeconds = 7200 * i, timeLeft = 2, minBid = l[4] }
 end
 function C_AuctionHouse.CalculateCommodityDeposit(id, duration, qty) assert(type(id) == "number" and duration >= 1 and duration <= 3); return qty * 2 end
 function C_AuctionHouse.CalculateItemDeposit(loc, duration, qty) assert(type(loc) == "table"); return 5 * qty end
-local function created() C_Timer.After(0.3, function() M.fire("AUCTION_HOUSE_AUCTION_CREATED", 4242) end) end
+-- M.postSilent: the post is sent but the answer never comes.
+local function created()
+    if M.postSilent then return end
+    C_Timer.After(0.3, function() M.fire("AUCTION_HOUSE_AUCTION_CREATED", 4242) end)
+end
 function C_AuctionHouse.PostCommodity(loc, duration, qty, price)
     assert(type(loc) == "table" and qty >= 1 and price >= 1 and price == math.floor(price), "bad PostCommodity")
     if M.needConfirm then M.posted[#M.posted + 1] = { kind = "warn", id = M.bags[loc.slot][1] }; return true end
@@ -633,18 +685,215 @@ do
     UnitGUID = function(u) local x = M.units[u]; if x then return x.guid end return guid(u) end
     UnitName = function(u) local x = M.units[u]; if x then return x.name end return name(u) end
 end
--- M.inbox[i] = { invoice = "seller", item =, count =, money = }
+
+----------------------------------------------------------------------
+-- Mailbox: inbox, send mail, and a server that answers (or doesn't)
+----------------------------------------------------------------------
+for _, e in ipairs({ "MAIL_INBOX_UPDATE", "MAIL_SUCCESS", "MAIL_FAILED", "MAIL_SEND_SUCCESS", "MAIL_SEND_INFO_UPDATE",
+    "MAIL_LOCK_SEND_ITEMS", "MAIL_UNLOCK_SEND_ITEMS", "SECURE_TRANSFER_CONFIRM_SEND_MAIL",
+    "SECURE_TRANSFER_CONFIRM_TAKE_MAIL_MONEY", "SECURE_TRANSFER_CANCEL", "UI_ERROR_MESSAGE", "CLOSE_INBOX_ITEM" }) do
+    KNOWN_EVENTS[e] = true
+end
+ATTACHMENTS_MAX_SEND, ATTACHMENTS_MAX_RECEIVE, ATTACHMENTS_MAX = 12, 16, 16
+MailFrame = newWidget("Frame", "MailFrame"); MailFrame._shown = false
+OpenMailFrame = newWidget("Frame", "OpenMailFrame"); OpenMailFrame._shown = false
+CLASS_ICON_TCOORDS = { WARRIOR = { 0, 0.25, 0, 0.25 }, MAGE = { 0.25, 0.5, 0, 0.25 }, PALADIN = { 0, 0.25, 0.5, 0.75 } }
+function HideUIPanel(f) f:Hide() end
+function CloseMail() M.fire("MAIL_CLOSED") end
+
+-- Item subclasses (trade goods: 5 cloth, 6 leather, 7 metal & stone, 9 herb)
+for id, sub in pairs({ [2770] = 7, [2840] = 7, [2771] = 7, [3576] = 7, [2841] = 7, [2835] = 7, [2836] = 7, [2775] = 7,
+    [2842] = 7, [2589] = 5, [765] = 9 }) do
+    M.items[id][6] = sub
+end
+M.items[2996] = { "Bolt of Linen Cloth", 1, 40, 7, 0, 5 }
+M.items[2318] = { "Light Leather", 1, 15, 7, 0, 6 }
+M.items[2447] = { "Peacebloom", 1, 4, 7, 0, 9 }
+M.items[5056] = { "Quest Letter", 1, 0, 12 }
+do
+    local get = C_Item.GetItemInfo
+    function C_Item.GetItemInfo(id)
+        local r = { get(id) }
+        local it = M.items[id]
+        if r[1] and it then r[13] = it[6] or 0 end
+        return unpack(r, 1, 14)
+    end
+end
+
+-- Bags: M.bags[slot] = { id, count, bound, locked, quest = true }
+function C_Container.GetContainerNumSlots(bag) if bag == 0 then return M.bagSlots or 16 end return 0 end
+function C_Container.GetContainerItemQuestInfo(bag, slot)
+    local b = bag == 0 and M.bags[slot]
+    return { isQuestItem = b and b.quest or false, isActive = false }
+end
+function C_Container.CalculateTotalNumberOfFreeBagSlots()
+    local n = 0
+    for s = 1, M.bagSlots or 16 do if not M.bags[s] then n = n + 1 end end
+    return n
+end
+local function freeSlot()
+    for s = 1, M.bagSlots or 16 do if not M.bags[s] then return s end end
+end
+M.cursor = nil
+function C_Container.PickupContainerItem(bag, slot)
+    local b = bag == 0 and M.bags[slot]
+    if M.cursor then M.cursor = nil return end
+    if b and not b[4] then M.cursor = { bag = bag, slot = slot } end
+end
+function ClearCursor() M.cursor = nil end
+function CursorHasItem() return M.cursor ~= nil end
+
+-- M.inbox[i] = { sender, subject, money, cod, days, items = { [a] = { id, count } }, gm, body, invoice,
+--                item, count (the invoice's), read, keep (don't delete it when emptied) }
 M.inbox = {}
-function GetInboxInvoiceInfo(i) local m = M.inbox[i]; if not m then return nil end
+M.mailLog = {}  -- every mail command anyone sent: { what = name, ... }
+M.takeDelay, M.takeMode = 0.3, "ok"     -- takeMode: ok | silent | fail
+M.sendDelay, M.sendMode = 0.5, "ok"     -- sendMode: ok | fail | silent | lost (it goes, but no answer)
+M.attachDelay = 0                        -- attachments show up this long after the click
+M.mailBusy = false                       -- the server is busy with something else
+local pending = 0
+local function log(what, ...) M.mailLog[#M.mailLog + 1] = { what = what, ... } end
+function M.MailCount(what) local n = 0; for _, l in ipairs(M.mailLog) do if l.what == what then n = n + 1 end end; return n end
+
+local function inboxItems(m)
+    local n = 0
+    for a = 1, 16 do if m.items and m.items[a] then n = n + 1 end end
+    return n
+end
+function GetInboxNumItems() return #M.inbox, M.inboxTotal or #M.inbox end
+function GetInboxInvoiceInfo(i) local m = M.inbox[i]; if not m or not m.invoice then return nil end
     return m.invoice, m.item, "Buyer", 0, 0, 0, 0, 0, 0, 0, m.count end
-function GetInboxHeaderInfo(i) local m = M.inbox[i]; return nil, nil, "Auction House", "Sold", m and m.money or 0 end
+function GetInboxHeaderInfo(i)
+    local m = M.inbox[i]
+    if not m then return nil end
+    local first
+    for a = 1, 16 do if m.items and m.items[a] then first = m.items[a]; break end end
+    return "Interface\\Icons\\INV_Letter_15", "Interface\\Icons\\INV_Letter_15", m.sender or "Auction House",
+        m.subject or "Sold", m.money or 0, m.cod or 0, m.days or 29.5, inboxItems(m), m.read or false, m.returned or false,
+        true, true, m.gm or false, first and first[2], nil
+end
+function HasInboxItem(i, a) local m = M.inbox[i]; return (m and m.items and m.items[a] ~= nil) or false end
+function GetInboxItem(i, a)
+    local m = M.inbox[i]
+    local it = m and m.items and m.items[a]
+    if not it then return nil end
+    local d = M.items[it[1]]
+    return d and d[1] or "Item", it[1], 130000 + it[1] % 1000, it[2], d and d[2] or 1, true, false
+end
+function GetInboxText(i) local m = M.inbox[i]; if m then m.read = true; return m.body or "" end end
+local function maybeDelete(m)
+    if not m.keep and (m.money or 0) == 0 and inboxItems(m) == 0 and (m.body or "") == "" then
+        for j, x in ipairs(M.inbox) do if x == m then table.remove(M.inbox, j) break end end
+    end
+end
+local function settle(fn, delay)
+    pending = pending + 1
+    C_Timer.After(delay, function() pending = pending - 1; fn() end)
+end
 -- like the real client: the money arrives a moment after you click
 function TakeInboxMoney(i)
     local m = M.inbox[i]
-    if m and m.money > 0 then
+    log("TakeInboxMoney", i, m and m.subject)
+    if not m or (m.money or 0) <= 0 then return end
+    if M.takeMode == "silent" then return end
+    settle(function()
+        if M.takeMode == "fail" then M.fire("MAIL_FAILED"); return end
         local amount = m.money
         m.money = 0
-        C_Timer.After(0.2, function() M.player.money = M.player.money + amount; M.fire("PLAYER_MONEY") end)
+        M.player.money = M.player.money + amount
+        M.fire("PLAYER_MONEY")
+        maybeDelete(m)
+        M.fire("MAIL_INBOX_UPDATE")
+    end, M.takeDelay)
+end
+function TakeInboxItem(i, a)
+    local m = M.inbox[i]
+    log("TakeInboxItem", i, a, m and m.subject)
+    local it = m and m.items and m.items[a]
+    if not it then return end
+    if (m.cod or 0) > 0 then M.codPaid = true end
+    if M.takeMode == "silent" then return end
+    settle(function()
+        local slot = freeSlot()
+        if M.takeMode == "fail" or not slot then
+            M.fire("UI_ERROR_MESSAGE", 3, "Inventory is full.")
+            M.fire("MAIL_FAILED", it[1])
+            return
+        end
+        if (m.cod or 0) > 0 then M.player.money = M.player.money - m.cod; m.cod = 0 end
+        m.items[a] = nil
+        M.bags[slot] = { it[1], it[2] }
+        M.fire("MAIL_SUCCESS", it[1])
+        M.fire("BAG_UPDATE_DELAYED")
+        maybeDelete(m)
+        M.fire("MAIL_INBOX_UPDATE")
+    end, M.takeDelay)
+end
+function AutoLootMailItem(i) log("AutoLootMailItem", i); TakeInboxMoney(i) end
+function ReturnInboxItem(i) log("ReturnInboxItem", i) end
+function DeleteInboxItem(i) log("DeleteInboxItem", i) end
+function CheckInbox() log("CheckInbox"); C_Timer.After(0.5, function() M.fire("MAIL_INBOX_UPDATE") end) end
+
+-- Sending: M.send.atts[j] = { slot, id, count, at }
+M.send = { atts = {}, money = 0, cod = 0 }
+M.sentMail = {}
+function SetSendMailShowing(on) M.send.showing = on end
+function ClickSendMailItemButton(j, clear)
+    local cur = M.send.atts[j]
+    if clear then
+        if cur and M.bags[cur.slot] then M.bags[cur.slot][4] = nil end
+        M.send.atts[j] = nil
+        return
+    end
+    if M.cursor then
+        if cur and M.bags[cur.slot] then M.bags[cur.slot][4] = nil end
+        local b = M.bags[M.cursor.slot]
+        M.send.atts[j] = { slot = M.cursor.slot, id = b[1], count = b[2], at = M.clock + M.attachDelay }
+        b[4] = true
+        M.cursor = nil
     end
 end
-function AutoLootMailItem(i) TakeInboxMoney(i) end
+function HasSendMailItem(j) local a = M.send.atts[j]; return a ~= nil and M.clock >= a.at end
+function GetSendMailItem(j)
+    local a = M.send.atts[j]
+    if not a or M.clock < a.at then return nil end
+    return M.items[a.id] and M.items[a.id][1], a.id, 130000, a.count, 1
+end
+local function attCount() local n = 0; for j = 1, 16 do if M.send.atts[j] then n = n + 1 end end; return n end
+function GetSendMailPrice() return 30 * math.max(1, attCount()) end
+function SetSendMailMoney(c) M.send.money = c; return true end
+function SetSendMailCOD(c) M.send.cod = c end
+local function resetSend() M.send.atts, M.send.money, M.send.cod = {}, 0, 0 end
+function SendMail(name, subject, body)
+    local atts = {}
+    for j = 1, 16 do local a = M.send.atts[j]; if a then atts[#atts + 1] = { id = a.id, count = a.count, slot = a.slot } end end
+    local mail = { name = name, subject = subject, body = body, atts = atts, money = M.send.money, cod = M.send.cod,
+        postage = GetSendMailPrice() }
+    log("SendMail", mail)
+    local mode = M.sendMode
+    local function deliver()
+        for _, a in ipairs(atts) do M.bags[a.slot] = nil end
+        M.player.money = M.player.money - mail.postage - (mail.money or 0)
+        M.sentMail[#M.sentMail + 1] = mail
+        resetSend()
+    end
+    if mode == "silent" then return end
+    if mode == "lost" then deliver(); M.fire("PLAYER_MONEY"); return end
+    settle(function()
+        if mode == "fail" then
+            M.fire("UI_ERROR_MESSAGE", 2, "Cannot find player")
+            M.fire("MAIL_FAILED")
+            return
+        end
+        deliver()
+        M.fire("PLAYER_MONEY")
+        M.fire("MAIL_SEND_SUCCESS")
+        M.fire("BAG_UPDATE_DELAYED")
+    end, M.sendDelay)
+end
+
+C_Mail = {}
+function C_Mail.IsCommandPending() return M.mailBusy or pending > 0 end
+function C_Mail.CanCheckInbox() return true, 0 end
+function C_Mail.HasInboxMoney(i) local m = M.inbox[i]; return m ~= nil and (m.money or 0) > 0 end
+function C_Mail.IsCODEnabled() return true end

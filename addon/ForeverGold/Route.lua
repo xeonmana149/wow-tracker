@@ -21,8 +21,29 @@ ns.KINDS = {
         icon = "Interface\\Icons\\Trade_Herbalism", color = { 0.35, 0.90, 0.35 } },
     fish = { label = "Fishing", one = "fishing spot", many = "fishing spots", none = "No fishing recorded",
         icon = "Interface\\Icons\\Trade_Fishing", color = { 0.35, 0.65, 1.00 } },
+    -- Where a chest has stood. Chests move between a handful of places, so
+    -- a recorded spot is somewhere one turns up, not a promise.
+    chest = { label = "Chests", one = "chest spot", many = "chest spots", none = "No chests recorded",
+        icon = "Interface\\Icons\\INV_Box_02", color = { 0.95, 0.80, 0.45 } },
 }
-ns.KIND_ORDER = { "herb", "ore", "fish" }
+ns.KIND_ORDER = { "herb", "ore", "fish", "chest" }
+
+-- What an opened thing has to be called to count as a chest (not a quest
+-- crate, a door or a sack of grain).
+local CHEST_WORDS = { "chest", "strongbox", "coffer", "footlocker", "trunk" }
+local function isChest(name)
+    if type(name) ~= "string" then
+        return false
+    end
+    local l = name:lower()
+    for _, w in ipairs(CHEST_WORDS) do
+        if l:find(w, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+ns.IsChestName = isChest
 
 ----------------------------------------------------------------------
 -- Where am I?
@@ -90,13 +111,15 @@ local function gatherKind(spellID)
             kind = "fish"
         elseif l == "skinning" then
             kind = "skin"
+        elseif l:find("^opening") then
+            kind = "open" -- chests, but also doors and quest objects: the target's name decides
         end
     end
     spellKind[spellID] = kind
     return kind or nil
 end
 
--- "ore" | "herb" | "fish" | "skin" | nil - the loot tracker uses this too.
+-- "ore" | "herb" | "fish" | "skin" | "open" | nil - the loot tracker uses this too.
 ns.GatherKind = gatherKind
 
 function ns.RecordNode(kind, name)
@@ -137,6 +160,8 @@ ns.On("UNIT_SPELLCAST_SENT", function(unit, target, _, spellID)
     local kind = gatherKind(spellID)
     if kind == "ore" or kind == "herb" then
         pendingCast = { kind = kind, name = target, at = GetTime() }
+    elseif kind == "open" and isChest(target) then
+        pendingCast = { kind = "chest", name = target, at = GetTime() }
     end
 end)
 
@@ -155,6 +180,12 @@ ns.On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
         end
         pendingCast = nil
         ns.RecordNode(kind, name)
+    elseif kind == "open" then
+        -- Only a chest picked out when the cast started counts.
+        if pendingCast and pendingCast.kind == "chest" and GetTime() - pendingCast.at < 20 then
+            ns.RecordNode("chest", pendingCast.name)
+        end
+        pendingCast = nil
     end
 end)
 
@@ -183,7 +214,7 @@ function ns.NodeZones()
     local out = {}
     for mapID, list in pairs(ns.db.nodes) do
         if #list > 0 then
-            local z = { map = mapID, name = ns.MapName(mapID), ore = 0, herb = 0, fish = 0, total = #list,
+            local z = { map = mapID, name = ns.MapName(mapID), ore = 0, herb = 0, fish = 0, chest = 0, total = #list,
                 skipped = 0, last = 0 }
             for _, n in ipairs(list) do
                 z[n.k] = (z[n.k] or 0) + 1
@@ -416,6 +447,9 @@ function ns.StartRoute(plan)
         ns.StopRoute()
     end
     plan.i, plan.visited, plan.paused = plan.first or plan.i or 1, 0, nil
+    if ns.Beam then
+        ns.Beam.own = nil -- the route's pin replaces the nearest-spot one
+    end
     ns.route = plan
     ns.SetRouteWaypoint()
     ns.Fire("ROUTE")
@@ -1312,3 +1346,555 @@ ns.Listen("READY", function()
 end)
 ns.UpdateMinimapPins = updateMinimap
 ns.MinimapPins = mini
+
+----------------------------------------------------------------------
+-- Loot beams
+--
+-- A column of light standing on the spot you're heading for. An addon
+-- can't draw in the 3D world itself; what it can do is follow the game's
+-- own waypoint marker, which C_Navigation keeps at the tracked map pin's
+-- place on screen. So there's one beam at a time:
+--   * on a route: the next stop, in bright gold;
+--   * otherwise: the nearest spot you've recorded, in white. That one puts
+--     the map pin down itself, but only while you aren't tracking anything
+--     else (a quest, your own pin), and it moves on from spots you've just
+--     been to.
+-- The beam is drawn in screen space and sized by distance, so it shrinks
+-- as the spot gets further away.
+----------------------------------------------------------------------
+
+local BEAM_ROUTE = { 1, 0.86, 0.12 }  -- bright gold: the next stop on your route
+local BEAM_SPOT = { 1, 1, 1 }         -- white: the nearest spot, no route running
+local BEAM_YARDS = 45                 -- how tall the column stands
+local BEAM_WIDTH = 2.4                -- and how wide, in yards
+local NEAREST_RANGE = 400             -- further away than this isn't "nearby"
+local VISITED_FOR = 300               -- seconds a spot you've just been to is passed over
+local WHITE = "Interface\\Buttons\\WHITE8X8"
+local DISC = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
+
+local beam = { visited = setmetatable({}, { __mode = "k" }) }
+ns.Beam = beam
+
+-- Is the game's tracked pin the one at this place? (With anyTracking, just
+-- whether the pin is there, tracked or not.)
+local function trackingPin(map, x, y, anyTracking)
+    if not (map and C_Map and C_Map.GetUserWaypoint) then
+        return false
+    end
+    if not anyTracking and C_SuperTrack and C_SuperTrack.IsSuperTrackingUserWaypoint
+        and not ns.try(C_SuperTrack.IsSuperTrackingUserWaypoint) then
+        return false
+    end
+    local p = ns.try(C_Map.GetUserWaypoint)
+    if type(p) ~= "table" or p.uiMapID ~= map then
+        return false
+    end
+    local px, py
+    if p.position and p.position.GetXY then
+        px, py = p.position:GetXY()
+    end
+    return (px and py and abs(px - x) < 0.001 and abs(py - y) < 0.001) and true or false
+end
+beam.TrackingPin = trackingPin
+
+-- The nearest recorded spot in this zone you haven't just been to.
+local function nearestSpot()
+    local mapID, px, py = ns.PlayerMapPos()
+    if not mapID then
+        return nil
+    end
+    local pn, pw = worldPos(mapID, px, py)
+    if not pn then
+        return nil
+    end
+    local now = GetTime()
+    local best, bestD
+    for _, n in ipairs(ns.db.nodes[mapID] or {}) do
+        if not n.skip then
+            local c = nodeWorld(mapID, n)
+            if c then
+                local dn, dw = c[1] - pn, c[2] - pw
+                local d = sqrt(dn * dn + dw * dw)
+                if d < ARRIVE_YARDS then
+                    beam.visited[n] = now
+                end
+                local seen = beam.visited[n]
+                if not (seen and now - seen < VISITED_FOR) and d < NEAREST_RANGE and (not bestD or d < bestD) then
+                    best, bestD = n, d
+                end
+            end
+        end
+    end
+    return best, mapID
+end
+
+-- Lets go of the pin the nearest-spot beam put down (never a route's or yours).
+local function releaseSpot()
+    local own = beam.own
+    beam.own = nil
+    local r = ns.route
+    if own and not (r and not r.paused) and trackingPin(own.map, own.x, own.y) and C_Map.ClearUserWaypoint then
+        pcall(C_Map.ClearUserWaypoint)
+    end
+end
+beam.Release = releaseSpot
+
+-- Once a second: which spot the white beam belongs on, if any.
+local function updateSpot()
+    local opts = ns.db.opts
+    local r = ns.route
+    if opts.lootBeam == false or opts.nearestBeam == false or (r and not r.paused) then
+        releaseSpot()
+        return
+    end
+    -- The player tracked something else, placed their own pin, or the game
+    -- cleared ours on arrival: it's not ours any more. A pin of ours left
+    -- behind under a tracked quest is tidied away.
+    local own = beam.own
+    if own and not trackingPin(own.map, own.x, own.y) then
+        beam.own = nil
+        if trackingPin(own.map, own.x, own.y, true) then
+            if C_Map.ClearUserWaypoint then
+                pcall(C_Map.ClearUserWaypoint)
+            end
+        elseif not (C_Map.HasUserWaypoint and ns.try(C_Map.HasUserWaypoint)) then
+            -- The pin's simply gone: the game clears it when you get there.
+            beam.visited[own.node] = GetTime()
+        end
+    end
+    local n, mapID = nearestSpot()
+    if not n then
+        releaseSpot()
+        return
+    end
+    if beam.own and beam.own.node == n then
+        return
+    end
+    if not beam.own then
+        -- Only an empty slot: never replace a quest, a corpse or a pin you placed.
+        if C_Map.HasUserWaypoint and ns.try(C_Map.HasUserWaypoint) then
+            return
+        end
+        if C_SuperTrack and C_SuperTrack.IsSuperTrackingAnything and ns.try(C_SuperTrack.IsSuperTrackingAnything) then
+            return
+        end
+    end
+    if ns.SetWaypoint(mapID, n.x, n.y) then
+        beam.own = { node = n, map = mapID, x = n.x, y = n.y }
+    end
+end
+beam.UpdateSpot = updateSpot
+
+-- What the beam should be right now: colour, or nil for none.
+local function beamColor()
+    if ns.db.opts.lootBeam == false then
+        return nil
+    end
+    local r = ns.route
+    if r and not r.paused then
+        local pt = r.pts[r.i]
+        return pt and trackingPin(r.map, pt.x, pt.y) and BEAM_ROUTE or nil
+    end
+    local own = beam.own
+    return own and trackingPin(own.map, own.x, own.y) and BEAM_SPOT or nil
+end
+
+local function layer(f, drawLayer, sub)
+    local t = f:CreateTexture(nil, drawLayer, nil, sub)
+    t:SetTexture(WHITE)
+    if t.SetBlendMode then
+        t:SetBlendMode("ADD")
+    end
+    return t
+end
+
+-- Bright at the foot, fading out towards the top.
+local function shade(t, c, bottom, top)
+    if t.SetGradient and CreateColor then
+        t:SetGradient("VERTICAL", CreateColor(c[1], c[2], c[3], bottom), CreateColor(c[1], c[2], c[3], top))
+    else
+        t:SetVertexColor(c[1], c[2], c[3], bottom)
+    end
+end
+
+local function buildBeam()
+    local f = CreateFrame("Frame", nil, UIParent)
+    f:SetFrameStrata("BACKGROUND")
+    f:EnableMouse(false)
+    f:SetSize(20, 200)
+    -- Three nested columns give it soft edges: a wide faint glow, a body,
+    -- and a thin hot core.
+    f.glow = layer(f, "BACKGROUND")
+    f.body = layer(f, "BORDER")
+    f.core = layer(f, "ARTWORK")
+    for _, t in ipairs({ f.glow, f.body, f.core }) do
+        t:SetPoint("BOTTOM", f, "BOTTOM", 0, 0)
+    end
+    -- A pool of light where it meets the ground.
+    f.pool = f:CreateTexture(nil, "OVERLAY")
+    f.pool:SetTexture(DISC)
+    if f.pool.SetBlendMode then
+        f.pool:SetBlendMode("ADD")
+    end
+    f.pool:SetPoint("CENTER", f, "BOTTOM", 0, 0)
+    f:Hide()
+    return f
+end
+
+local function paint(f, c)
+    if f.color == c then
+        return
+    end
+    f.color = c
+    shade(f.glow, c, 0.22, 0)
+    shade(f.body, c, 0.45, 0)
+    shade(f.core, c, 0.95, 0.05)
+    f.pool:SetVertexColor(c[1], c[2], c[3], 0.55)
+end
+
+-- Sized for how far away it is: roughly how many pixels a yard is there.
+local function sizeBeam(f, d, alpha)
+    local screen = (UIParent and UIParent:GetHeight()) or 0
+    if screen <= 0 then
+        screen = 768
+    end
+    local perYard = screen * 0.55 / math.max(d, 5)
+    local h = math.max(28, math.min(screen * 0.9, BEAM_YARDS * perYard))
+    local w = math.max(5, math.min(70, BEAM_WIDTH * perYard))
+    f:SetSize(w * 2, h)
+    f.glow:SetSize(w * 2, h)
+    f.body:SetSize(w, h)
+    f.core:SetSize(math.max(2, w * 0.28), h)
+    f.pool:SetSize(w * 3.2, w * 1.1)
+    local pulse = 0.84 + 0.16 * math.sin(GetTime() * 2.6)
+    f:SetAlpha(alpha * pulse)
+    f:Show()
+end
+
+local NAV_ALPHA -- state -> how visible, like the game's own marker
+local function navAlpha(state)
+    if not NAV_ALPHA then
+        local S = Enum and Enum.NavigationState or {}
+        NAV_ALPHA = { [S.Invalid or 0] = 0, [S.Occluded or 1] = 0.55, [S.InRange or 2] = 1, [S.Disabled or 3] = 0 }
+    end
+    return NAV_ALPHA[state] or 0
+end
+
+local function hideBeam()
+    if beam.frame then
+        beam.frame:Hide()
+    end
+end
+
+-- Every frame: put the beam on the marker, sized for how far away it is.
+local function drawBeam()
+    local c = beamColor()
+    local N = C_Navigation
+    if not c or not (N and N.GetFrame) then
+        hideBeam()
+        return
+    end
+    local nav = ns.try(N.GetFrame)
+    if not nav or (N.HasValidScreenPosition and not ns.try(N.HasValidScreenPosition))
+        or (N.WasClampedToScreen and ns.try(N.WasClampedToScreen)) then
+        -- Off screen: the game's own marker points the way at the edge.
+        hideBeam()
+        return
+    end
+    local alpha = N.GetTargetState and navAlpha(ns.try(N.GetTargetState)) or 1
+    local d = (N.GetDistance and ns.try(N.GetDistance)) or 100
+    -- Standing in it: fade out rather than fill the screen.
+    alpha = alpha * math.max(0, math.min(1, (d - 4) / 10))
+    if alpha <= 0 then
+        hideBeam()
+        return
+    end
+    -- The same spot already has a beam on the object itself (below): that
+    -- one sits exactly on it, so this one steps aside.
+    local r = ns.route
+    local target = (r and not r.paused) and r.pts[r.i] or (beam.own and beam.own.node)
+    if beam.softNode and beam.softNode == target then
+        hideBeam()
+        return
+    end
+    local f = beam.frame
+    if not f then
+        f = buildBeam()
+        beam.frame = f
+    end
+    if f.anchor ~= nav then
+        f:ClearAllPoints()
+        if not pcall(f.SetPoint, f, "BOTTOM", nav, "CENTER", 0, 0) then
+            beam.broken = true
+            hideBeam()
+            return
+        end
+        f.anchor = nav
+    end
+    paint(f, c)
+    sizeBeam(f, d, alpha)
+end
+beam.Draw = drawBeam
+
+----------------------------------------------------------------------
+-- Beams on things you haven't recorded yet
+--
+-- With the game's Interact Key on, it picks out the herb, vein or chest in
+-- front of you and hangs its interact icon on it - on a nameplate standing
+-- on the object. A beam hangs from that too, so it works for spots that
+-- were never recorded. It only reaches as far as the game's interact
+-- targeting does (close by, roughly where you're facing), and it's one
+-- object at a time.
+--
+-- The colour says what it is:
+--   gold        a stop on the route you're running
+--   white       a spot you've recorded
+--   light blue  something new - gather it and it's recorded
+----------------------------------------------------------------------
+
+local BEAM_NEW = { 0.35, 0.82, 1 }
+beam.COLORS = { route = BEAM_ROUTE, recorded = BEAM_SPOT, new = BEAM_NEW }
+
+-- The game settings this needs, and what they're set to. What they were
+-- before is kept (ns.db.beamCVars) and put back when the option is off.
+local BEAM_CVARS = {
+    softTargetInteract = "3",          -- Interact Key: keyboard and mouse too, not just a gamepad
+    SoftTargetIconInteract = "1",      -- the icon on what it picked
+    SoftTargetIconGameObject = "1",    -- ...including objects (herbs, veins, chests)
+    SoftTargetNameplateInteract = "1", -- and the nameplate that icon sits on
+}
+
+local function applyCVars(on)
+    if not (GetCVar and SetCVar) then
+        return
+    end
+    if InCombatLockdown and InCombatLockdown() then
+        return -- try again out of combat
+    end
+    if on then
+        if ns.db.beamCVars then
+            return
+        end
+        local saved = {}
+        for name, value in pairs(BEAM_CVARS) do
+            local old = ns.try(GetCVar, name)
+            if old ~= nil then -- a setting this client doesn't have is left alone
+                saved[name] = tostring(old)
+                if tostring(old) ~= value then
+                    pcall(SetCVar, name, value)
+                end
+            end
+        end
+        ns.db.beamCVars = saved
+    elseif ns.db.beamCVars then
+        for name, old in pairs(ns.db.beamCVars) do
+            pcall(SetCVar, name, old)
+        end
+        ns.db.beamCVars = nil
+    end
+end
+beam.ApplyCVars = applyCVars
+
+local function wantSoft()
+    local o = ns.db.opts
+    return o.lootBeam ~= false and o.beamUnrecorded ~= false
+end
+
+-- What a gatherable thing is, from its name. Names you've gathered before
+-- are learned (that covers WoW Forever's own herbs); otherwise the usual
+-- wording: "... Vein", "... School", chests by name, and the classic herbs.
+local HERBS = {}
+for _, h in ipairs({ "peacebloom", "silverleaf", "earthroot", "mageroyal", "briarthorn", "stranglekelp", "bruiseweed",
+    "wild steelbloom", "grave moss", "kingsblood", "liferoot", "fadeleaf", "goldthorn", "khadgar's whisker", "wintersbite",
+    "firebloom", "purple lotus", "arthas' tears", "sungrass", "blindweed", "ghost mushroom", "gromsblood", "golden sansam",
+    "dreamfoil", "mountain silversage", "plaguebloom", "icecap", "black lotus" }) do
+    HERBS[h] = true
+end
+
+local learned
+ns.Listen("NODES_UPDATED", function() learned = nil end)
+
+local function objectKind(name)
+    if type(name) ~= "string" or name == "" then
+        return nil
+    end
+    if not learned then
+        learned = {}
+        for _, list in pairs(ns.db.nodes) do
+            for _, n in ipairs(list) do
+                if n.n and n.k ~= "fish" then
+                    learned[n.n] = n.k
+                end
+            end
+        end
+    end
+    if learned[name] then
+        return learned[name]
+    end
+    local l = name:lower()
+    if isChest(name) then
+        return "chest"
+    elseif l:find("vein", 1, true) or l:find(" deposit$") then
+        return "ore"
+    elseif l:find("school", 1, true) or l:find("wreckage", 1, true) or l:find("floating debris", 1, true)
+        or l:find("oil spill", 1, true) then
+        return "fish"
+    elseif HERBS[l] then
+        return "herb"
+    end
+    return nil
+end
+beam.ObjectKind = objectKind
+
+-- The recorded spot of this kind nearest to you, if one is close enough to
+-- be the thing in front of you. Returns node, yards.
+local MATCH_YARDS = 30
+local function recordedHere(kind)
+    local mapID, px, py = ns.PlayerMapPos()
+    if not mapID then
+        return nil
+    end
+    local pn, pw = worldPos(mapID, px, py)
+    if not pn then
+        return nil
+    end
+    local best, bestD
+    for _, n in ipairs(ns.db.nodes[mapID] or {}) do
+        if n.k == kind then
+            local c = nodeWorld(mapID, n)
+            if c then
+                local dn, dw = c[1] - pn, c[2] - pw
+                local d = sqrt(dn * dn + dw * dw)
+                if d < MATCH_YARDS and (not bestD or d < bestD) then
+                    best, bestD = n, d
+                end
+            end
+        end
+    end
+    return best, bestD, mapID
+end
+
+-- Stops on the running route, for "is this one of yours?".
+local routeSet, routeSetFor = {}, nil
+local function onRoute(node)
+    local r = ns.route
+    if not (node and r and not r.paused) then
+        return false
+    end
+    if routeSetFor ~= r then
+        routeSet, routeSetFor = {}, r
+        for _, p in ipairs(r.pts) do
+            routeSet[p] = true
+        end
+    end
+    return routeSet[node] or false
+end
+
+local seenObjects, seenCount = {}, 0
+
+-- The thing the game has picked out in front of you, if it's gatherable:
+-- { kind =, name = }.
+local function softObject()
+    local guid = UnitGUID and ns.try(UnitGUID, "softinteract")
+    if type(guid) ~= "string" or not guid:find("^GameObject") then
+        return nil
+    end
+    local o = seenObjects[guid]
+    if o == nil then
+        local name = UnitName and ns.try(UnitName, "softinteract")
+        local kind = objectKind(name)
+        o = kind and { kind = kind, name = name } or false
+        if seenCount > 300 then
+            seenObjects, seenCount = {}, 0
+        end
+        seenObjects[guid] = o
+        seenCount = seenCount + 1
+    end
+    return o or nil
+end
+
+local function hideSoft()
+    beam.softNode = nil
+    beam.softKind = nil
+    if beam.softFrame then
+        beam.softFrame:Hide()
+    end
+end
+
+local lastMatch = { at = -1 }
+local function drawSoft()
+    if not wantSoft() or not (C_NamePlate and C_NamePlate.GetNamePlateForUnit) then
+        hideSoft()
+        return
+    end
+    local o = softObject()
+    local plate = o and ns.try(C_NamePlate.GetNamePlateForUnit, "softinteract")
+    if not plate then
+        hideSoft()
+        return
+    end
+    -- Which recorded spot (if any) it is: looked up a few times a second.
+    local now = GetTime()
+    if lastMatch.obj ~= o or now - lastMatch.at > 0.25 then
+        lastMatch.obj, lastMatch.at = o, now
+        lastMatch.node, lastMatch.d = recordedHere(o.kind)
+    end
+    local node, d = lastMatch.node, lastMatch.d
+    local c = onRoute(node) and BEAM_ROUTE or (node and BEAM_SPOT) or BEAM_NEW
+    local f = beam.softFrame
+    if not f then
+        f = buildBeam()
+        beam.softFrame = f
+    end
+    if f.anchor ~= plate then
+        f:ClearAllPoints()
+        if not pcall(f.SetPoint, f, "BOTTOM", plate, "BOTTOM", 0, 0) then
+            -- Nameplates are off-limits here (some places protect them).
+            hideSoft()
+            return
+        end
+        f.anchor = plate
+    end
+    beam.softNode, beam.softKind = node, (c == BEAM_ROUTE and "route") or (node and "recorded") or "new"
+    paint(f, c)
+    -- The game only picks things out close by.
+    sizeBeam(f, d or 10, 1)
+end
+beam.DrawSoft = drawSoft
+
+ns.Listen("READY", function()
+    applyCVars(wantSoft())
+    local driver = CreateFrame("Frame", nil, UIParent)
+    local since = 1
+    driver:SetScript("OnUpdate", function(_, elapsed)
+        if beam.broken then
+            hideBeam()
+            hideSoft()
+            driver:SetScript("OnUpdate", nil)
+            return
+        end
+        since = since + elapsed
+        local ok, err = true, nil
+        if since >= 1 then
+            since = 0
+            -- The option was switched: set the game's settings, or put them back.
+            if wantSoft() ~= (ns.db.beamCVars ~= nil) then
+                applyCVars(wantSoft())
+            end
+            ok, err = pcall(updateSpot)
+        end
+        if ok then
+            ok, err = pcall(drawSoft)
+        end
+        if ok then
+            ok, err = pcall(drawBeam)
+        end
+        if not ok then
+            ns.Err("loot-beam", err)
+            hideBeam()
+            hideSoft()
+            driver:SetScript("OnUpdate", nil)
+        end
+    end)
+    beam.driver = driver
+end)

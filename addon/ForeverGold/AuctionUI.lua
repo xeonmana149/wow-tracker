@@ -691,7 +691,11 @@ function A.Buy()
         return
     end
     local l = BUY.sel
-    if not l or not l.aid or l.mine then
+    if l and l.bidOnly then
+        buyMsg("That auction has no buyout - you can only bid on it.")
+        return
+    end
+    if not l or not l.aid or l.mine or not l.buyout then
         buyMsg("Pick a listing first.")
         return
     end
@@ -807,7 +811,7 @@ local function setTab(key)
     win.sell:SetShown(key == "sell")
     win.mine:SetShown(key == "auctions")
     if key == "sell" then
-        if P.state ~= "checking" and P.state ~= "posting" and P.state ~= "confirm" then
+        if P.state ~= "checking" and P.state ~= "posting" and P.state ~= "confirm" and P.state ~= "verify" then
             P.Rebuild()
         end
     elseif key == "auctions" then
@@ -884,10 +888,11 @@ local function buildBrowse(f)
     p.item:SetPoint("TOPLEFT", x0, -TOP - 30)
     p.item:SetSize(rightW, tableH)
     p.listings = newTable(p.item, rightW - 236, tableH, {
-        { key = "price", title = "Price each", w = 100, right = true, sort = true },
-        { key = "qty", title = "Qty", w = 60, right = true, sort = true },
-        { key = "total", title = "Total", w = 100, right = true },
-        { key = "left", title = "Time left", w = 76 },
+        { key = "price", title = "Buyout each", w = 96, right = true, sort = true },
+        { key = "qty", title = "Qty", w = 46, right = true, sort = true },
+        { key = "total", title = "Buyout total", w = 96, right = true },
+        { key = "bid", title = "Next bid", w = 88, right = true },
+        { key = "left", title = "Time left", w = 72 },
         { key = "note", title = "" },
     })
     p.listings:SetPoint("TOPLEFT", 0, 0)
@@ -1034,7 +1039,7 @@ local function buildSell(f)
     side.post = button(side, "Post", SIDE_W - 20 - 70, 30, function()
         if P.state == "ready" or P.state == "confirm" then
             P.PostNext(A.SellShown())
-        elseif P.state ~= "checking" and P.state ~= "posting" then
+        elseif P.state ~= "checking" and P.state ~= "posting" and P.state ~= "verify" then
             P.CheckAll(P.state == "done")
         end
     end)
@@ -1175,6 +1180,27 @@ end
 -- Filling it in
 ----------------------------------------------------------------------
 
+-- Is a search result's lowest price a real buyout? For gear it can be just a
+-- bid. Stackable goods have no bids; gear counts only if the last price scan
+-- found a buyout at this same price.
+local function verifiedBuyout(r, info)
+    if not r.price then
+        return false
+    end
+    if info and info.isCommodity then
+        return true
+    end
+    if not ns.IsBuyout(r.id) then
+        return false
+    end
+    if info and info.isCommodity == false then
+        local rec = ns.R().prices[r.id]
+        return (rec and rec.p and math.abs(rec.p - r.price) < 1) and true or false
+    end
+    return true
+end
+A.VerifiedBuyout = verifiedBuyout
+
 local function refreshBrowse()
     local p = win.browse
     local cats = {}
@@ -1218,10 +1244,16 @@ local function refreshBrowse()
             local vs, pct = versus(r.price, usual)
             local vendor = ns.VendorSell(r.id)
             local hint
-            if vendor and r.price and vendor > r.price then
+            if vendor and r.price and vendor > r.price and verifiedBuyout(r, info) then
                 vs = "|cff40e060Vendor pays " .. ns.StripCodes(ns.Money(vendor)) .. "|r"
                 hint = "A vendor pays " .. ns.StripCodes(ns.Money(vendor)) .. " each, more than the "
-                    .. ns.StripCodes(ns.Money(r.price)) .. " it's listed for. Buy it and sell it to any vendor."
+                    .. ns.StripCodes(ns.Money(r.price)) .. " buyout. Buy it and sell it to any vendor."
+            elseif vendor and r.price and vendor > r.price then
+                -- The lowest price in a search can be a bid, not a buyout.
+                vs = GREY .. "Maybe - check buyouts|r"
+                hint = "The " .. ns.StripCodes(ns.Money(r.price)) .. " here may only be a bid, which you get only if"
+                    .. " nobody outbids you. A vendor pays " .. ns.StripCodes(ns.Money(vendor))
+                    .. " each. Click to see the real buyout prices."
             elseif r.why then
                 vs = r.why
             elseif pct then
@@ -1253,24 +1285,63 @@ local function refreshBrowse()
     local rows = {}
     local vendor = ns.VendorSell(id)
     local usual = usualText(id)
+    local function money(c)
+        return ns.StripCodes(ns.Money(floor(c + 0.5)))
+    end
     for i, l in ipairs(BUY.listings or {}) do
         local note = ""
+        -- Gear is bought a whole auction at a time, so the deal is the whole
+        -- stack: what you pay against what a vendor pays for all of it.
+        local total = item.commodity and (l.p * l.q) or (l.buyout or l.p * l.q)
+        local hint
         if l.mine and (l.own or 0) >= l.q then
             note = GREY .. "Yours|r"
         elseif vendor and vendor > l.p then
-            note = "|cff40e060Vendor pays " .. ns.StripCodes(ns.Money(vendor)) .. "|r"
+            if item.commodity or l.q == 1 then
+                note = "|cff40e060Vendor pays " .. money(vendor) .. (l.q > 1 and " each" or "") .. "|r"
+            else
+                note = "|cff40e060Vendor " .. money(vendor * l.q) .. " (+" .. money(vendor * l.q - total) .. ")|r"
+            end
+            hint = "A vendor pays " .. money(vendor) .. " each" .. (l.q > 1 and (", " .. money(vendor * l.q) .. " for "
+                .. l.q) or "") .. ". " .. (item.commodity and "Buying these" or "This buyout") .. " costs "
+                .. money(total) .. (l.q > 1 and (" for " .. l.q) or "") .. "."
         elseif usual then
             note = (versus(l.p, usual))
         end
-        rows[i] = {
-            key = "l" .. i, l = l, link = l.link,
-            cells = { price = ns.Money(l.p), qty = ns.Commas(l.q), total = ns.Money(l.p * l.q),
+        if not item.commodity then
+            local whole = l.q > 1 and ("Buyout " .. money(total) .. " for all " .. l.q .. " (" .. money(l.p)
+                .. " each). The game sells it as one auction.") or ("Buyout " .. money(total) .. ".")
+            hint = (hint and (hint .. "\n") or "") .. whole
+            if l.bid then
+                hint = hint .. "\nOr bid " .. money(l.bid) .. ", but you only get it if nobody outbids you before it ends."
+            end
+        end
+        rows[#rows + 1] = {
+            key = "l" .. i, l = l, link = l.link, hint = hint,
+            cells = { price = ns.Money(l.p), qty = ns.Commas(l.q), total = ns.Money(total),
+                bid = l.bid and (GREY .. money(l.bid) .. "|r") or "",
                 left = item.commodity and "" or timeLeftText(l.left, l.band), note = note },
             sv = { price = l.p, qty = l.q },
             dim = l.mine and (l.own or 0) >= l.q,
         }
         if BUY.sel == l then
-            p.listings.selected = rows[i].key
+            p.listings.selected = rows[#rows].key
+        end
+    end
+    -- Bid-only auctions last, apart: no buyout, so never a deal.
+    for i, l in ipairs(BUY.listings and BUY.listings.bids or {}) do
+        rows[#rows + 1] = {
+            key = "b" .. i, l = l, link = l.link, dim = true,
+            hint = "No buyout: you can only bid" .. (l.bid and (" (next bid " .. money(l.bid) .. " for "
+                .. (l.q > 1 and ("all " .. l.q) or "it") .. ")") or "") .. ". You only get it if nobody outbids"
+                .. " you before it ends, so it's never counted as a deal.",
+            cells = { price = GREY .. "Bid only|r", qty = ns.Commas(l.q), total = GREY .. "-|r",
+                bid = l.bid and money(l.bid) or "-", left = timeLeftText(l.left, l.band),
+                note = GREY .. (l.mine and "Yours" or "Only if you win") .. "|r" },
+            sv = { price = 1e12, qty = l.q },
+        }
+        if BUY.sel == l then
+            p.listings.selected = rows[#rows].key
         end
     end
     if not BUY.sel then
@@ -1300,7 +1371,8 @@ local function refreshBrowse()
         facts[#facts + 1] = "Sells: " .. sale
     end
     if BUY.listings and BUY.listings.bidOnly and BUY.listings.bidOnly > 0 then
-        facts[#facts + 1] = GREY .. plural(BUY.listings.bidOnly, "bid-only auction") .. " not shown (they can't be bought outright).|r"
+        facts[#facts + 1] = GREY .. plural(BUY.listings.bidOnly, "bid-only auction") .. " at the bottom of the list."
+            .. " They have no buyout, so they only count if you win the bid.|r"
     end
     box.facts:SetText(table.concat(facts, "\n"))
 
@@ -1336,6 +1408,11 @@ local function refreshBrowse()
         if b then
             box.cost:SetText("Buying...")
             box.buy:SetLabel("Buying...")
+            box.buy:SetDisabled(true)
+        elseif l and l.bidOnly then
+            box.cost:SetText(GREY .. "Bid only" .. (l.bid and (": next bid " .. ns.StripCodes(ns.Money(l.bid))) or "")
+                .. ". This window only buys outright; bid from the game's own Buy tab.|r")
+            box.buy:SetLabel("Buy")
             box.buy:SetDisabled(true)
         elseif l and l.aid and not l.mine then
             box.cost:SetText(l.q .. " for " .. ns.Money(l.buyout or 0))
@@ -1461,6 +1538,13 @@ local function refreshSell()
     elseif P.state == "posting" then
         post:SetLabel("Posting...")
         post:SetDisabled(true)
+    elseif P.state == "verify" then
+        post:SetLabel("Checking it went up...")
+        post:SetDisabled(true)
+    elseif (P.state == "confirm" or (P.state == "ready" and P.NextEntry())) and ns.AHWaiting() then
+        -- The auction house said busy / too fast: wait it out, don't click into another refusal.
+        post:SetLabel("Busy - wait a moment...")
+        post:SetDisabled(true)
     elseif P.state == "confirm" then
         post:SetLabel("Confirm post")
         post:SetDisabled(false)
@@ -1477,7 +1561,8 @@ local function refreshSell()
         post:SetDisabled(picked == 0)
     end
     post:SetPrimary(true)
-    side.check:SetDisabled(P.state == "checking" or P.state == "posting" or picked == 0)
+    side.check:SetDisabled(P.state == "checking" or P.state == "posting" or P.state == "confirm"
+        or P.state == "verify" or picked == 0)
 
     local ready, listings, worth = P.Summary()
     if P.state == "checking" or P.state == "ready" or P.state == "done" then
@@ -1728,7 +1813,7 @@ end
 
 ns.Listen("BAGS_UPDATED", function()
     if A.IsShown() and A.tab == "sell" then
-        if P.state ~= "checking" and P.state ~= "posting" and P.state ~= "confirm" then
+        if P.state ~= "checking" and P.state ~= "posting" and P.state ~= "confirm" and P.state ~= "verify" then
             P.Rebuild()
         end
         ns.Later("auction-ui", 0.2, function() A.Refresh() end)

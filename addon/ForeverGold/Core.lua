@@ -18,7 +18,7 @@ local ADDON, ns = ...
 _G.ForeverGold = ns
 
 ns.TITLE = "Forever Gold"
-ns.VERSION = "1.7.0"
+ns.VERSION = "1.8.0"
 -- The auction house keeps 5% of every sale.
 ns.AH_CUT = 0.05
 
@@ -281,6 +281,13 @@ function ns.InitDB()
     if opts.worldMapSpots == nil then opts.worldMapSpots = true end
     if opts.minimapSpots == nil then opts.minimapSpots = true end
     if opts.revealMap == nil then opts.revealMap = true end
+    if opts.lootBeam == nil then opts.lootBeam = true end
+    if opts.nearestBeam == nil then opts.nearestBeam = true end
+    if opts.beamUnrecorded == nil then opts.beamUnrecorded = true end
+    -- The mailbox: auto-send and sending gold stay off until you switch them on.
+    if opts.mailAuto == nil then opts.mailAuto = false end
+    if opts.mailGold == nil then opts.mailGold = false end
+    if opts.mailReserve == nil then opts.mailReserve = 50000 end -- keep 5 gold
     ns.db = db
     return db
 end

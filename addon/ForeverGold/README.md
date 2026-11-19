@@ -128,6 +128,65 @@ the old strip above it; its "Forever Gold window" button switches back. The
 game's window is still open underneath ours, just shrunk out of sight, so
 Escape, walking away and the X all close the auction house as normal.
 
+## The mailbox
+
+Opening a mailbox opens Forever Gold's mailbox instead of the game's. The strip
+under the tabs is on every tab: your **banker**, **Change banker**, and
+**Quick-send to banker**.
+
+- **Banker** - one of your characters on this realm and faction (the only ones
+  you can mail). It's remembered per realm and faction, and starts as "Xeon
+  Banker" if that character exists. Change banker also picks which material
+  groups quick-send takes besides auction stock (none until you tick them).
+- **Inbox** - your mail on the left, the one you pick on the right: sender,
+  subject, expiry, letter, gold and attachments. Click an attachment to take it,
+  "Take gold" for the gold, or "Collect all" / "Collect gold" for everything
+  it's safe to take. Bulk collecting never pays C.O.D., never takes mail from a
+  Game Master or a sale still pending, and never returns or deletes mail. C.O.D.
+  mail can only be paid in the game's mailbox.
+- **Send mail** has three modes:
+  - **To banker** (what Quick-send opens): auction stock - what the Sell advice
+    says to auction or you ticked on the auction window's Sell tab, not what you
+    unticked - plus the groups you added. Materials a profitable recipe of yours
+    uses stay, unless you ticked them to sell, and so does anything a rule sends
+    to someone else.
+  - **Apply rules**: what your rules send, grouped by recipient.
+  - **Custom mail**: recipient, subject, letter, stacks, and gold or C.O.D.
+  Every mail, stack, quantity and copper of postage is listed before anything
+  goes. Click a row to leave it out of this send; right-click to always keep it.
+  Mail takes whole stacks, so if the keep amount falls inside a stack the row
+  says "whole stacks" and sends less. Gold is off until you tick "Include spare
+  gold": it then sends what's above "Keep at least" after every mail's postage.
+  Postage never takes you under "Keep at least" either.
+- **Auto-send rules** - each rule matches one item or a material group (cloth
+  and bolts, herbs, ore and bars, leather and hides, elemental, enchanting, meat
+  and fish, gems, or auction stock), sends it to a character or to "Banker"
+  (whoever your banker is), and keeps an amount in your bags (counted across
+  every stack). A rule can be account-wide or for one character. Rules run top
+  to bottom and the first enabled one that matches owns the item. Anything
+  addressed to the character you're on, soulbound, a quest item or locked
+  stays. "Add suggested rules" adds cloth to Xeon Hexspark (keep 20), herbs to
+  Xeon Raincaller (keep 5), ore and bars to Xeon Mana (keep 20), leather to Xeon
+  Ironfang (keep 10) and auction stock to your banker, all switched off for you
+  to check. "Preview matching mail" shows the result on Send mail. "Auto-send on
+  mailbox open" (off unless you tick it) gets the first mail ready as the
+  mailbox opens.
+
+The game only sends mail from a real button press, so each mail needs one
+click of Send - even with auto-send. Forever Gold attaches the stacks, checks
+them, and waits for your click; after the server confirms, the next mail gets
+ready. Before every mail it reads your bags again (an item may have been used or
+moved), re-checks the recipient, the keep amounts and your gold, and only ever
+sends less than the preview, never more. One mail action runs at a time:
+pressing twice, or collecting while sending, does nothing. If the server never
+answers, nothing is sent again: it checks your bags and gold, says what most
+likely happened and what to check, and stops. Closing the mailbox stops the
+queue after whatever the server is working on.
+
+"Game's mailbox" switches to the game's own mailbox (remembered; needed to pay
+C.O.D.), with a "Forever Gold mailbox" button above it to switch back. It waits
+if a mail is with the server.
+
 ## The Sell button
 
 At an auctioneer, press Sell on a Bags row. The addon checks that item's price
@@ -244,6 +303,8 @@ latest snapshot and tells you which have been undercut.
 - `UI.lua` - the window, the on-screen route guide, minimap button, tooltips
 - `TrackerUI.lua` - the Farming Session window
 - `AuctionUI.lua` - the auction window (Browse and buy, Sell, Auctions) that replaces the game's
+- `Mail.lua` - the mailbox's banker, rules, send plans, and the one-at-a-time collect and send queue
+- `MailUI.lua` - the mailbox window (Inbox, Send mail, Auto-send rules) that replaces the game's
 - `Icon.tga` - the addon's icon (minimap button, window title, addon list)
 
 ## Scanning

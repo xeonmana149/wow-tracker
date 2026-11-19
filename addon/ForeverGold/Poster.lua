@@ -170,7 +170,7 @@ end
 local lookups, current = {}, nil
 
 function ns.AHBusy()
-    return current ~= nil or #lookups > 0 or P.state == "posting" or P.state == "confirm"
+    return current ~= nil or #lookups > 0 or P.state == "posting" or P.state == "confirm" or P.state == "verify"
 end
 
 local function readListings(l)
@@ -189,19 +189,30 @@ local function readListings(l)
         end
     else
         local n = ns.try(AH.GetNumItemSearchResults, l.key) or 0
-        out.bidOnly = 0
+        -- Auctions with no buyout are kept apart in out.bids: you only get
+        -- them by winning the bid, so they're never a price to buy at or to
+        -- undercut. The list itself is buyouts only.
+        out.bidOnly, out.bids = 0, {}
         for i = 1, min(n, 80) do
             local r = ns.try(AH.GetItemSearchResultInfo, l.key, i)
-            if type(r) == "table" and r.buyoutAmount and r.buyoutAmount > 0 then
+            if type(r) == "table" then
                 local q = max(1, r.quantity or 1)
                 local mine = (r.containsOwnerItem or r.containsAccountItem) and true or nil
-                out[#out + 1] = { p = r.buyoutAmount / q, q = q, mine = mine, own = mine and q or 0,
-                    aid = r.auctionID, buyout = r.buyoutAmount, owner = r.owners and r.owners[1],
-                    left = r.timeLeftSeconds, band = r.timeLeft, link = r.itemLink }
-            elseif type(r) == "table" then
-                out.bidOnly = out.bidOnly + 1
+                -- The next bid that would be accepted, for the whole auction.
+                local bid = r.minBid or r.bidAmount
+                bid = (bid and bid > 0) and bid or nil
+                if r.buyoutAmount and r.buyoutAmount > 0 then
+                    out[#out + 1] = { p = r.buyoutAmount / q, q = q, mine = mine, own = mine and q or 0,
+                        aid = r.auctionID, buyout = r.buyoutAmount, bid = bid, owner = r.owners and r.owners[1],
+                        left = r.timeLeftSeconds, band = r.timeLeft, link = r.itemLink }
+                else
+                    out.bidOnly = out.bidOnly + 1
+                    out.bids[#out.bids + 1] = { bidOnly = true, q = q, bid = bid, mine = mine, aid = r.auctionID,
+                        left = r.timeLeftSeconds, band = r.timeLeft, link = r.itemLink }
+                end
             end
         end
+        table.sort(out.bids, function(a, b) return (a.bid or 0) < (b.bid or 0) end)
     end
     table.sort(out, function(a, b) return a.p < b.p end)
     return out
@@ -473,6 +484,9 @@ function P.CheckAll(again)
         ns.Print("open the auction window at an auctioneer first.")
         return
     end
+    if P.state == "posting" or P.state == "confirm" or P.state == "verify" then
+        return
+    end
     P.Rebuild()
     local todo = {}
     for _, e in ipairs(P.entries) do
@@ -517,7 +531,7 @@ function P.CheckOne(e)
     if not e or not ns.ahOpen then
         return
     end
-    if P.state == "checking" or P.state == "posting" or P.state == "confirm" then
+    if P.state == "checking" or P.state == "posting" or P.state == "confirm" or P.state == "verify" then
         return
     end
     e.posted, e.priceSet, e.perSet = 0, nil, nil
@@ -624,8 +638,15 @@ P.Postable = postable
 
 -- Posts one listing: `target` if it's ready (the row you picked), else the
 -- next one in the queue. Only ever called from a click.
+local watchPost
+
 function P.PostNext(target)
     if P.state == "confirm" and P.pending then
+        if not ns.AHReadyToPost() then
+            P.message = "The auction house is busy. Confirm comes back as soon as it's ready."
+            ns.Fire("POSTER")
+            return
+        end
         local a = P.pending
         local ok
         if a.commodity then
@@ -635,6 +656,11 @@ function P.PostNext(target)
         end
         P.state = ok and "posting" or "ready"
         P.message = (not ok) and "The auction house refused the confirmation." or nil
+        if ok then
+            watchPost(a)
+        else
+            P.pending = nil
+        end
         ns.Fire("POSTER")
         return
     end
@@ -656,8 +682,8 @@ function P.PostNext(target)
         end)
         return
     end
-    if not throttleReady() then
-        P.message = "The auction house is busy. Press Post again in a second."
+    if not ns.AHReadyToPost() then
+        P.message = "The auction house is busy. Post comes back as soon as it's ready."
         ns.Fire("POSTER")
         return
     end
@@ -675,7 +701,8 @@ function P.PostNext(target)
     local qty = max(1, min(e.per or 1, e.have))
     local duration = opts().sellDuration or 2
     local price = e.price
-    local args = { id = e.id, loc = loc, duration = duration, qty = qty, price = price, commodity = e.commodity, entry = e }
+    local args = { id = e.id, loc = loc, duration = duration, qty = qty, price = price, commodity = e.commodity, entry = e,
+        before = ns.BagTotal(e.id) }
     local ok, needsConfirm
     if e.commodity then
         ok, needsConfirm = pcall(AH.PostCommodity, loc, duration, qty, price)
@@ -697,27 +724,25 @@ function P.PostNext(target)
         P.message = "The auction house wants you to confirm this price. Press Post again to confirm."
     else
         P.state = "posting"
+        watchPost(args)
     end
-    args.at = GetTime()
-    local stamp = args.at
-    C_Timer.After(10, ns.Guard("poster-timeout", function()
-        if P.pending and P.pending.at == stamp and (P.state == "posting" or P.state == "confirm") then
-            P.pending = nil
-            P.state = P.NextEntry() and "ready" or "done"
-            P.message = "I didn't hear back from the auction house. Check the Auctions tab to see whether it went up."
-            ns.Fire("POSTER")
-        end
-    end))
     ns.Fire("POSTER")
 end
 
-ns.On("AUCTION_HOUSE_AUCTION_CREATED", function()
-    local a = P.pending
-    if not a or (P.state ~= "posting" and P.state ~= "confirm") then
+-- The post went up: count it once.
+local function posted(a, note)
+    if P.pending ~= a and P.unsure ~= a then
         return
     end
     P.pending = nil
     local e = a.entry
+    if P.unsure == a then
+        -- It turned out fine after all: undo the skip it was given.
+        P.unsure = nil
+        if e.status == "skipped" then
+            e.status, e.note = "ready", nil
+        end
+    end
     e.posted = (e.posted or 0) + 1
     e.have = max(0, (e.have or 0) - a.qty)
     recordPost(a.id, a.qty, a.price)
@@ -726,8 +751,84 @@ ns.On("AUCTION_HOUSE_AUCTION_CREATED", function()
     if e.posted >= (e.posts or 0) or e.have <= 0 then
         e.status = "done"
     end
-    P.state = P.NextEntry() and "ready" or "done"
+    if P.state == "posting" or P.state == "confirm" or P.state == "verify" or P.state == "ready" or P.state == "done" then
+        P.state = P.NextEntry() and "ready" or "done"
+    end
+    P.message = note
     ns.Fire("POSTER")
+end
+
+-- No answer in time, or the auction house may have dropped the post: the
+-- bags settle whether it went up before Post can be pressed again, so a slow
+-- answer never turns into a second listing.
+local function verify(a, why)
+    if P.pending ~= a or (P.state ~= "posting" and P.state ~= "verify") then
+        return
+    end
+    P.state = "verify"
+    P.message = why
+    ns.CheckPostInBags(a, function(went)
+        if P.pending ~= a or P.state ~= "verify" then
+            return
+        end
+        if went then
+            posted(a, "That one went up - the auction house was just slow to say so.")
+            return
+        end
+        P.pending = nil
+        if went == false then
+            P.message = "That post didn't go through - nothing left your bags. Press Post when it's ready."
+        else
+            -- Can't tell: don't risk listing it twice.
+            local e = a.entry
+            e.status = "skipped"
+            e.note = "I couldn't tell whether the last post of this went up. Check the Auctions tab, then Unskip it to post more."
+            P.unsure = a
+            P.message = "I couldn't tell whether " .. ns.ItemName(a.id) .. " went up, so it's skipped. Check the Auctions tab."
+        end
+        P.state = P.NextEntry() and "ready" or "done"
+        ns.Fire("POSTER")
+    end)
+    ns.Fire("POSTER")
+end
+
+watchPost = function(a)
+    a.at = GetTime()
+    local stamp = a.at
+    C_Timer.After(10, ns.Guard("poster-timeout", function()
+        if P.pending == a and a.at == stamp and P.state == "posting" then
+            verify(a, "No answer from the auction house yet - checking your bags to see whether it went up...")
+        end
+    end))
+end
+
+ns.On("AUCTION_HOUSE_AUCTION_CREATED", function()
+    local a = P.pending
+    if a and (P.state == "posting" or P.state == "confirm" or P.state == "verify") then
+        posted(a)
+    elseif P.unsure then
+        posted(P.unsure, "It did go up after all.")
+    end
+end)
+
+ns.On("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED", function()
+    if P.pending and P.state == "posting" then
+        verify(P.pending, "The auction house said that was too fast. Checking whether the post went through...")
+    end
+end)
+
+ns.On("AUCTION_HOUSE_SHOW_ERROR", function(err)
+    if not (P.pending and P.state == "posting") then
+        return
+    end
+    if ns.AHBusyError(err) then
+        verify(P.pending, "The auction house was busy. Checking whether the post went through...")
+    else
+        P.pending = nil
+        P.state = P.NextEntry() and "ready" or "done"
+        P.message = "The auction house refused that post - the red message on screen says why."
+        ns.Fire("POSTER")
+    end
 end)
 
 -- The auction house asking "are you sure?" about a price far from normal.
@@ -746,7 +847,7 @@ ns.On("AUCTION_HOUSE_POST_WARNING", function()
 end)
 
 local function postFailed()
-    if P.pending and (P.state == "posting" or P.state == "confirm") then
+    if P.pending and (P.state == "posting" or P.state == "confirm" or P.state == "verify") then
         P.pending = nil
         P.state = P.NextEntry() and "ready" or "done"
         P.message = "The auction house refused that post - the red message on screen says why."
@@ -1052,8 +1153,9 @@ ns.Listen("AH_CLOSED", function()
             e.status, e.checkedAt = "new", nil
         end
     end
-    P.state = (P.state == "checking" or P.state == "posting" or P.state == "confirm") and "idle" or P.state
-    P.pending, P.cancelling, P.checking = nil, nil, nil
+    P.state = (P.state == "checking" or P.state == "posting" or P.state == "confirm" or P.state == "verify")
+        and "idle" or P.state
+    P.pending, P.cancelling, P.checking, P.unsure = nil, nil, nil, nil
     P.ownedState = "idle"
     P.lowestOther = {}
     P.message = nil

@@ -472,6 +472,76 @@ M.fire("AUCTION_HOUSE_SHOW"); M.advance(5)
 table.remove(M.bags) -- put the bags back how the later tests expect them
 M.fire("BAG_UPDATE_DELAYED"); M.advance(1)
 
+-- Busy, "too fast", and answers that never come: wait it out, and never
+-- post the same thing twice.
+do
+    local SF = ForeverGoldSellFrame
+    local function btn() return strip(SF.post.text:GetText()) end
+    M.market[2835] = { { 12, 500 } }
+    ns.OpenSell(2835); M.advance(1)
+    local n0 = #M.posted
+    M.throttle = false
+    ns.SellPost()
+    check(#M.posted == n0 and ns.AHWaiting() and btn() == "Wait...", "busy: nothing is sent and Post says Wait")
+    ns.SellPost()
+    check(#M.posted == n0, "pressing again while it waits sends nothing")
+    M.throttle = nil
+    M.fire("AUCTION_HOUSE_THROTTLED_SYSTEM_READY"); M.advance(1.1)
+    check(not ns.AHWaiting() and btn() == "Post", "once the game says it's ready, Post comes back")
+
+    -- No answer, and nothing left the bags: it didn't go, so it can be tried again.
+    M.postSilent = true
+    ns.SellPost()
+    check(#M.posted == n0 + 1 and ns.SellJob().state == "posting" and btn() == "Posting...", "posting...")
+    ns.SellPost()
+    check(#M.posted == n0 + 1, "a second click while posting sends nothing")
+    M.advance(13)
+    local job = ns.SellJob()
+    check(job.state == "ready" and (job.message or ""):find("didn't go through"), "no answer, bags unchanged: it says it didn't go")
+
+    -- No answer, but the stack left the bags: it went up, recorded once.
+    local posts0 = #ns.db.posts
+    ns.SellPost()
+    M.bags[3][2] = 3 -- 20 of the 23 Rough Stone have gone
+    M.advance(13)
+    job = ns.SellJob()
+    check(job.state == "done" and (job.message or ""):find("went up") and #ns.db.posts == posts0 + 1,
+        "no answer, but the bags show it went: counted as posted")
+    M.fire("AUCTION_HOUSE_AUCTION_CREATED"); M.advance(0.1)
+    check(#ns.db.posts == posts0 + 1, "a late answer after that isn't counted twice")
+    M.bags[3][2] = 23
+    ns.CloseSell()
+
+    -- Can't tell (the stack stays locked): stop and say so, then accept a late answer.
+    ns.OpenSell(2835); M.advance(1)
+    ns.SellPost()
+    M.bags[3][4] = true
+    M.advance(13 + 8)
+    job = ns.SellJob()
+    check(job.state == "error" and job.unsure and (job.message or ""):find("Check the Auctions tab"),
+        "can't tell whether it went: stops and asks you to check")
+    M.bags[3][4] = nil
+    M.fire("AUCTION_HOUSE_AUCTION_CREATED"); M.advance(0.1)
+    check(ns.SellJob().state == "done" and #ns.db.posts == posts0 + 2, "the late answer still counts it, once")
+    ns.CloseSell()
+
+    -- "You are doing that too fast": the post was dropped, so wait, then allow it again.
+    ns.OpenSell(2835); M.advance(1)
+    ns.SellPost()
+    M.fire("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED"); M.advance(0.1)
+    check(ns.SellJob().state == "ready" and ns.AHWaiting() and btn() == "Wait...", "too fast: back to ready, but Post waits")
+    M.advance(4.2)
+    check(not ns.AHWaiting() and btn() == "Post", "the wait runs out by itself")
+
+    -- "The auction house is busy" while posting: the same.
+    ns.SellPost()
+    M.fire("AUCTION_HOUSE_SHOW_ERROR", Enum.AuctionHouseError.IsBusy); M.advance(0.1)
+    check(ns.SellJob().state == "ready" and ns.AHWaiting(), "busy error while posting: checked, back to ready, waiting")
+    M.advance(5)
+    M.postSilent = nil
+    ns.CloseSell()
+end
+
 out("== post all")
 do
     local d = ns.DecidePrice({ { p = 1000, q = 5 } }, { commodity = true, step = 1, floor = 0, undercutPct = 0.05 })
@@ -668,6 +738,33 @@ local before = route.i
 M.player.x, M.player.y = pt.x, pt.y + 0.001
 M.update(1.1)
 check(ns.route.i ~= before, "arriving advances to the next stop")
+-- loot beam: a gold column on the game's waypoint marker while on a route
+do
+    local B = ns.Beam
+    M.navDistance = 60
+    M.update(0.05)
+    local f = B.frame
+    check(f and f:IsShown() and f.color[1] == 1 and f.color[3] < 0.2, "on a route: a bright gold beam on the next stop")
+    check(f.core._gradient and f.core._gradient.lo.a > f.core._gradient.hi.a, "the beam fades out towards the top")
+    local near = f:GetHeight()
+    M.navDistance = 300
+    M.update(0.05)
+    check(f:IsShown() and f:GetHeight() < near, "further away, a shorter beam")
+    M.navOffscreen = true
+    M.update(0.05)
+    check(not f:IsShown(), "spot off screen: no beam")
+    M.navOffscreen = nil
+    M.navDistance = 2
+    M.update(0.05)
+    check(not f:IsShown(), "standing on the spot: the beam fades away")
+    M.navDistance = 60
+    ns.db.opts.lootBeam = false
+    M.update(0.05)
+    check(not f:IsShown(), "loot beams can be switched off")
+    ns.db.opts.lootBeam = true
+    M.update(0.05)
+    check(f:IsShown(), "and back on")
+end
 ForeverGoldGuide.skip._scripts.OnClick(ForeverGoldGuide.skip)
 WorldMapFrame.OnMapChanged(WorldMapFrame)
 WorldMapFrame._scripts.OnShow(WorldMapFrame)
@@ -709,6 +806,120 @@ out("  guide (other zone): " .. strip(ForeverGoldGuide.line1:GetText()) .. " | "
 M.player.map = 1413
 ns.StopRoute()
 check(M.waypoint == nil and ns.route == nil, "stopping clears the waypoint")
+
+-- No route: a white beam on the nearest recorded spot, but never at the
+-- cost of something you're tracking yourself.
+do
+    local B = ns.Beam
+    M.player.x, M.player.y = 0.50, 0.505
+    M.update(1.1)
+    check(B.own and M.waypoint and M.waypoint.uiMapID == 1413 and M.tracking == "waypoint",
+        "no route: the nearest spot gets the map pin")
+    check(B.frame:IsShown() and B.frame.color[1] == 1 and B.frame.color[3] == 1, "and a white beam")
+    local first = B.own.node
+    M.player.x, M.player.y = first.x, first.y
+    M.update(1.1)
+    check(B.own and B.own.node ~= first, "after visiting a spot, the beam moves on to the next nearest")
+    M.tracking = "quest"
+    M.update(1.1)
+    check(B.own == nil and M.waypoint == nil and M.tracking == "quest", "tracking a quest: the beam lets go and tidies its pin away")
+    local sets = M.waypointSets
+    M.update(1.1)
+    check(M.waypointSets == sets and not B.frame:IsShown(), "and leaves the quest alone")
+    M.tracking = nil
+    M.update(1.1)
+    check(B.own ~= nil, "untrack the quest: the beam comes back")
+    local mine = UiMapPoint.CreateFromCoordinates(1413, 0.9, 0.1)
+    C_Map.SetUserWaypoint(mine)
+    C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+    M.update(1.1)
+    check(B.own == nil and M.waypoint == mine, "a pin you placed yourself is never moved")
+    C_Map.ClearUserWaypoint()
+    ns.db.opts.nearestBeam = false
+    M.update(1.1)
+    check(B.own == nil and M.waypoint == nil, "the white beam can be switched off on its own")
+    ns.db.opts.nearestBeam = true
+    M.update(1.1)
+    -- a route takes over the pin from the white beam
+    local r2 = ns.BuildRoute(1413, { ore = true, herb = true })
+    local p2 = r2 and r2.pts[r2.i]
+    check(p2 and B.own == nil and ns.Beam.TrackingPin(1413, p2.x, p2.y), "starting a route moves the pin to its first stop")
+    M.update(1.1)
+    check(B.frame:IsShown() and B.frame.color[3] < 0.2, "and the beam turns gold")
+    ns.StopRoute()
+    C_Map.ClearUserWaypoint()
+end
+
+-- Things not recorded yet: the beam hangs off what the game's Interact Key
+-- has picked out in front of you, coloured by what it is to you.
+do
+    local B = ns.Beam
+    check(M.cvars.softTargetInteract == "3" and M.cvars.SoftTargetIconGameObject == "1"
+        and M.cvars.SoftTargetNameplateInteract == "1" and ns.db.beamCVars and ns.db.beamCVars.softTargetInteract == "1",
+        "the game's Interact Key and object icons are switched on, the old settings kept")
+    M.player.x, M.player.y = 0.12, 0.88 -- nowhere near a recorded spot
+    M.units.softinteract = { guid = "GameObject-0-1-2-3-1731-0001", name = "Copper Vein" }
+    M.update(0.05)
+    local f = B.softFrame
+    check(f and f:IsShown() and f.color == B.COLORS.new and B.softKind == "new", "an unrecorded vein in front of you: a light blue beam")
+    M.units.softinteract = { guid = "GameObject-0-1-2-3-2041-0005", name = "Kingsblood" }
+    M.update(0.3)
+    check(f:IsShown() and B.softKind == "new", "a herb you've never picked is recognised too")
+    local ore
+    for _, n in ipairs(ns.db.nodes[1413]) do if n.k == "ore" and not ore then ore = n end end
+    M.player.x, M.player.y = ore.x, ore.y + 0.0005
+    M.units.softinteract = { guid = "GameObject-0-1-2-3-1731-0002", name = ore.n or "Copper Vein" }
+    M.update(0.3)
+    check(f:IsShown() and f.color == B.COLORS.recorded and B.softNode == ore, "a recorded spot: white")
+    local r = ns.BuildRoute(1413, { ore = true, herb = true })
+    M.update(0.3)
+    check(r and f:IsShown() and f.color == B.COLORS.route and B.softKind == "route", "a stop on the route you're running: gold")
+    if B.softNode == ns.route.pts[ns.route.i] then
+        check(not (B.frame and B.frame:IsShown()), "the waypoint beam steps aside for the one on the object itself")
+    end
+    ns.StopRoute()
+    C_Map.ClearUserWaypoint()
+    M.units.softinteract = { guid = "GameObject-0-1-2-3-99-0003", name = "Mailbox" }
+    M.update(0.3)
+    check(not f:IsShown(), "a mailbox isn't gatherable: no beam")
+    M.units.softinteract = { guid = "Creature-0-1-2-3-4-0004", name = "Copper Vein" }
+    M.update(0.3)
+    check(not f:IsShown(), "only objects, never a creature that happens to share the name")
+    M.units.softinteract = { guid = "GameObject-0-1-2-3-1731-0001", name = "Copper Vein" }
+    ns.db.opts.beamUnrecorded = false
+    M.update(1.1)
+    check(not f:IsShown() and M.cvars.softTargetInteract == "1" and M.cvars.SoftTargetIconGameObject == "0"
+        and ns.db.beamCVars == nil, "switching it off hides it and puts the game's settings back")
+    ns.db.opts.beamUnrecorded = true
+    M.update(1.1)
+    check(M.cvars.softTargetInteract == "3" and f:IsShown(), "and on again")
+    M.units.softinteract = nil
+    M.update(1.1)
+    check(not f:IsShown(), "nothing picked out: no beam")
+    C_Map.ClearUserWaypoint()
+end
+
+-- Chests: opening one records where it stood; opening anything else doesn't.
+do
+    local list = ns.db.nodes[1413]
+    local n0 = #list
+    M.player.x, M.player.y = 0.31, 0.77
+    M.fire("UNIT_SPELLCAST_SENT", "player", "Battered Chest", "Cast-1", 3365)
+    M.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-1", 3365)
+    local last = list[#list]
+    check(#list == n0 + 1 and last.k == "chest" and last.n == "Battered Chest", "opening a chest records a chest spot")
+    M.player.x, M.player.y = 0.61, 0.27
+    M.fire("UNIT_SPELLCAST_SENT", "player", "Supply Crate", "Cast-2", 3365)
+    M.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-2", 3365)
+    check(#list == n0 + 1, "opening a quest crate isn't a chest")
+    local z
+    for _, zz in ipairs(ns.NodeZones()) do if zz.map == 1413 then z = zz end end
+    check(z and z.chest == 1 and ns.ZoneSummary(z):find("1 chest spot"), "zones count their chest spots: " .. (z and ns.ZoneSummary(z) or "?"))
+    local m = ns.MatchingNodes(1413, { chest = true })
+    check(#m == 1, "a route can be just the chest spots")
+    table.remove(list) -- leave the zone as the rest of the run expects it
+    ns.Fire("NODES_UPDATED")
+end
 
 out("== kill and loot tracker")
 check(not ns.TrackerWindowShown(), "Kills & Loot window starts closed")
@@ -1217,6 +1428,22 @@ do
     A.Refresh()
     check(F.browse.results.view[1] ~= nil and F.browse.results.rows[1]:IsShown(), "results are listed")
 
+    -- "Vendor pays" only for a proven buyout: a browse's lowest price can be a bid.
+    local function dealText(name)
+        A.Search(name); M.advance(5)
+        A.Refresh()
+        for _, row in ipairs(F.browse.results.data) do
+            if row.r and ns.ItemName(row.r.id) == name then
+                return strip(row.cells.vs or ""), row.hint or ""
+            end
+        end
+    end
+    local boots = dealText("Cheap Mail Boots")
+    check(boots and boots:find("^Vendor pays"), "a real buyout under vendor price is called a deal: " .. tostring(boots))
+    local sword, swordHint = dealText("Worn Junk Sword")
+    check(sword == "Maybe - check buyouts" and swordHint:find("bid"),
+        "a lowest price that's only a bid isn't called a deal: " .. tostring(sword))
+
     -- A category
     A.openCategory = nil
     F.browse.cats.onClick({ name = "Trade Goods", top = 2, filters = { { classID = 7 } } }); M.advance(5)
@@ -1272,6 +1499,33 @@ do
     A.Buy()
     check(#M.bids == 1, "never buys your own listing")
 
+    -- Buyouts and bids side by side, never mixed up: price each vs the whole
+    -- auction, the next bid in its own column, bid-only auctions apart.
+    M.market[12346] = { { 300, 1, false, 250 }, { 300, 6 }, { 0, 1, false, 90 } }
+    A.OpenItem({ id = 12346 }); M.advance(2)
+    local L = A.BUY.listings
+    check(#L == 2 and L.bids and #L.bids == 1 and L[1].bid == 250 and L.bids[1].bid == 90,
+        "buyouts listed, the bid-only auction kept apart, next bids read")
+    A.Refresh()
+    local rows = F.browse.listings.data
+    check(#rows == 3 and strip(rows[3].cells.price) == "Bid only" and strip(rows[3].cells.note) == "Only if you win" and rows[3].dim,
+        "the bid-only auction sits at the bottom, dimmed, never a deal")
+    local six
+    for _, row in ipairs(rows) do if row.l and row.l.q == 6 then six = row end end
+    check(six and strip(six.cells.total) == strip(ns.Money(1800)) and strip(six.cells.note):find("^Vendor ")
+        and strip(six.cells.note):find("%(%+"), "a stack of 6: the buyout total, and what a vendor pays for all 6: "
+        .. (six and strip(six.cells.note) or "?"))
+    check(six and six.hint:find("for all 6") and six.hint:find("one auction"), "its tooltip says you buy the whole auction")
+    local one = rows[1].l.q == 1 and rows[1] or rows[2]
+    check(strip(one.cells.bid) == strip(ns.Money(250)) and one.hint:find("outbids"), "the next bid has its own column, with what it means")
+    F.browse.listings.onClick({ l = L.bids[1] })
+    A.Refresh()
+    check(F.browse.box.buy.disabled and strip(F.browse.box.cost:GetText()):find("^Bid only"), "picking a bid-only auction: no Buy")
+    local bidsBefore = #M.bids
+    A.Buy()
+    check(#M.bids == bidsBefore and strip(A.BUY.message or ""):find("no buyout"), "and Buy refuses it")
+    M.market[12346] = { { 300, 1, true } }
+
     -- Elsewhere in the addon, "search the auction house" lands here
     ns.SearchAH("Tin Bar"); M.advance(3)
     check(A.tab == "browse" and A.BUY.query == "Tin Bar" and F.browse.search:GetText() == "Tin Bar", "other search buttons use our Browse tab")
@@ -1315,8 +1569,80 @@ do
     A.Refresh()
     check(strip(F.sell.side.post.text:GetText()):find("All posted"), "then it says all posted")
     M.advance(5)
+
     check((M.ownedQueries or 0) - queriesBefore == 1,
         "your auctions are read once after the posting, not after every post: " .. ((M.ownedQueries or 0) - queriesBefore))
+
+    -- The post queue when the auction house is busy or slow
+    do
+        local post = F.sell.side.post
+        local function label() A.Refresh(); return strip(post.text:GetText()) end
+        P.CheckAll(true); M.advance(30)
+        check(P.state == "ready", "checked again for the busy tests")
+        local n0 = #M.posted
+        M.throttle = false
+        A.Refresh(); post:Click()
+        check(#M.posted == n0 and ns.AHWaiting() and (A.Refresh() or true) and post.disabled and label():find("wait"),
+            "busy: nothing sent, the button waits: " .. label())
+        A.Refresh(); post:Click()
+        check(#M.posted == n0, "clicking the waiting button sends nothing")
+        M.throttle = nil
+        M.fire("AUCTION_HOUSE_THROTTLED_SYSTEM_READY"); M.advance(1.1)
+        check(not ns.AHWaiting() and (A.Refresh() or true) and not post.disabled, "ready again")
+
+        -- No answer, bags unchanged: not posted, nothing counted, can go again.
+        M.postSilent = true
+        A.Refresh(); post:Click()
+        local a = P.pending
+        local done0 = a and (a.entry.posted or 0)
+        A.Refresh(); post:Click()
+        check(a and #M.posted == n0 + 1 and P.state == "posting" and (A.Refresh() or true) and post.disabled, "a double click while posting sends one post")
+        M.advance(11)
+        check(P.state == "ready" and P.pending == nil and (a.entry.posted or 0) == done0
+            and (P.message or ""):find("didn't go through"), "no answer, bags unchanged: not counted, can be posted again")
+        local recorded = #ns.db.posts
+        M.fire("AUCTION_HOUSE_AUCTION_CREATED"); M.advance(0.1)
+        check(#ns.db.posts == recorded, "a stray answer with nothing waiting changes nothing")
+
+        -- No answer, but the items left the bags: it went up.
+        local slot
+        A.Refresh(); post:Click()
+        a = P.pending
+        for i, b in ipairs(M.bags) do if a and b[1] == a.id then slot = i end end
+        local had = slot and M.bags[slot][2]
+        if slot then M.bags[slot][2] = had - a.qty end
+        M.advance(11)
+        check(slot and P.pending == nil and (a.entry.posted or 0) == done0 + 1 and #ns.db.posts == recorded + 1
+            and (P.message or ""):find("went up"), "no answer, but the bags show it went: counted once")
+        if slot then M.bags[slot][2] = had end
+
+        -- Can't tell: that item is skipped (no second listing), and a late answer still counts it.
+        if P.state == "ready" then
+            A.Refresh(); post:Click()
+            a = P.pending
+            for i, b in ipairs(M.bags) do if a and b[1] == a.id then slot = i end end
+            local was = a and (a.entry.posted or 0)
+            M.bags[slot][4] = true
+            M.advance(11 + 8)
+            check(a and a.entry.status == "skipped" and P.unsure == a and (a.entry.note or ""):find("Auctions tab"),
+                "can't tell whether it went: that item is skipped until you check")
+            M.bags[slot][4] = nil
+            M.fire("AUCTION_HOUSE_AUCTION_CREATED"); M.advance(0.1)
+            check(P.unsure == nil and a.entry.posted == was + 1 and a.entry.status ~= "skipped",
+                "a late answer counts it after all")
+        end
+
+        -- "Too fast": dropped, checked, back to ready, and the button waits.
+        P.CheckAll(true); M.advance(30)
+        A.Refresh(); post:Click()
+        M.fire("AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED"); M.advance(0.1)
+        check(P.state == "ready" and P.pending == nil and ns.AHWaiting() and (A.Refresh() or true) and post.disabled and label():find("wait"),
+            "too fast: not counted, and Post waits")
+        M.advance(4.2)
+        check(not ns.AHWaiting() and (A.Refresh() or true) and not post.disabled, "then comes back by itself")
+        M.postSilent = nil
+        M.advance(5)
+    end
 
     -- The main window's Sell button picks the item in our Sell tab
     local target
@@ -1390,6 +1716,477 @@ do
 end
 ForeverGoldMarket = nil
 ns.Fire("PRICES_UPDATED")
+
+----------------------------------------------------------------------
+-- The mailbox
+----------------------------------------------------------------------
+out("")
+out("== mailbox")
+do
+    local MB, U = ns.Mail, ns.MailUI
+    local me = ns.charKey
+    local BANK, HEX, RAIN, FANG, ALLY = "Player-6801-BANK", "Player-6801-HEX", "Player-6801-RAIN", "Player-6801-FANG", "Player-6801-ALLY"
+    local LINEN, BOLT, ORE, BAR, LEATHER, PEACE, SILVERLEAF, HEARTH, QUEST, PELT = 2589, 2996, 2770, 2840, 2318, 2447, 765, 6948, 5056, 4865
+    local savedBags, savedMoney, savedPick = M.bags, M.player.money, ns.db.opts.postPick
+    local function addChar(key, name, class, faction, realm)
+        ns.db.chars[key] = { name = name, class = class, level = 20, faction = faction or "Horde",
+            realmKey = (realm or "6801") .. "-" .. (faction or "Horde") }
+    end
+    addChar(BANK, "Xeon Banker", "WARRIOR")
+    addChar(HEX, "Xeon Hexspark", "MAGE")
+    addChar(RAIN, "Xeon Raincaller", "SHAMAN")
+    addChar(FANG, "Xeon Ironfang", "HUNTER")
+    addChar(ALLY, "Xeon Lightbringer", "PALADIN", "Alliance")
+    addChar("Player-9999-FAR", "Xeon Faraway", "MAGE", "Horde", "9999")
+    local function bags(list)
+        M.bags = {}
+        for i, b in pairs(list) do M.bags[i] = b end
+        M.fire("BAG_UPDATE_DELAYED")
+    end
+    local function line(plan, id) for _, l in ipairs(plan.lines) do if l.id == id then return l end end end
+    local function skip(plan, id) for _, s in ipairs(plan.skipped) do if s.id == id then return s.why end end end
+    local function sends() return M.MailCount("SendMail") end
+    local function shipTo(plan, key) for _, s in ipairs(plan.ships) do if s.to == key then return s end end end
+    local function stacksOn() local n = 0; for j = 1, 16 do if M.send.atts[j] then n = n + 1 end end; return n end
+    local function anyLocked() for _, b in pairs(M.bags) do if b[4] then return true end end return false end
+
+    -- Characters and the banker
+    local names = {}
+    for _, c in ipairs(MB.Characters(false)) do names[#names + 1] = c.name end
+    check(table.concat(names, ",") == "Xeon Banker,Xeon Hexspark,Xeon Ironfang,Xeon Raincaller",
+        "mailable characters: same realm and faction, never you: " .. table.concat(names, ","))
+    check(MB.BankerKey() == BANK, "the banker defaults to Xeon Banker")
+    check(not MB.SetBanker(ALLY) and not MB.SetBanker("Player-9999-FAR") and MB.BankerKey() == BANK,
+        "a character on the other faction or realm can't be the banker")
+    check(MB.SetBanker(HEX) and MB.BankerKey() == HEX and ns.db.opts.mailBanker[ns.realmKey] == HEX, "changing the banker is saved")
+    MB.SetBanker(BANK)
+
+    -- Presets: offered switched off
+    bags({ { HEARTH, 1, true }, { LINEN, 20 }, { LINEN, 15 }, { LINEN, 5 }, { ORE, 40 }, { PEACE, 3 }, { LEATHER, 12 },
+        { LEATHER, 4 }, { QUEST, 1, quest = true }, { SILVERLEAF, 9 }, { BOLT, 6 }, { BAR, 8 }, { PELT, 2 } })
+    check(MB.AddPresets() == 5, "five suggested rules added")
+    check(MB.AddPresets() == 0, "adding them again adds nothing")
+    local byCat, allOff = {}, true
+    for _, r in ipairs(MB.Rules()) do byCat[r.cat] = r; if r.on then allOff = false end end
+    check(allOff, "suggested rules are never switched on by themselves")
+    check(byCat.cloth.to == HEX and byCat.cloth.keep == 20 and byCat.herbs.to == RAIN and byCat.herbs.keep == 5
+        and byCat.metal.to == me and byCat.metal.keep == 20 and byCat.leather.to == FANG and byCat.leather.keep == 10
+        and byCat.stock.to == "banker", "suggested recipients and keep amounts")
+    check(#MB.PlanRules().ships == 0, "with every rule off, nothing is planned")
+    for _, k in ipairs({ "cloth", "herbs", "metal", "leather" }) do MB.SetRuleOn(byCat[k].id, true) end
+
+    -- Categories, keep amounts across stacks, self-delivery, unmailable items
+    local plan = MB.PlanRules()
+    check(line(plan, LINEN) and line(plan, LINEN).qty == 20 and line(plan, LINEN).to == HEX,
+        "linen: 40 in three stacks, keep 20, so 20 go to Xeon Hexspark")
+    check(line(plan, LEATHER) and line(plan, LEATHER).qty == 4, "leather: 16, keep 10, 6 allowed, whole stacks make it 4")
+    check(skip(plan, BOLT) == "keep" and skip(plan, PEACE) == "keep", "under the keep amount: stays")
+    check(skip(plan, SILVERLEAF) == "stacks", "4 allowed but the only stack is 9: stays (mail never splits a stack)")
+    check(skip(plan, ORE) == "self" and skip(plan, BAR) == "self", "ore and bars go to Xeon Mana: that's you, so they stay")
+    check(not line(plan, HEARTH) and not line(plan, QUEST) and not line(plan, PELT), "bound, quest and unmatched items aren't planned")
+    check(#plan.ships == 2 and shipTo(plan, HEX) and shipTo(plan, FANG) and not shipTo(plan, me), "one mail per recipient, none to you")
+    check(plan.postage == 60, "postage shown: 30c a stack: " .. plan.postage)
+    local hearthRule = MB.AddRule({ item = HEARTH, to = BANK, on = true }, true)
+    check(skip(MB.PlanRules(), HEARTH) == "bound", "an exact-item rule on a soulbound item: can't be mailed")
+    MB.DeleteRule(hearthRule.id)
+
+    -- Priority: the first enabled match owns the item
+    local linenRule = MB.AddRule({ item = LINEN, to = FANG, keep = 0, on = true }, true)
+    plan = MB.PlanRules()
+    check(line(plan, LINEN).to == FANG and line(plan, LINEN).qty == 40 and not shipTo(plan, HEX),
+        "an exact-item rule above the cloth rule takes all the linen")
+    check(#shipTo(plan, FANG).atts == 4, "linen and leather share one mail to the same character")
+    MB.MoveRule(linenRule.id, 1)
+    check(line(MB.PlanRules(), LINEN).to == HEX, "moved below the cloth rule, it loses the linen")
+    MB.MoveRule(linenRule.id, -1)
+    MB.SetRuleOn(linenRule.id, false)
+    check(line(MB.PlanRules(), LINEN).to == HEX, "a switched-off rule does nothing")
+    MB.SetRuleOn(linenRule.id, true)
+    MB.SaveRule(linenRule.id, { scope = HEX })
+    check(line(MB.PlanRules(), LINEN).to == HEX, "a rule for another character only doesn't run here")
+    MB.DeleteRule(linenRule.id)
+    check(not MB.FindRule(linenRule.id), "rule deleted")
+    local ok, why = MB.SaveRule(byCat.cloth.id, { keep = -3 })
+    check(not ok and why, "a negative keep is refused")
+
+    -- Exclusions
+    MB.exclude[LINEN] = true
+    plan = MB.PlanRules()
+    check(line(plan, LINEN).excluded and not shipTo(plan, HEX), "leaving linen out of this send")
+    MB.exclude = {}
+    MB.SetKept(LEATHER, true)
+    plan = MB.PlanRules()
+    check(not line(plan, LEATHER) and not shipTo(plan, FANG), "the always-keep list beats every rule")
+    MB.SetKept(LEATHER, false)
+
+    -- Designated stock to the banker, and changing the banker
+    ns.db.opts.postPick = { [BAR] = true }
+    MB.SetRuleOn(byCat.stock.id, true)
+    check(skip(MB.PlanRules(), BAR) == "self", "stock that a higher rule keeps here stays here")
+    MB.SetRuleOn(byCat.metal.id, false)
+    plan = MB.PlanRules()
+    check(line(plan, BAR) and line(plan, BAR).to == BANK and line(plan, BAR).qty == 8, "ticked-to-sell stock goes to the banker")
+    MB.SetBanker(HEX)
+    plan = MB.PlanRules()
+    check(line(plan, BAR).to == HEX and #plan.ships == 2, "rules sent to \"Banker\" follow a new banker")
+    MB.SetBanker(BANK)
+    MB.SetRuleOn(byCat.stock.id, false)
+
+    -- Quick-send to the banker
+    local realAdvice, realCraft = ns.BagAdvice, ns.CraftList
+    ns.BagAdvice = function() return { ah = { { id = ORE }, { id = LEATHER }, { id = PEACE }, { id = HEARTH }, { id = BOLT } } } end
+    ns.CraftList = function() return { good = { { rec = { mine = true, name = "Smelt Copper", reagents = { { ORE, 1 } } } } } } end
+    ns.db.opts.postPick = { [BAR] = true, [BOLT] = false }
+    ns.db.opts.mailGold = false
+    plan = MB.PlanBanker()
+    check(not plan.problem and #plan.ships == 1 and plan.ships[1].to == BANK, "quick-send: one mail to Xeon Banker")
+    check(line(plan, BAR) and line(plan, BAR).qty == 8, "the stock you ticked to sell goes")
+    check(skip(plan, ORE) == "craft", "a material your profitable recipe uses stays")
+    check(skip(plan, LEATHER) == "rule" and skip(plan, LINEN) == "rule", "materials a rule sends elsewhere stay out")
+    check(skip(plan, HEARTH) == "bound" and not line(plan, BOLT), "soulbound stays; unticked-to-sell stays")
+    check(not line(plan, PELT) and not line(plan, SILVERLEAF), "not every unmatched item counts as stock")
+    check(plan.gold == 0 and plan.ships[1].money == 0, "gold is off by default")
+    ns.db.opts.postPick[ORE] = true
+    check(line(MB.PlanBanker(), ORE), "ticking a reserved material to sell sends it anyway")
+    ns.db.opts.postPick[ORE] = nil
+    ns.db.opts.mailQuickCats = { gems = true }
+    bags({ { BAR, 8 }, { 818, 2 } })
+    check(line(MB.PlanBanker(), 818), "a category you added to quick-send goes too")
+    ns.db.opts.mailQuickCats = nil
+    -- Gold, the reserve and postage
+    M.player.money = 100000
+    ns.db.opts.mailGold, ns.db.opts.mailReserve = true, 50000
+    plan = MB.PlanBanker()
+    check(plan.gold == 100000 - 50000 - 30 and plan.ships[1].money == plan.gold and plan.after == 50000,
+        "spare gold = gold - reserve - postage: " .. tostring(plan.gold))
+    ns.db.opts.mailReserve = 99990
+    plan = MB.PlanBanker()
+    check(plan.gold == 0 and plan.goldNote and plan.warn, "reserve above what postage leaves: no gold, and a warning")
+    ns.db.opts.mailReserve = 50000
+    MB.SetBanker(me)
+    check(MB.PlanBanker().problem, "you can't quick-send to yourself")
+    MB.SetBanker(BANK)
+    check(MB.PlanCustom({ to = "xeon mana", subject = "hi" }).problem, "custom mail to yourself is refused")
+
+    -- Attachment batching
+    local many = {}
+    for i = 1, 14 do many[i] = { LINEN, 5 } end
+    bags(many)
+    MB.SaveRule(byCat.cloth.id, { keep = 0 })
+    plan = MB.PlanRules()
+    check(#plan.ships == 2 and #plan.ships[1].atts == 12 and #plan.ships[2].atts == 2
+        and plan.ships[1].subject:find("(1/2)", 1, true), "14 stacks become mails of 12 and 2")
+    MB.SaveRule(byCat.cloth.id, { keep = 20 })
+
+    -- The window
+    M.inbox = {}
+    M.fire("MAIL_SHOW"); M.advance(2)
+    local W = ForeverGoldMailFrame
+    check(W and W:IsShown() and MailFrame._scale == 0.001, "our mailbox opens; the game's is hidden")
+    check(MB.inboxState == "ready", "inbox read")
+    for _, t in ipairs({ "send", "rules", "inbox" }) do U.SetTab(t) end
+    U.ToggleBankerPanel(true); U.ToggleBankerPanel(false)
+    W.blizz:Click()
+    check(not W:IsShown() and MailFrame._scale == 1 and ns.db.opts.mailBlizzard and ForeverGoldMailStrip:IsShown(),
+        "Game's mailbox brings the game's back, with a way back")
+    ForeverGoldMailStrip.ours:Click()
+    check(W:IsShown() and MailFrame._scale == 0.001 and not ns.db.opts.mailBlizzard, "and back to ours")
+    MailFrame:Hide(); MailFrame._scale = 1; MailFrame:Show()
+    check(MailFrame._scale == 0.001, "the game's mailbox is hidden again whenever it shows")
+    -- Leaving one item out by clicking its row
+    bags({ { LINEN, 20 }, { LINEN, 15 }, { LINEN, 5 }, { LEATHER, 12 }, { LEATHER, 4 } })
+    U.SetTab("send"); U.SetMode("rules")
+    local leatherRow
+    for _, r in ipairs(W.send.list.rows) do if r.d and r.d.id == LEATHER and r.d.check ~= nil then leatherRow = r end end
+    check(leatherRow and leatherRow.d.check == true, "send preview lists leather, ticked")
+    leatherRow:Click()
+    check(MB.exclude[LEATHER] and not shipTo(U.CurrentPlan(), FANG), "clicking the row leaves it out of this send")
+    for _, r in ipairs(W.send.list.rows) do if r.d and r.d.id == LEATHER then leatherRow = r end end
+    check(leatherRow.d.check == false, "and its box stays, unticked")
+    leatherRow:Click()
+    check(not MB.exclude[LEATHER], "click again to put it back")
+    U.SetTab("inbox")
+
+    -- Sending: one click per mail, waiting for the server each time
+    bags({ { HEARTH, 1, true }, { LINEN, 20 }, { LINEN, 15 }, { LINEN, 5 }, { LEATHER, 12 }, { LEATHER, 4 } })
+    M.player.money = 100000
+    local before = sends()
+    plan = MB.PlanRules()
+    check(MB.StartSend(plan), "send started")
+    check(not MB.StartSend(plan) and not MB.CollectAll(), "a second send or a collect can't start on top of it")
+    check(MB.Q.ships[1].status == "preparing" and M.send.atts[1] and M.send.atts[1].count == 20, "first mail: linen attached")
+    M.advance(0.3)
+    check(MB.Q.ships[1].status == "ready" and sends() == before, "ready, and nothing sent without a click")
+    check(MB.SendNext() and sends() == before + 1, "one click sends it")
+    check(not MB.SendNext() and sends() == before + 1, "a double click doesn't send twice")
+    check(MB.status.kind == "waiting" and MB.status.text:find("waiting for the server"), "shows waiting for the server")
+    M.advance(1.5)
+    check(MB.Q.ships[1].status == "sent" and M.sentMail[#M.sentMail].name == "Xeon Hexspark", "confirmed by the server")
+    check(MB.Q.ships[2].status == "ready" and M.send.atts[1].id == LEATHER, "the next mail gets ready by itself")
+    MB.SendNext(); M.advance(1)
+    check(MB.Q.ships[2].status == "sent" and not MB.Busy() and MB.status.kind == "done", "both sent: done")
+    check(M.player.money == 100000 - 60, "postage paid: " .. M.player.money)
+    MB.ClearShipments()
+
+    -- The bags change between the preview and the send
+    bags({ { LINEN, 20 }, { LINEN, 15 }, { LINEN, 5 } })
+    plan = MB.PlanRules()
+    M.bags[1] = { LINEN, 10 }
+    MB.StartSend(plan); M.advance(0.3)
+    local s = MB.Q.ships[1]
+    check(s.status == "ready" and s.items[1].qty == 10 and s.changed and stacksOn() == 1,
+        "fewer in the bags: re-picked to 10, and it says so: " .. tostring(s.changed))
+    MB.Stop()
+    check(not MB.Busy() and stacksOn() == 0 and not anyLocked() and s.status == "planned", "Stop takes the attachments back off")
+    MB.ClearShipments()
+    bags({ { LINEN, 20 }, { LINEN, 15 }, { LINEN, 5 } })
+    plan = MB.PlanRules()
+    bags({ { LINEN, 15 }, { LINEN, 5 } })
+    before = sends()
+    MB.StartSend(plan); M.advance(1)
+    check(MB.Q.ships[1].status == "skipped" and sends() == before, "nothing left to send after the bags changed: skipped")
+    MB.ClearShipments()
+    -- An attachment taken off while waiting for the click
+    bags({ { LINEN, 20 }, { LINEN, 15 }, { LINEN, 5 } })
+    MB.StartSend(MB.PlanRules()); M.advance(0.3)
+    ClickSendMailItemButton(1, true) -- someone else takes it off the mail
+    check(not MB.SendNext() and MB.Q.ships[1].status == "failed" and sends() == before, "attachments changed: not sent")
+    MB.ClearShipments()
+
+    -- A busy server
+    M.mailBusy = true
+    MB.StartSend(MB.PlanRules()); M.advance(1)
+    check(MB.status.kind == "waiting" and stacksOn() == 0, "server busy: waits before attaching anything")
+    M.mailBusy = false; M.advance(1)
+    check(MB.Q.ships[1].status == "ready", "and carries on when it's free")
+    M.mailBusy = true
+    check(not MB.SendNext() and sends() == before, "Send while the server is busy does nothing")
+    M.mailBusy = false
+
+    -- The server says no
+    M.sendMode = "fail"
+    MB.SendNext(); M.advance(1)
+    check(MB.Q.ships[1].status == "failed" and not MB.Busy() and MB.status.text:find("Cannot find player")
+        and sends() == before + 1, "a refusal stops the queue and says why")
+    check(stacksOn() == 0 and not anyLocked(), "the items go back to the bags")
+    MB.ClearShipments()
+
+    -- No answer: never sent again
+    bags({ { LINEN, 20 }, { LINEN, 15 }, { LINEN, 5 } })
+    M.sendMode = "silent"
+    MB.StartSend(MB.PlanRules()); M.advance(0.3)
+    before = sends()
+    MB.SendNext(); M.advance(25)
+    check(MB.Q.ships[1].status == "failed" and sends() == before + 1, "no answer, items still on the mail: not sent, not retried")
+    MB.ClearShipments()
+    M.sendMode = "lost"
+    MB.StartSend(MB.PlanRules()); M.advance(0.3)
+    before = sends()
+    MB.SendNext(); M.advance(25)
+    check(MB.Q.ships[1].status == "unclear" and MB.status.kind == "unclear" and MB.status.text:find("most likely went out"),
+        "no answer, items gone and postage paid: most likely sent, check before resending")
+    M.advance(60)
+    check(sends() == before + 1 and not MB.Busy(), "a timeout never sends a second time")
+    M.fire("MAIL_SEND_SUCCESS")
+    check(MB.Q.ships[1].status == "sent", "a late confirmation is accepted")
+    M.sendMode = "ok"
+    MB.ClearShipments()
+
+    -- The game's own "are you sure?" dialog
+    bags({ { LINEN, 20 }, { LINEN, 15 }, { LINEN, 5 } })
+    M.sendMode = "silent"
+    MB.StartSend(MB.PlanRules()); M.advance(0.3)
+    MB.SendNext()
+    M.fire("SECURE_TRANSFER_CONFIRM_SEND_MAIL"); M.advance(30)
+    check(MB.Q.ships[1].status == "sending" and MB.status.kind == "confirm", "waits while the game asks you to confirm")
+    M.fire("SECURE_TRANSFER_CANCEL")
+    check(MB.Q.ships[1].status == "cancelled" and not MB.Busy(), "cancelled in the dialog: stopped, nothing sent")
+    M.sendMode = "ok"
+    MB.ClearShipments()
+
+    -- Delayed replies
+    M.sendDelay = 8
+    MB.StartSend(MB.PlanRules()); M.advance(0.3)
+    before = sends()
+    MB.SendNext(); M.advance(5)
+    check(MB.Q.ships[1].status == "sending" and sends() == before + 1, "a slow server: still waiting, nothing resent")
+    M.advance(5)
+    check(MB.Q.ships[1].status == "sent", "the slow answer arrives and counts")
+    M.sendDelay = 0.5
+    MB.ClearShipments()
+
+    -- The reserve covers postage
+    bags({ { LINEN, 20 }, { LINEN, 15 }, { LINEN, 5 } })
+    M.player.money = 50010
+    before = sends()
+    MB.StartSend(MB.PlanRules()); M.advance(1)
+    check(not MB.Busy() and stacksOn() == 0 and sends() == before and MB.status.text:find("under the"),
+        "postage that would break the reserve stops before attaching")
+    MB.ClearShipments()
+    -- Gold with the banker mail, re-checked at the click
+    M.player.money = 100000
+    ns.db.opts.postPick = { [BAR] = true }
+    bags({ { BAR, 8 } })
+    MB.StartSend(MB.PlanBanker()); M.advance(0.3)
+    M.player.money = 80000
+    MB.SendNext(); M.advance(1)
+    local last = M.sentMail[#M.sentMail]
+    check(last.name == "Xeon Banker" and last.money == 80000 - 50000 - 30 and M.player.money == 50000,
+        "gold lowered at the click so the reserve still holds: " .. tostring(last.money))
+    ns.db.opts.mailGold = false
+    MB.ClearShipments()
+
+    -- The mailbox closes mid-queue
+    M.player.money = 100000
+    bags({ { LINEN, 20 }, { LINEN, 15 }, { LINEN, 5 }, { LEATHER, 12 }, { LEATHER, 4 } })
+    MB.StartSend(MB.PlanRules()); M.advance(0.3)
+    M.fire("MAIL_CLOSED")
+    check(not MB.Busy() and stacksOn() == 0 and MB.Q.ships[1].status == "planned" and not W:IsShown()
+        and MailFrame._scale == 1, "closed while waiting for the click: stopped, items off, windows restored")
+    M.fire("MAIL_SHOW"); M.advance(2)
+    MB.StartSend(MB.PlanRules()); M.advance(0.3)
+    before = sends()
+    MB.SendNext()
+    M.fire("MAIL_CLOSED"); M.advance(3)
+    check(MB.Q.ships[1].status == "sent" and MB.Q.ships[2].status == "planned" and sends() == before + 1 and not MB.Busy(),
+        "closed while the server had one: that one is confirmed, nothing more goes")
+    MB.ClearShipments()
+    M.fire("MAIL_SHOW"); M.advance(2)
+
+    -- The send tab's button
+    bags({ { LINEN, 20 }, { LINEN, 15 }, { LINEN, 5 } })
+    U.SetTab("send"); U.SetMode("rules")
+    before = sends()
+    W.send.side.send:Click(); M.advance(0.3)
+    check(MB.Q.ships and MB.Q.ships[1].status == "ready", "the Send button starts and prepares the first mail")
+    W.send.side.send:Click()
+    check(sends() == before + 1, "the next press sends it")
+    W.send.side.send:Click()
+    check(sends() == before + 1, "pressing while waiting sends nothing")
+    M.advance(1)
+    MB.ClearShipments()
+    U.SetMode("banker"); U.SetMode("custom")
+    U.form.to = "Xeon Banker"; U.form.picks = { ["0:2"] = true }; U.Refresh()
+    plan = U.CurrentPlan()
+    check(not plan.problem and #plan.ships == 1 and plan.ships[1].atts[1].count == 15, "custom mail: picked stack attached")
+    U.form.picks = { ["0:2"] = true, ["0:3"] = true }; U.form.moneyText = "2.5"; U.Refresh()
+    plan = U.CurrentPlan()
+    check(plan.ships[1].money == 25000 and #plan.ships[1].atts == 2, "custom mail: typed gold and two stacks")
+    U.form.cod = true; U.Refresh()
+    plan = U.CurrentPlan()
+    check(plan.ships[1].cod == 25000 and plan.ships[1].money == 0, "C.O.D. instead of sending gold")
+    U.form = { picks = {} }
+    U.SetMode("banker")
+
+    -- Auto-send on open (opt-in)
+    bags({ { LINEN, 20 }, { LINEN, 15 }, { LINEN, 5 } })
+    ns.db.opts.mailAuto = true
+    M.fire("MAIL_CLOSED"); M.advance(1)
+    before = sends()
+    M.fire("MAIL_SHOW"); M.advance(2)
+    check(MB.Busy() and MB.Q.auto and MB.Q.ships[1].status == "ready" and sends() == before,
+        "auto-send gets the first mail ready, but still waits for your click")
+    MB.Stop()
+    ns.db.opts.mailAuto = false
+    MB.ClearShipments()
+
+    -- The rule editor
+    U.SetTab("rules")
+    local count = #MB.Rules()
+    U.NewRule()
+    check(#MB.Rules() == count + 1 and U.draft, "Add rule makes a new one to edit")
+    U.draft.cat, U.draft.to, U.draft.keep = "herbs", RAIN, 3
+    U.SaveDraft()
+    local nr = MB.FindRule(U.draft.id)
+    check(nr.cat == "herbs" and nr.to == RAIN and nr.keep == 3, "Save rule saves it")
+    U.DeleteDraft()
+    check(MB.FindRule(nr.id), "the first Delete only asks")
+    U.DeleteDraft()
+    check(not MB.FindRule(nr.id), "the second deletes it")
+
+    -- The inbox: collect all, never C.O.D.
+    bags({ { LINEN, 5 } })
+    M.player.money = 100000
+    M.inbox = {
+        { sender = "Auction House", subject = "Auction successful: Copper Bar (5)", money = 5000, invoice = "seller", item = "Copper Bar", count = 5 },
+        { sender = "Xeon Hexspark", subject = "Herbs", money = 200, items = { { PEACE, 10 }, { SILVERLEAF, 4 } } },
+        { sender = "Shady Seller", subject = "Pay me", cod = 2500, items = { { LINEN, 20 } } },
+        { sender = "Game Master", subject = "Hello", gm = true, money = 100, items = { { BAR, 1 } } },
+        { sender = "Auction House", subject = "Sale pending: Tin Bar", invoice = "seller_temp_invoice", keep = true },
+        { sender = "Xeon Banker", subject = "A letter", body = "hi", keep = true },
+    }
+    M.fire("MAIL_INBOX_UPDATE"); M.advance(1)
+    check(#MB.inbox == 6 and MB.inbox[3].restricted == "cod" and MB.inbox[4].restricted == "gm"
+        and MB.inbox[5].restricted == "pending", "C.O.D., GM mail and pending sales are marked")
+    local money, items, cod = MB.InboxTotals()
+    check(money == 5200 and cod == 1, "to collect: 52s (not the GM's): " .. money)
+    U.SetTab("inbox")
+    for _, r in ipairs(W.inbox.list.rows) do if r.d then r:Click() end end
+    check(not MB.TakeAttachment(MB.inbox[3], 1) and not MB.TakeMoney(MB.inbox[3]), "C.O.D. can't be taken here")
+    local returned, deleted = M.MailCount("ReturnInboxItem"), M.MailCount("DeleteInboxItem")
+    check(MB.CollectAll() and not MB.CollectAll(), "collect all starts once")
+    check(not MB.StartSend(MB.PlanRules()), "no send while collecting")
+    M.advance(15)
+    check(M.player.money == 100000 + 5200 and MB.BagCount(PEACE) == 10 and MB.BagCount(SILVERLEAF) == 4,
+        "gold and items collected: " .. M.player.money)
+    local codTouched = false
+    for _, l in ipairs(M.mailLog) do if l[3] == "Pay me" or l[4] == "Pay me" or l[2] == "Pay me" then codTouched = true end end
+    check(not codTouched and not M.codPaid and #M.inbox == 4, "the C.O.D. mail was never touched or paid")
+    check(M.MailCount("ReturnInboxItem") == returned and M.MailCount("DeleteInboxItem") == deleted, "nothing returned or deleted")
+    check(MB.status.kind == "done" and not MB.Busy(), "done: " .. MB.status.text)
+    check(MB.TakeAttachment(MB.inbox[2], 1), "you can take the GM's item yourself")
+    M.advance(2)
+    check(MB.BagCount(BAR) == 1, "taken")
+
+    -- A take with no answer: stops, never retried
+    table.insert(M.inbox, { sender = "Xeon Banker", subject = "Gold", money = 300 })
+    M.fire("MAIL_INBOX_UPDATE"); M.advance(1)
+    M.takeMode = "silent"
+    local takes = M.MailCount("TakeInboxMoney")
+    MB.CollectAll(); M.advance(30)
+    check(M.MailCount("TakeInboxMoney") == takes + 1 and not MB.Busy() and MB.status.kind == "error",
+        "no answer to a take: stopped, not retried: " .. MB.status.text)
+    M.takeMode = "ok"
+    -- Slow answers are waited for
+    M.takeDelay = 4
+    takes = M.MailCount("TakeInboxMoney")
+    MB.CollectAll(); M.advance(2)
+    check(M.MailCount("TakeInboxMoney") == takes + 1 and MB.status.kind == "waiting", "slow server: one take, waiting")
+    M.advance(5)
+    check(M.player.money == 100000 + 5200 + 300 and not MB.Busy(), "the slow take lands, nothing doubled")
+    -- The mailbox closes mid-collect
+    table.insert(M.inbox, { sender = "A", subject = "One", money = 10 })
+    table.insert(M.inbox, { sender = "B", subject = "Two", money = 20 })
+    M.fire("MAIL_INBOX_UPDATE"); M.advance(1)
+    takes = M.MailCount("TakeInboxMoney")
+    MB.CollectAll(); M.advance(1)
+    M.fire("MAIL_CLOSED"); M.advance(10)
+    check(M.MailCount("TakeInboxMoney") == takes + 1 and not MB.Busy() and MB.status.text:find("closed"),
+        "mailbox closed mid-collect: the one in flight finishes, nothing more")
+    M.takeDelay = 0.3
+    -- Something else takes mail while we collect
+    M.fire("MAIL_SHOW"); M.advance(2)
+    takes = M.MailCount("TakeInboxMoney")
+    MB.CollectAll()
+    ReturnInboxItem(1)
+    M.advance(5)
+    check(M.MailCount("TakeInboxMoney") == takes + 1 and not MB.Busy() and MB.status.text:find("Another mail action"),
+        "another mail action stops the queue after the one in flight")
+    -- Full bags
+    local full = {}
+    for i = 1, 16 do full[i] = { LINEN, 1 } end
+    bags(full)
+    M.inbox = { { sender = "C", subject = "Stuff", money = 50, items = { { BAR, 2 } } } }
+    M.fire("MAIL_INBOX_UPDATE"); M.advance(1)
+    MB.CollectAll(); M.advance(5)
+    check(MB.status.kind == "error" and MB.status.text:find("bags are full") and #M.inbox == 1 and M.inbox[1].money == 0,
+        "bags full: the gold is taken, the item waits")
+
+    M.fire("MAIL_CLOSED"); M.advance(1)
+    ns.BagAdvice, ns.CraftList = realAdvice, realCraft
+    MB.PlanBanker() -- the real advice runs without errors
+    M.bags, M.player.money, ns.db.opts.postPick = savedBags, savedMoney, savedPick
+end
 
 out("")
 out("== chat output")
