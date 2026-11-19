@@ -1234,13 +1234,61 @@ local function mapContainer()
     return type(sc) == "table" and sc or WorldMapFrame
 end
 
--- Top right, left of the game's own buttons in that corner (as OpenMap does
--- for its bottom corners).
+-- The column of round map buttons other addons (Questie, RareScanner...) add
+-- through Krowi_WorldMapButtons: in Forever it runs down the map's top left,
+-- one button every 32 pixels from the canvas container's corner.
+local KROWI_STEP = 32
+local function krowiColumn()
+    local lib = LibStub and LibStub.GetLibrary and LibStub:GetLibrary("Krowi_WorldMapButtons-1.4", true)
+    if type(lib) ~= "table" or type(lib.Buttons) ~= "table" or lib.AnchorPoint ~= "TOPLEFT" then
+        return nil
+    end
+    local shown = 0
+    for _, b in ipairs(lib.Buttons) do
+        if b ~= mapButton and b.IsShown and b:IsShown() then
+            shown = shown + 1
+        end
+    end
+    if shown == 0 then
+        return nil
+    end
+    return lib, shown
+end
+
+local krowiHooked
+local function hookKrowi(lib)
+    if krowiHooked or not hooksecurefunc or type(lib.SetPoints) ~= "function" then
+        return
+    end
+    krowiHooked = true
+    hooksecurefunc(lib, "SetPoints", function()
+        if ns.PlaceMapButton then
+            ns.Guard("map-button", ns.PlaceMapButton)()
+        end
+    end)
+end
+
+-- Under the other addons' round buttons on the left when they are there,
+-- otherwise top right, left of the game's own buttons in that corner.
 local function placeMapButton()
     local sc = mapContainer()
     if not mapButton or not sc then
         return
     end
+    local lib, shown = krowiColumn()
+    if lib then
+        hookKrowi(lib)
+        local rel = WorldMapFrame.GetCanvasContainer and ns.try(WorldMapFrame.GetCanvasContainer, WorldMapFrame)
+        rel = type(rel) == "table" and rel or sc
+        -- Our button is 30 wide in a 32 slot: one pixel in keeps it centred.
+        local x = (tonumber(lib.XOffset) or 3) + (KROWI_STEP - 30) / 2
+        local y = (tonumber(lib.YOffset) or 0) - shown * KROWI_STEP - (KROWI_STEP - 30) / 2
+        mapButton.side = "left"
+        mapButton:ClearAllPoints()
+        mapButton:SetPoint("TOPLEFT", rel, "TOPLEFT", x, y)
+        return
+    end
+    mapButton.side = "right"
     local x = 8
     local right, top = sc.GetRight and sc:GetRight(), sc.GetTop and sc:GetTop()
     for _, f in ipairs(WorldMapFrame.overlayFrames or {}) do
@@ -1253,6 +1301,7 @@ local function placeMapButton()
     mapButton:ClearAllPoints()
     mapButton:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -x, -8)
 end
+ns.PlaceMapButton = placeMapButton
 
 local function anySpotsShown()
     return ns.db.opts.worldMapSpots ~= false
@@ -1371,6 +1420,13 @@ function ns.ToggleMapMenu(show)
     if show == nil then
         show = not mapMenu:IsShown()
     end
+    -- Open beside the button, towards the middle of the map.
+    mapMenu:ClearAllPoints()
+    if mapButton.side == "left" then
+        mapMenu:SetPoint("TOPLEFT", mapButton, "TOPRIGHT", 6, 0)
+    else
+        mapMenu:SetPoint("TOPRIGHT", mapButton, "BOTTOMRIGHT", 0, -4)
+    end
     mapMenu:SetShown(show)
     refreshMapButton()
 end
@@ -1420,7 +1476,7 @@ local function setupMapButton()
         if not GameTooltip then
             return
         end
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetOwner(self, self.side == "left" and "ANCHOR_RIGHT" or "ANCHOR_LEFT")
         GameTooltip:SetText("Forever Gold: gathering spots", 1, 0.82, 0)
         GameTooltip:AddLine(anySpotsShown() and "Showing on the map." or "Hidden.", 1, 1, 1)
         GameTooltip:AddLine("Click: choose herbs, ore, fishing, chests, route.", 0.8, 0.8, 0.8)
@@ -1813,15 +1869,26 @@ local function beamColor()
 end
 
 ----------------------------------------------------------------------
--- How a beam looks: a slim shaft of light, like a loot drop's.
+-- How a beam looks: a slim shaft of light, like a loot drop's, standing
+-- in the world like a real column.
+--
+-- An addon can't draw in the 3D world, and the game never says which way
+-- the camera points. It does say where on screen the spot is and how far
+-- away it is, plus the camera's zoom and field of view. From those the
+-- camera's tilt is worked out, and the beam is drawn as a column of light
+-- standing up from the spot, seen through that camera. So it leans the
+-- way upright things lean towards the sides of the screen, tapers with
+-- distance, stands tall seen from the side, and, looking straight down on
+-- it, shrinks to a short glow over a round pool of light.
 --
 --   * a thin, near-white hot core (normal blending, so it still reads on
 --     snow, sand and daylight - additive light alone washes out there);
 --   * three soft halos around it in the beam's colour, each wider and
 --     fainter, so the edges melt into the scene instead of stopping;
 --   * everything fades out going up, so the top dissolves into the air;
---   * a short flare and a small soft pool where it meets the ground;
+--   * a short flare, and a soft pool lying flat on the ground, at the foot;
 --   * a few motes of light drifting up the shaft.
+-- Each layer is a run of short line segments, so it can lean and taper.
 -- It's drawn on the 3D world's layer (behind nameplates and the whole UI)
 -- and keeps a minimum size on screen, so a far one is still a clear line.
 ----------------------------------------------------------------------
@@ -1831,25 +1898,31 @@ local HALOS = { -- width (x the core), brightness at the foot
     { 5.0, 0.20 },
     { 9.0, 0.08 },
 }
-local POOLS = { -- width, height (x the core), brightness
-    { 13, 3.4, 0.10 },
-    { 7, 2.0, 0.22 },
-    { 3, 1.0, 0.55 },
+local POOLS = { -- width (x the core), brightness
+    { 13, 0.10 },
+    { 7, 0.22 },
+    { 3, 0.55 },
 }
 local MOTES = 4
+local SEGS = 8             -- line segments in each layer, foot to top
+local BEAM_YARDS = 9       -- how tall the column stands
+local CORE_YARDS = 0.14    -- how wide its hot core is
+local EYE, EYE_MOUNTED = 1.9, 3.2 -- the camera turns about a point this high above your feet
+
+local sin, cos, tan, rad = math.sin, math.cos, math.tan, math.rad
 
 -- The beam's colour, lifted towards white for the hot centre.
 local function lighten(c, k)
     return c[1] + (1 - c[1]) * k, c[2] + (1 - c[2]) * k, c[3] + (1 - c[3]) * k
 end
 
-local function flat(f, drawLayer, sub, additive)
-    local t = f:CreateTexture(nil, drawLayer, nil, sub)
-    t:SetTexture(WHITE)
-    if t.SetBlendMode then
-        t:SetBlendMode(additive and "ADD" or "BLEND")
+local function segment(f, drawLayer, additive)
+    local l = f:CreateLine(nil, drawLayer)
+    l:SetColorTexture(1, 1, 1, 1)
+    if l.SetBlendMode then
+        l:SetBlendMode(additive and "ADD" or "BLEND")
     end
-    return t
+    return l
 end
 
 local function disc(f, drawLayer, sub)
@@ -1861,15 +1934,6 @@ local function disc(f, drawLayer, sub)
     return t
 end
 
--- Bright at the foot, fading out towards the top.
-local function shade(t, r, g, b, bottom, top)
-    if t.SetGradient and CreateColor then
-        t:SetGradient("VERTICAL", CreateColor(r, g, b, bottom), CreateColor(r, g, b, top))
-    else
-        t:SetVertexColor(r, g, b, bottom)
-    end
-end
-
 local function buildBeam()
     -- On the world's layer when there is one: under nameplates and the UI.
     local parent = WorldFrame or UIParent
@@ -1877,19 +1941,7 @@ local function buildBeam()
     f:SetFrameStrata("BACKGROUND")
     f:SetFrameLevel(1)
     f:EnableMouse(false)
-    f:SetSize(20, 120)
-    f.halos = {}
-    for i = #HALOS, 1, -1 do
-        local t = flat(f, "BORDER", i, true)
-        t:SetPoint("BOTTOM", f, "BOTTOM", 0, 0)
-        f.halos[i] = t
-    end
-    f.glow, f.body = f.halos[#HALOS], f.halos[1]
-    -- The flare: a short, wide burst of light at the foot.
-    f.flare = flat(f, "BORDER", 5, true)
-    f.flare:SetPoint("BOTTOM", f, "BOTTOM", 0, 0)
-    f.core = flat(f, "ARTWORK", 1, false)
-    f.core:SetPoint("BOTTOM", f, "BOTTOM", 0, 0)
+    f:SetSize(1, 1) -- just a point: the foot. Everything is drawn from it.
     f.pools = {}
     for i, _ in ipairs(POOLS) do
         local t = disc(f, "BACKGROUND", i)
@@ -1897,6 +1949,25 @@ local function buildBeam()
         f.pools[i] = t
     end
     f.pool = f.pools[#POOLS]
+    -- layers[1] is the core; the rest are the halos, widest last.
+    f.layers = {}
+    for i = #HALOS, 1, -1 do
+        local segs = {}
+        for k = 1, SEGS do
+            segs[k] = segment(f, "BORDER", true)
+        end
+        f.layers[i + 1] = segs
+    end
+    f.flare = segment(f, "BORDER", true)
+    local core = {}
+    for k = 1, SEGS do
+        core[k] = segment(f, "ARTWORK", false)
+    end
+    f.layers[1] = core
+    f.core, f.halos = core, {}
+    for i = 1, #HALOS do
+        f.halos[i] = f.layers[i + 1]
+    end
     f.motes = {}
     for i = 1, MOTES do
         local t = disc(f, "OVERLAY", 1)
@@ -1909,19 +1980,30 @@ local function buildBeam()
     return f
 end
 
+-- How bright segment k (of SEGS) of a layer is: bright at the foot, gone at the top.
+local function fade(k, foot)
+    local mid = (k - 0.5) / SEGS
+    return foot * (1 - mid) ^ 1.3
+end
+
 local function paint(f, c)
     if f.color == c then
         return
     end
     f.color = c
     local cr, cg, cb = lighten(c, 0.65)
-    shade(f.core, cr, cg, cb, 0.95, 0)
-    for i, spec in ipairs(HALOS) do
-        shade(f.halos[i], c[1], c[2], c[3], spec[2], 0)
+    f.coreRGB = { cr, cg, cb }
+    for k, l in ipairs(f.core) do
+        l:SetColorTexture(cr, cg, cb, fade(k, 0.95))
     end
-    shade(f.flare, c[1], c[2], c[3], 0.30, 0)
+    for i, spec in ipairs(HALOS) do
+        for k, l in ipairs(f.halos[i]) do
+            l:SetColorTexture(c[1], c[2], c[3], fade(k, spec[2]))
+        end
+    end
+    f.flare:SetColorTexture(c[1], c[2], c[3], 0.30)
     for i, spec in ipairs(POOLS) do
-        f.pools[i]:SetVertexColor(c[1], c[2], c[3], spec[3])
+        f.pools[i]:SetVertexColor(c[1], c[2], c[3], spec[2])
     end
     local mr, mg, mb = lighten(c, 0.5)
     for _, m in ipairs(f.motes) do
@@ -1929,39 +2011,158 @@ local function paint(f, c)
     end
 end
 
--- Sized for how far away it is (roughly how many pixels a yard is there),
--- but never so small it disappears or so big it fills the screen.
-local function sizeBeam(f, d, alpha)
-    local parent = f:GetParent() or UIParent
-    local screen = (parent and parent:GetHeight()) or 0
-    if screen <= 0 then
-        screen = 768
+----------------------------------------------------------------------
+-- The camera, worked out from where the spot is on screen
+----------------------------------------------------------------------
+
+-- A point seen through a camera tilted down by `tilt` (radians), orbiting
+-- `zoom` yards back from its pivot. The point is `u` yards ahead of the
+-- pivot along the camera's facing, `r` to the right and `z` up from it.
+-- Returns its screen offset from the centre (x right, y up) and its depth.
+local function project(tilt, u, r, z, zoom, focal)
+    local s, c = sin(tilt), cos(tilt)
+    local depth = u * c - z * s + zoom
+    if depth < 0.05 then
+        depth = 0.05
     end
-    local perYard = screen * 0.55 / math.max(d, 5)
-    local h = math.max(48, math.min(screen * 0.34, 44 + 10 * perYard))
-    local core = math.max(1.6, math.min(4.5, 0.6 + 0.16 * perYard))
-    f:SetSize(core * HALOS[#HALOS][1], h)
-    f.core:SetSize(core, h)
-    for i, spec in ipairs(HALOS) do
-        f.halos[i]:SetSize(core * spec[1], h * (1 - 0.06 * i))
+    return focal * r / depth, focal * (u * s + z * c) / depth, depth
+end
+beam.Project = project
+
+-- The tilt and the spot's bearing (off the camera's facing) that put a spot
+-- `dist` yards away, `z` yards above the pivot, at screen offset (sx, sy).
+local function solveCamera(sx, sy, dist, z, zoom, focal, tilt)
+    tilt = tilt or 0.35
+    local bearing = 0
+    for _ = 1, 4 do
+        local lo, hi = -1.5, 1.5
+        for _ = 1, 18 do
+            local mid = (lo + hi) / 2
+            if project(tilt, dist * cos(mid), dist * sin(mid), z, zoom, focal) < sx then
+                lo = mid
+            else
+                hi = mid
+            end
+        end
+        bearing = (lo + hi) / 2
+        local u, r = dist * cos(bearing), dist * sin(bearing)
+        lo, hi = -1.2, 1.55
+        for _ = 1, 18 do
+            local mid = (lo + hi) / 2
+            local _, py = project(mid, u, r, z, zoom, focal)
+            if py < sy then
+                lo = mid
+            else
+                hi = mid
+            end
+        end
+        tilt = (lo + hi) / 2
     end
-    f.flare:SetSize(core * 6, h * 0.16)
+    return tilt, bearing
+end
+beam.SolveCamera = solveCamera
+
+-- The field of view's vertical half-angle. The game's setting is taken as
+-- the width of a 4:3 view; wider screens see more at the sides.
+local function focalLength(screenH)
+    local deg = tonumber(GetCVar and ns.try(GetCVar, "cameraFov") or nil) or 90
+    deg = math.max(30, math.min(150, deg))
+    return (screenH / 2) / (tan(rad(deg) / 2) * 0.75)
+end
+
+-- Stands the beam on the spot. (x, y) is the spot on screen, in the
+-- coordinates of `region`; `dist` is how far away it is; `up` is how far
+-- above the ground the screen point sits (a nameplate floats a little).
+local function placeBeam(f, region, x, y, dist, alpha, up)
+    local world = f:GetParent() or UIParent
+    local sw, sh = world:GetWidth() or 0, world:GetHeight() or 0
+    if sh <= 0 then
+        sw, sh = 1024, 768
+    end
+    local scale = (region:GetEffectiveScale() or 1) / (world:GetEffectiveScale() or 1)
+    local sx, sy = x * scale - sw / 2, y * scale - sh / 2
+    local focal = focalLength(sh)
+    local zoom = tonumber(GetCameraZoom and ns.try(GetCameraZoom) or nil) or 12
+    zoom = math.max(0, math.min(50, zoom))
+    local eye = (IsMounted and ns.try(IsMounted)) and EYE_MOUNTED or EYE
+    local footZ = (up or 0) - eye
+    dist = math.max(dist or 10, 1)
+
+    -- The tilt moves smoothly, so a wobble in the reading doesn't shake the beam.
+    local tilt, bearing = solveCamera(sx, sy, dist, footZ, zoom, focal, f.tilt)
+    f.tilt = f.tilt and (f.tilt + (tilt - f.tilt) * 0.3) or tilt
+    tilt = f.tilt
+    local u, r = dist * cos(bearing), dist * sin(bearing)
+    local x0, y0, d0 = project(tilt, u, r, footZ, zoom, focal)
+
+    -- The column, cut short if its top would come past the camera.
+    local tall = BEAM_YARDS
+    local s = sin(tilt)
+    if s > 0.01 then
+        tall = math.min(tall, (d0 - 1) / s)
+    end
+    tall = math.max(tall, 0.5)
+    local x1, y1, d1 = project(tilt, u, r, footZ + tall, zoom, focal)
+    local dx, dy = x1 - x0, y1 - y0
+    local len = sqrt(dx * dx + dy * dy)
+    if len < 0.001 then
+        dx, dy, len = 0, 1, 1
+    end
+    -- Far away it would be a speck: keep it a clear line. Up close, never
+    -- fill the screen.
+    local least = math.min(40, 12 + dist * 0.4)
+    local most = sh * 0.45
+    local want = math.max(least, math.min(most, len))
+    dx, dy, len = dx * want / len, dy * want / len, want
+
+    -- Nearer parts look wider.
+    local wFoot = math.max(1.6, math.min(4.5, focal * CORE_YARDS / d0))
+    local wTop = wFoot * math.max(0.4, math.min(2.5, d0 / math.max(d1, 0.5)))
+
+    for i, segs in ipairs(f.layers) do
+        local wide = (i == 1) and 1 or HALOS[i - 1][1]
+        local reach = (i == 1) and 1 or (1 - 0.06 * (i - 1))
+        for k, l in ipairs(segs) do
+            local t0, t1 = (k - 1) / SEGS * reach, k / SEGS * reach
+            local tm = (t0 + t1) / 2
+            l:SetStartPoint("BOTTOM", f, dx * t0, dy * t0)
+            l:SetEndPoint("BOTTOM", f, dx * t1, dy * t1)
+            l:SetThickness((wFoot + (wTop - wFoot) * tm) * wide)
+        end
+    end
+    f.flare:SetStartPoint("BOTTOM", f, 0, 0)
+    f.flare:SetEndPoint("BOTTOM", f, dx * 0.16, dy * 0.16)
+    f.flare:SetThickness(wFoot * 6)
+
+    -- The pool lies on the ground: round seen from above, a thin ellipse
+    -- seen from the side.
+    local _, ya = project(tilt, u + 1, r, footZ, zoom, focal)
+    local _, yb = project(tilt, u - 1, r, footZ, zoom, focal)
+    local flat = math.max(0.15, math.min(1, math.abs(ya - yb) / math.max(0.001, 2 * focal / d0)))
     for i, spec in ipairs(POOLS) do
-        f.pools[i]:SetSize(core * spec[1], core * spec[2])
+        local w = wFoot * spec[1]
+        f.pools[i]:SetSize(w, w * flat)
     end
-    -- Motes rise from the foot, sway a little, and fade as they go.
+
+    -- Motes rise from the foot along the shaft, sway a little, and fade.
     local now = GetTime()
+    local px, py = -dy / len, dx / len
     for _, m in ipairs(f.motes) do
         local t = (now * m.speed + m.phase) % 1
-        local size = math.max(1.5, core * 0.9)
+        local size = math.max(1.5, wFoot * 0.9)
+        local side = m.sway * wFoot * 1.6 * sin((t + m.phase) * 6.28)
         m:SetSize(size, size)
         m:ClearAllPoints()
-        m:SetPoint("CENTER", f, "BOTTOM", m.sway * core * 1.6 * math.sin((t + m.phase) * 6.28), h * 0.72 * t)
+        m:SetPoint("CENTER", f, "BOTTOM", dx * 0.72 * t + px * side, dy * 0.72 * t + py * side)
         m:SetAlpha(math.min(1, t * 6) * (1 - t) * 0.9)
     end
     -- A slow breath, and a faint shimmer in the core.
-    f.core:SetAlpha(0.88 + 0.12 * math.sin(now * 7.3))
-    f:SetAlpha(alpha * (0.9 + 0.1 * math.sin(now * 2.2)))
+    local shimmer = 0.88 + 0.12 * sin(now * 7.3)
+    for _, l in ipairs(f.core) do
+        l:SetAlpha(shimmer)
+    end
+    f:SetAlpha(alpha * (0.9 + 0.1 * sin(now * 2.2)))
+    f.len, f.dx, f.dy, f.coreW, f.topW, f.flat, f.tall = len, dx, dy, wFoot, wTop, flat, tall
     f:Show()
 end
 
@@ -2026,7 +2227,12 @@ local function drawBeam()
         f.anchor = nav
     end
     paint(f, c)
-    sizeBeam(f, d, alpha)
+    local nx, ny = nav:GetCenter()
+    if not nx then
+        hideBeam()
+        return
+    end
+    placeBeam(f, nav, nx, ny, d, alpha, 0)
 end
 beam.Draw = drawBeam
 
@@ -2251,8 +2457,14 @@ local function drawSoft()
     end
     beam.softNode, beam.softKind = node, (c == BEAM_ROUTE and "route") or (node and "recorded") or "new"
     paint(f, c)
-    -- The game only picks things out close by.
-    sizeBeam(f, d or 10, 1)
+    -- The game only picks things out close by: a few yards when it's new.
+    local px = plate:GetCenter()
+    local py = plate:GetBottom()
+    if not (px and py) then
+        hideSoft()
+        return
+    end
+    placeBeam(f, plate, px, py, d or 6, 1, 0.5)
 end
 beam.DrawSoft = drawSoft
 

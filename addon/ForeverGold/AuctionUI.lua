@@ -602,6 +602,9 @@ function A.OpenItem(r, keepMessage)
         buyMsg("The auction house wouldn't look that item up.")
         return
     end
+    if A.HideOverpay then
+        A.HideOverpay()
+    end
     BUY.mode = "item"
     BUY.item = { id = r.id, key = key, commodity = commodity and true or false, link = info and info.battlePetLink }
     BUY.listings = nil
@@ -757,10 +760,149 @@ local function available()
     return n
 end
 
+-- How long to wait for the auction house to answer before giving up.
+A.QUOTE_WAIT, A.BUY_WAIT = 10, 15
+
+-- The server can drop a request without answering. Don't sit on
+-- "Buying..." forever: after a while, let go and refresh the listings.
+local function watch(b, wait)
+    C_Timer.After(wait, ns.Guard("buy-timeout", function()
+        if BUY.buy ~= b then
+            return
+        end
+        BUY.buy = nil
+        if b.state == "buying" then
+            BUY.late = b
+            buyMsg("The auction house never answered, so it may or may not have gone through. Check your mailbox"
+                .. " before buying again - the list has been refreshed.")
+        else
+            pcall(AH.CancelCommoditiesPurchase)
+            buyMsg("The auction house never sent a price. Nothing was bought - try again.")
+        end
+        A.RefreshItem()
+    end))
+end
+
+----------------------------------------------------------------------
+-- Paying well over the usual price asks first
+----------------------------------------------------------------------
+
+A.OVERPAY_PCT = 20   -- this much over the usual price per item...
+A.OVERPAY_MIN = 100  -- ...and at least this much extra in all (copper)
+
+-- How far over its usual price a purchase is, or nil when it isn't, or
+-- when there's no usual price worth comparing with.
+function A.Overpay(id, unit, qty)
+    if ns.db.opts.buyConfirm == false or not unit or unit <= 0 then
+        return nil
+    end
+    local usual = usualText(id)
+    if not usual or usual <= 0 or (ns.PriceDoubt and ns.PriceDoubt(id)) then
+        return nil
+    end
+    qty = max(1, qty or 1)
+    local pct = floor((unit / usual - 1) * 100 + 0.5)
+    local extra = floor((unit - usual) * qty + 0.5)
+    if pct >= A.OVERPAY_PCT and extra >= A.OVERPAY_MIN then
+        return { pct = pct, usual = usual, unit = unit, qty = qty, extra = extra, total = floor(unit * qty + 0.5) }
+    end
+    return nil
+end
+
+local ask
+local function hideAsk()
+    if ask then
+        ask:Hide()
+        ask.token = nil
+    end
+end
+A.HideOverpay = hideAsk
+
+local function buildAsk()
+    local cover = CreateFrame("Frame", nil, win)
+    cover:SetAllPoints()
+    cover:SetFrameLevel(win:GetFrameLevel() + 40)
+    cover:EnableMouse(true)
+    cover.shade = tex(cover, "BACKGROUND", 0, 0, 0, 0.55)
+    cover.shade:SetAllPoints()
+    local d = CreateFrame("Frame", nil, cover)
+    d:SetSize(400, 176)
+    d:SetPoint("CENTER", 0, 20)
+    d:SetFrameLevel(cover:GetFrameLevel() + 2)
+    skin(d)
+    d.icon = d:CreateTexture(nil, "ARTWORK")
+    d.icon:SetSize(32, 32)
+    d.icon:SetPoint("TOPLEFT", 16, -14)
+    d.title = label(d, "GameFontNormalLarge", "Pay more than usual?")
+    d.title:SetTextColor(1, 0.44, 0.44)
+    d.title:SetPoint("TOPLEFT", 58, -16)
+    d.title:SetWidth(326)
+    d.title:SetWordWrap(false)
+    d.name = label(d, "GameFontHighlightSmall")
+    d.name:SetPoint("TOPLEFT", 58, -36)
+    d.name:SetWidth(326)
+    d.name:SetWordWrap(false)
+    d.lines = {}
+    for i = 1, 3 do
+        local l = label(d, "GameFontHighlight")
+        l:SetPoint("TOPLEFT", 16, -60 - (i - 1) * 20)
+        l:SetWidth(368)
+        l:SetWordWrap(false)
+        d.lines[i] = l
+    end
+    d.yes = button(d, "Buy anyway", 150, 26, function() A.ConfirmOverpay() end)
+    d.yes:SetPoint("BOTTOMLEFT", 16, 14)
+    d.no = button(d, "Don't buy", 110, 26, function() hideAsk() end)
+    d.no:SetPoint("LEFT", d.yes, "RIGHT", 8, 0)
+    d.no:SetPrimary(true)
+    cover.box = d
+    cover:Hide()
+    return cover
+end
+
+-- token: the quote or listing this question is about; if it's gone by the
+-- time you answer, nothing is bought.
+function A.AskOverpay(o, id, token)
+    if not win then
+        return false
+    end
+    ask = ask or buildAsk()
+    local d = ask.box
+    setIcon(d.icon, ns.Icon(id))
+    d.name:SetText(ns.ItemName(id) .. (o.qty > 1 and (GREY .. "  x" .. o.qty .. "|r") or ""))
+    local each = o.qty > 1 and " each" or ""
+    d.lines[1]:SetText("|cffff7070" .. o.pct .. "% more|r than its usual price.")
+    d.lines[2]:SetText("You'd pay " .. ns.Money(o.unit) .. each .. GREY .. "  -  usually " .. ns.StripCodes(ns.Money(o.usual))
+        .. each .. "|r")
+    d.lines[3]:SetText("That's about " .. ns.Money(o.extra) .. " more than usual, " .. ns.Money(o.total) .. " in all.")
+    d.yes:SetLabel("Buy anyway: " .. ns.StripCodes(ns.Money(o.total)))
+    ask.token = token
+    ask:Show()
+    return true
+end
+
+function A.OverpayShown()
+    return ask ~= nil and ask:IsShown()
+end
+
+function A.OverpayBox()
+    return ask and ask.box
+end
+
+function A.ConfirmOverpay()
+    local token = ask and ask.token
+    hideAsk()
+    if token and (token == BUY.buy or token == BUY.sel) then
+        A.Buy(true)
+    end
+end
+
 -- The buy button. Stackable goods take two clicks (ask the price, then
 -- confirm it); gear is one click on the listing you picked. Only ever
--- called from a click.
-function A.Buy()
+-- called from a click. The state is set before asking the game, because
+-- the game can refuse (AUCTION_HOUSE_SHOW_ERROR) before the call returns.
+-- Paying well over the usual price asks first; confirmed = you said yes.
+function A.Buy(confirmed)
     local item = BUY.item
     if not item or not BUY.listings then
         return
@@ -768,26 +910,44 @@ function A.Buy()
     if item.commodity then
         local b = BUY.buy
         if b and b.state == "quoted" then
+            if not confirmed then
+                local o = A.Overpay(item.id, (b.total or 0) / max(1, b.qty), b.qty)
+                if o and A.AskOverpay(o, item.id, b) then
+                    return
+                end
+            end
+            b.state, b.at = "buying", GetTime()
+            BUY.late = nil
+            ns.Fire("POSTER")
             if not pcall(AH.ConfirmCommoditiesPurchase, item.id, b.qty) then
-                BUY.buy = nil
+                if BUY.buy == b then
+                    BUY.buy = nil
+                end
                 buyMsg("The purchase was refused.")
                 return
             end
-            b.state = "buying"
-            ns.Fire("POSTER")
+            if BUY.buy == b then
+                watch(b, A.BUY_WAIT)
+            end
             return
         end
         if b then
             return
         end
         local qty = max(1, min(BUY.qty or 1, available()))
+        b = { state = "quoting", qty = qty, id = item.id, at = GetTime() }
+        BUY.buy, BUY.message, BUY.late = b, nil, nil
+        ns.Fire("POSTER")
         if not pcall(AH.StartCommoditiesPurchase, item.id, qty) then
+            if BUY.buy == b then
+                BUY.buy = nil
+            end
             buyMsg("The game blocked that purchase.")
             return
         end
-        BUY.buy = { state = "quoting", qty = qty, id = item.id, at = GetTime() }
-        BUY.message = nil
-        ns.Fire("POSTER")
+        if BUY.buy == b and b.state == "quoting" then
+            watch(b, A.QUOTE_WAIT)
+        end
         return
     end
     local l = BUY.sel
@@ -803,16 +963,29 @@ function A.Buy()
         buyMsg("You don't have enough gold for that one.")
         return
     end
+    if not confirmed then
+        local o = A.Overpay(item.id, l.p, l.q)
+        if o and A.AskOverpay(o, item.id, l) then
+            return
+        end
+    end
+    local b = { state = "buying", aid = l.aid, at = GetTime() }
+    BUY.buy, BUY.message, BUY.late = b, nil, nil
+    ns.Fire("POSTER")
     if not pcall(AH.PlaceBid, l.aid, l.buyout) then
+        if BUY.buy == b then
+            BUY.buy = nil
+        end
         buyMsg("The game blocked that purchase.")
         return
     end
-    BUY.buy = { state = "buying", aid = l.aid, at = GetTime() }
-    BUY.message = nil
-    ns.Fire("POSTER")
+    if BUY.buy == b then
+        watch(b, A.BUY_WAIT)
+    end
 end
 
 function A.CancelBuy()
+    hideAsk()
     if BUY.buy and BUY.item and BUY.item.commodity and BUY.buy.state ~= "buying" then
         pcall(AH.CancelCommoditiesPurchase)
     end
@@ -847,6 +1020,11 @@ ns.On("COMMODITY_PURCHASE_SUCCEEDED", function()
     local b = BUY.buy
     if b and b.state == "buying" then
         bought("Bought " .. b.qty .. " for " .. ns.StripCodes(ns.Money(b.total or 0)) .. ". It's in your mailbox.")
+    elseif not b and BUY.late and BUY.late.qty then
+        -- The answer came after we stopped waiting.
+        b, BUY.late = BUY.late, nil
+        bought("It went through after all: bought " .. b.qty .. " for " .. ns.StripCodes(ns.Money(b.total or 0))
+            .. ". It's in your mailbox.")
     end
 end)
 
@@ -858,19 +1036,36 @@ ns.On("COMMODITY_PURCHASE_FAILED", function()
     end
 end)
 
-ns.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function()
+ns.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(aid)
     local b = BUY.buy
     if b and b.state == "buying" and b.aid then
         bought("Bought. It's in your mailbox.")
+    elseif not b and BUY.late and BUY.late.aid and (aid == nil or aid == BUY.late.aid) then
+        BUY.late = nil
+        bought("It went through after all: bought. It's in your mailbox.")
     end
 end)
 
-ns.On("AUCTION_HOUSE_SHOW_ERROR", function()
-    if BUY.buy and BUY.buy.state == "buying" then
-        BUY.buy = nil
-        buyMsg("The auction house refused that - the red message on screen says why.")
-        A.RefreshItem()
+-- The game's own words for an auction house error ("Internal auction error").
+local function errorText(err)
+    local U = AuctionHouseUtil
+    local text = U and U.GetErrorText and ns.try(U.GetErrorText, err)
+    return type(text) == "string" and text ~= "" and text or nil
+end
+
+-- A refusal at any step of a purchase (asking the price, or paying) ends it.
+ns.On("AUCTION_HOUSE_SHOW_ERROR", function(err)
+    local b = BUY.buy
+    if not b then
+        return
     end
+    BUY.buy = nil
+    if b.state ~= "buying" then
+        pcall(AH.CancelCommoditiesPurchase)
+    end
+    local why = errorText(err)
+    buyMsg("The auction house refused that" .. (why and (": " .. why) or "") .. ". The list has been refreshed.")
+    A.RefreshItem()
 end)
 
 ----------------------------------------------------------------------
@@ -942,23 +1137,36 @@ local function buildBrowse(f)
 
     p.cats = newTable(p, 170, listH, { { key = "name", title = "Categories" } })
     p.cats:SetPoint("TOPLEFT", 12, -TOP)
+    -- The category you picked stays picked: Search (even with an empty box)
+    -- looks inside it. Click it again to search everything.
+    local function picked()
+        return type(BUY.category) == "table" and BUY.category or nil
+    end
     p.cats.onClick = function(d)
         if d.deals then
             A.openCategory = nil
             A.ShowDeals()
             return
         end
+        local cur = picked()
+        if cur and cur.top == d.top and cur.sub == d.sub then
+            if d.sub == nil then
+                A.openCategory = nil
+            end
+            A.Search(p.search:GetText() or "", nil)
+            return
+        end
         if d.sub == nil then
-            A.openCategory = (A.openCategory == d.top) and nil or d.top
+            A.openCategory = d.top
         end
         A.Search(p.search:GetText() or "", d)
     end
 
     local x0 = 12 + 170 + 8
     local rightW = W - x0 - 12
-    p.search = newEdit(p, 260, function(text) A.Search(text, nil) end)
+    p.search = newEdit(p, 260, function(text) A.Search(text, picked()) end)
     p.search:SetPoint("TOPLEFT", x0, -TOP)
-    p.go = button(p, "Search", 70, 22, function() A.Search(p.search:GetText() or "", nil) end)
+    p.go = button(p, "Search", 70, 22, function() A.Search(p.search:GetText() or "", picked()) end)
     p.go:SetPoint("LEFT", p.search, "RIGHT", 6, 0)
     p.go:SetPrimary(true)
     p.back = button(p, "< Back to results", 120, 22, function()
@@ -1305,6 +1513,7 @@ A.VerifiedBuyout = verifiedBuyout
 local function refreshBrowse()
     local p = win.browse
     local cats = {}
+    p.cats.selected = nil
     for i, c in ipairs(categoryList()) do
         c.key = "cat" .. i
         c.cells = { name = c.name }
@@ -1320,12 +1529,14 @@ local function refreshBrowse()
     p.results:SetShown(not inItem)
     p.item:SetShown(inItem and true or false)
     p.back:SetShown(inItem and true or false)
+    local where = type(BUY.category) == "table" and BUY.category.name
+        and (" in " .. ns.StripCodes(BUY.category.name):gsub("^%s+", "")) or ""
     if BUY.searching then
-        p.state:SetText("Searching... " .. #BUY.results .. " found")
+        p.state:SetText("Searching" .. where .. "... " .. #BUY.results .. " found")
     elseif inItem then
         p.state:SetText("")
     else
-        p.state:SetText(#BUY.results > 0 and plural(#BUY.results, "result") or "")
+        p.state:SetText(#BUY.results > 0 and (plural(#BUY.results, "result") .. where) or "")
     end
 
     if not inItem then
@@ -1559,6 +1770,10 @@ local function refreshBrowse()
     box.facts:SetText(table.concat(facts, "\n"))
 
     local b = BUY.buy
+    -- The overpay question is about a quote or listing that's gone: drop it.
+    if ask and ask:IsShown() and ask.token ~= b and ask.token ~= BUY.sel then
+        hideAsk()
+    end
     box.cancel:SetShown(b ~= nil and b.state ~= "buying")
     box.qtyLabel:SetShown(item.commodity)
     box.qty:SetShown(item.commodity)
@@ -1571,7 +1786,9 @@ local function refreshBrowse()
         end
         local total, enough = commodityCost(BUY.qty)
         if b and b.state == "quoted" then
-            box.cost:SetText("Price confirmed: " .. ns.Money(b.total or 0) .. " for " .. b.qty
+            local o = A.Overpay(item.id, (b.total or 0) / max(1, b.qty), b.qty)
+            box.cost:SetText((o and ("|cffff7070" .. o.pct .. "% over the usual price|r\n") or "")
+                .. "Price confirmed: " .. ns.Money(b.total or 0) .. " for " .. b.qty
                 .. GREY .. " (" .. ns.StripCodes(ns.Money(floor((b.total or 0) / max(1, b.qty)))) .. " each)|r")
             box.buy:SetLabel("Confirm: pay " .. ns.StripCodes(ns.Money(b.total or 0)))
             box.buy:SetDisabled(false)
@@ -1598,8 +1815,10 @@ local function refreshBrowse()
             box.buy:SetDisabled(true)
         elseif l and l.aid and not l.mine then
             local odd = ns.Suspicious(item.id, l.p)
+            local o = not odd and A.Overpay(item.id, l.p, l.q)
             box.cost:SetText((odd and ("|cffff7070Suspicious price - almost certainly gold changing hands, not a real"
-                .. " sale.|r\n") or "") .. l.q .. " for " .. ns.Money(l.buyout or 0))
+                .. " sale.|r\n") or "") .. (o and ("|cffff7070" .. o.pct .. "% over the usual price|r\n") or "")
+                .. l.q .. " for " .. ns.Money(l.buyout or 0))
             box.buy:SetLabel((odd and "Buy anyway: " or "Buy now: ") .. ns.StripCodes(ns.Money(l.buyout or 0)))
             box.buy:SetDisabled(GetMoney() < (l.buyout or 0))
         else

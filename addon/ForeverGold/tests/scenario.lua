@@ -780,28 +780,78 @@ do
     M.update(0.05)
     local f = B.frame
     check(f and f:IsShown() and f.color[1] == 1 and f.color[3] < 0.2, "on a route: a bright gold beam on the next stop")
-    check(f.core._gradient and f.core._gradient.lo.a > f.core._gradient.hi.a, "the beam fades out towards the top")
-    local near = f:GetHeight()
-    M.navDistance = 300
-    M.update(0.05)
-    check(f:IsShown() and f:GetHeight() < near, "further away, a shorter beam")
     check(f:GetParent() == WorldFrame, "drawn on the world's layer, under nameplates and the UI")
-    check(#f.halos == 3 and f.halos[1]:GetWidth() < f.halos[3]:GetWidth() and f.core:GetWidth() < f.halos[1]:GetWidth()
-        and f.halos[3]._gradient and f.halos[3]._gradient.lo.a < f.halos[1]._gradient.lo.a,
-        "a thin bright core inside wider, fainter halos")
-    check(f.core._gradient.lo.r > f.color[1] - 0.001 and f.core._gradient.lo.b > f.color[3], "the core is lifted towards white")
+    check(#f.halos == 3 and #f.core == 8 and f.coreRGB[1] > f.color[1] - 0.001 and f.coreRGB[3] > f.color[3],
+        "a core lifted towards white, inside three halos, each a run of segments")
+    -- A settled reading: the tilt is smoothed over a few frames.
+    local function settle(n)
+        for _ = 1, n or 12 do M.update(0.05) end
+    end
+    local function show(label)
+        return label .. string.format(" (tilt %.0f deg, %.0f px tall, lean %.1f, pool %.2f)",
+            math.deg(f.tilt or 0), f.len or 0, f.dx or 0, f.flat or 0)
+    end
+
+    -- The camera is worked out from the marker: check the sums both ways.
+    do
+        local focal = 450 / (math.tan(math.rad(45)) * 0.75)
+        for _, case in ipairs({ { 0.30, 0.2, 60 }, { 0.9, -0.3, 15 }, { -0.1, 0.05, 120 } }) do
+            local tilt, bearing, dist = case[1], case[2], case[3]
+            local sx, sy = B.Project(tilt, dist * math.cos(bearing), dist * math.sin(bearing), -1.9, 12, focal)
+            local t2, b2 = B.SolveCamera(sx, sy, dist, -1.9, 12, focal)
+            check(math.abs(t2 - tilt) < 0.01 and math.abs(b2 - bearing) < 0.01,
+                string.format("the camera's tilt comes back from where the spot is on screen (%.2f -> %.2f)", tilt, t2))
+        end
+    end
+
+    -- Put the marker where a camera at this tilt would see the spot.
+    local eye = (IsMounted and IsMounted()) and 3.2 or 1.9
+    local focal = 450 / (math.tan(math.rad(45)) * 0.75)
+    local function seeAt(tilt, bearing, dist)
+        local zoom = GetCameraZoom and GetCameraZoom() or 12
+        local sx, sy = B.Project(tilt, dist * math.cos(bearing), dist * math.sin(bearing), -eye, zoom, focal)
+        M.navX, M.navY, M.navDistance = 800 + sx, 450 + sy, dist
+        settle()
+    end
+    -- Seen from the side: a tall, upright column.
+    seeAt(0.12, 0, 25)
+    local side = f.len
+    check(math.abs(f.tilt - 0.12) < 0.03 and f.dy > 0 and math.abs(f.dx) < 1, show("from the side it stands up straight"))
+    check(f.flat < 0.5, show("and its pool on the ground is a thin ellipse"))
+    -- Zoomed right out: a spot just ahead, seen nearly side-on, then from above.
+    GetCameraZoom = function() return 35 end
+    seeAt(0.2, 0, 3)
+    local level = f.len
+    seeAt(1.2, 0, 3)
+    check(math.abs(f.tilt - 1.2) < 0.03 and f.len < level * 0.7 and f.flat > 0.8,
+        show("looking down on it from above, it's foreshortened over a round pool"
+        .. string.format(" (%.0f px side-on)", level)))
+    GetCameraZoom = nil
+    -- Looking down, upright things lean outwards towards the sides.
+    seeAt(0.9, -0.5, 15)
+    local leftLean = f.dx
+    seeAt(0.9, 0.5, 15)
+    check(leftLean < -1 and f.dx > 1, show("on the left it leans left, on the right it leans right"
+        .. string.format(" (%.1f / %.1f)", leftLean, f.dx)))
+    -- Nearer parts look wider: looking down, the top is nearer than the foot.
+    check(f.topW >= f.coreW, "looking down, its top is a touch wider than its foot")
+    seeAt(0.12, 0, 25)
+    M.navDistance = 60
+    settle()
+    local near = f.len
+    M.navDistance = 300
+    settle()
+    check(f:IsShown() and f.len < near, "further away, a shorter beam")
     M.navDistance = 3000
-    M.update(0.05)
-    check(f:IsShown() and f:GetHeight() >= 48 and f.core:GetWidth() >= 1.6, "a long way off it still stands out, never a speck: "
-        .. f:GetHeight())
-    M.navDistance = 8
-    M.update(0.05)
-    check(f:GetHeight() <= 900 * 0.34 + 0.01 and f.core:GetWidth() <= 4.5, "up close it stays slim, never filling the screen: "
-        .. f:GetHeight())
+    settle()
+    check(f:IsShown() and f.len >= 40 and f.coreW >= 1.6, show("a long way off it still stands out, never a speck"))
+    seeAt(0.3, 0, 6)
+    check(f.len <= 900 * 0.45 + 0.01 and f.coreW <= 4.5, show("up close it stays slim, never filling the screen"))
     local y1 = select(5, f.motes[1]:GetPoint(1))
     M.advance(0.4); M.update(0.05)
     local y2 = select(5, f.motes[1]:GetPoint(1))
     check(#f.motes == 4 and y1 and y2 and y1 ~= y2, "motes of light drift up the shaft")
+    M.navX, M.navY = nil, nil
     M.navOffscreen = true
     M.update(0.05)
     check(not f:IsShown(), "spot off screen: no beam")
@@ -867,6 +917,37 @@ do
     check(wp.usedMarks == all, "right-click again: back on")
     mb:Click()
     check(not menu:IsShown(), "clicking the button again closes the filter")
+    -- Other addons' round buttons (Krowi_WorldMapButtons) down the top left: ours goes under them
+    local function krowiButton(shown)
+        local b = CreateFrame("Button", nil, WorldMapFrame)
+        b:SetSize(32, 32)
+        if not shown then b:Hide() end
+        return b
+    end
+    local krowi = { AnchorPoint = "TOPLEFT", XOffset = 3, YOffset = 0,
+        Buttons = { krowiButton(true), krowiButton(true), krowiButton(false), krowiButton(true) } }
+    function krowi.SetPoints() end
+    LibStub = { GetLibrary = function(_, name, silent) if name == "Krowi_WorldMapButtons-1.4" then return krowi end end }
+    ns.RedrawWorldMap()
+    local p, _, rp, bx, by = mb:GetPoint()
+    check(p == "TOPLEFT" and rp == "TOPLEFT" and bx == 4 and by == -97,
+        "with three round buttons on the left, ours sits fourth in their column: " .. tostring(p) .. " " .. tostring(bx) .. "," .. tostring(by))
+    mb:Click()
+    local mp, mrel, mrp = menu:GetPoint()
+    check(menu:IsShown() and mp == "TOPLEFT" and mrel == mb and mrp == "TOPRIGHT", "its filter opens to the right of it")
+    mb:Click()
+    krowi.Buttons[3]:Show()
+    krowi.SetPoints()
+    p, _, rp, bx, by = mb:GetPoint()
+    check(by == -129, "another round button shows: ours moves down one: " .. tostring(by))
+    LibStub = nil
+    ns.RedrawWorldMap()
+    p = mb:GetPoint()
+    check(p == "TOPRIGHT", "without them it goes back to the top right")
+    mb:Click()
+    mp = menu:GetPoint()
+    check(mp == "TOPRIGHT", "and its filter drops down under it")
+    mb:Click()
     OpenMapAPI = nil
     ns.RedrawWorldMap()
     -- the minimap: nearby spots, and the next stop on the edge when it's far
@@ -1650,6 +1731,22 @@ do
     F.browse.cats.onClick({ name = "Trade Goods", top = 2, filters = { { classID = 7 } } }); M.advance(5)
     check(M.lastBrowse.itemClassFilters and M.lastBrowse.itemClassFilters[1].classID == 7 and A.openCategory == 2,
         "picking a category searches it and opens its subcategories")
+    F.browse.search:SetText("")
+    M.lastBrowse = nil
+    F.browse.go:Click(); M.advance(5)
+    check(M.lastBrowse and M.lastBrowse.searchString == "" and M.lastBrowse.itemClassFilters
+        and M.lastBrowse.itemClassFilters[1].classID == 7, "Search with an empty box lists everything in the picked category")
+    A.Refresh()
+    check(strip(F.browse.state:GetText()):find("in Trade Goods"), "and says which category: " .. strip(F.browse.state:GetText()))
+    F.browse.search:SetText("bar")
+    F.browse.go:Click(); M.advance(5)
+    check(M.lastBrowse.searchString == "bar" and M.lastBrowse.itemClassFilters, "typed words search inside the category")
+    F.browse.cats.onClick(A.BUY.category); M.advance(5)
+    check(A.BUY.category == nil and not M.lastBrowse.itemClassFilters and A.openCategory == nil,
+        "clicking the picked category again searches everything")
+    A.Refresh()
+    check(F.browse.cats.selected == nil, "and no category is highlighted")
+    F.browse.search:SetText("")
 
     -- Deals
     local keepMin = ns.db.opts.dealMin
@@ -1699,6 +1796,126 @@ do
     A.BUY.sel = A.BUY.listings[1]
     A.Buy()
     check(#M.bids == 1, "never buys your own listing")
+
+    -- Never stuck on "Buying...": a refusal before the call returns, no
+    -- answer at all, and an answer that comes late.
+    M.market[12346] = { { 300, 1 }, { 320, 1 } }
+    A.OpenItem({ id = 12346 }); M.advance(2)
+    M.buyError = Enum.AuctionHouseError.DatabaseError
+    F.browse.listings.onClick({ l = A.BUY.listings[1] })
+    F.browse.box.buy:Click(); M.advance(0.5)
+    A.Refresh()
+    check(A.BUY.buy == nil and strip(A.BUY.message or ""):find("Internal auction error"),
+        "gear: a refusal that comes before PlaceBid returns ends the buy, in the game's words: " .. strip(A.BUY.message or ""))
+    check(not strip(F.browse.box.buy.text:GetText()):find("Buying"), "and the button isn't stuck on Buying")
+    M.market[2840] = { { 90, 150 } }
+    A.OpenItem({ id = 2840 }); M.advance(2)
+    A.BUY.qty = 10
+    M.buyError = nil
+    A.Buy(); M.advance(1)
+    M.buyError = Enum.AuctionHouseError.DatabaseError
+    A.Buy(); M.advance(0.5)
+    check(A.BUY.buy == nil and strip(A.BUY.message or ""):find("Internal auction error"),
+        "stackable: a refusal at confirm ends the buy too")
+    M.buyError = nil
+    -- an error while the price is being asked for
+    A.Buy()
+    M.fire("AUCTION_HOUSE_SHOW_ERROR", Enum.AuctionHouseError.IsBusy)
+    check(A.BUY.buy == nil and M.quoteFor == nil and strip(A.BUY.message or ""):find("busy"),
+        "an error while asking the price ends it and drops the quote")
+    M.advance(1)
+    -- no answer at all
+    M.buySilent = true
+    A.OpenItem({ id = 12346 }); M.advance(2)
+    local bidsBefore = #M.bids
+    F.browse.listings.onClick({ l = A.BUY.listings[1] })
+    F.browse.box.buy:Click()
+    check(A.BUY.buy and A.BUY.buy.state == "buying", "waiting for the auction house")
+    M.advance(A.BUY_WAIT + 1)
+    check(A.BUY.buy == nil and strip(A.BUY.message or ""):find("never answered")
+        and strip(A.BUY.message or ""):find("mailbox"), "no answer: gives up, says to check the mailbox")
+    M.buySilent = false
+    -- the answer comes after we gave up
+    M.buyLate = true
+    bidsBefore = #M.bids
+    A.OpenItem({ id = 12346 }); M.advance(2)
+    F.browse.listings.onClick({ l = A.BUY.listings[1] })
+    F.browse.box.buy:Click()
+    M.advance(A.BUY_WAIT + 1)
+    check(A.BUY.buy == nil and A.BUY.late, "gave up waiting")
+    M.advance(20)
+    check(strip(A.BUY.message or ""):find("went through after all"), "a late answer still says it was bought: "
+        .. strip(A.BUY.message or ""))
+    M.buyLate = false
+    check(#M.bids == bidsBefore + 1, "only the one that went through was paid for")
+    -- a price that never comes
+    M.market[2840] = { { 90, 150 } }
+    A.OpenItem({ id = 2840 }); M.advance(2)
+    local realStart = C_AuctionHouse.StartCommoditiesPurchase
+    C_AuctionHouse.StartCommoditiesPurchase = function(id, qty) M.quoteFor = { id = id, qty = qty } end
+    A.Buy()
+    M.advance(A.QUOTE_WAIT + 1)
+    check(A.BUY.buy == nil and M.quoteFor == nil and strip(A.BUY.message or ""):find("never sent a price"),
+        "no price ever comes: lets go and drops the quote")
+    C_AuctionHouse.StartCommoditiesPurchase = realStart
+
+    -- Paying well over the usual price asks first.
+    local prices = ns.R().prices
+    prices[2840] = prices[2840] or {}
+    prices[12346] = prices[12346] or {}
+    local keepBar, keepBoots = prices[2840].h, prices[12346].h
+    prices[2840].h = { [1] = 50, [2] = 50 }
+    M.market[2840] = { { 90, 150 } }
+    A.OpenItem({ id = 2840 }); M.advance(2)
+    A.BUY.qty = 10
+    local boughtBefore = #M.bought
+    A.Buy(); M.advance(1)
+    A.Refresh()
+    check(strip(F.browse.box.cost:GetText()):find("80%% over the usual price"), "the quoted price says it's over usual: "
+        .. strip(F.browse.box.cost:GetText()))
+    F.browse.box.buy:Click()
+    check(A.OverpayShown() and #M.bought == boughtBefore and A.BUY.buy and A.BUY.buy.state == "quoted",
+        "confirming 80% over usual asks first; nothing bought yet")
+    local d = A.OverpayBox()
+    check(strip(d.lines[1]:GetText()):find("^80%% more") and strip(d.lines[2]:GetText()):find("usually")
+        and strip(d.lines[3]:GetText()):find("more than usual"), "it says how far over, the usual price and the extra: "
+        .. strip(d.lines[2]:GetText()) .. " / " .. strip(d.lines[3]:GetText()))
+    d.no:Click()
+    check(not A.OverpayShown() and #M.bought == boughtBefore and A.BUY.buy and A.BUY.buy.state == "quoted",
+        "Don't buy: nothing bought, the quote is still there")
+    F.browse.box.buy:Click()
+    A.OverpayBox().yes:Click(); M.advance(1)
+    check(#M.bought == boughtBefore + 1 and not A.OverpayShown(), "Buy anyway buys them")
+
+    prices[12346].h = { [1] = 100, [2] = 100 }
+    M.market[12346] = { { 300, 1 } }
+    local function pickBoots()
+        A.OpenItem({ id = 12346 }); M.advance(2)
+        F.browse.listings.onClick({ l = A.BUY.listings[1] })
+    end
+    pickBoots()
+    local bids0 = #M.bids
+    F.browse.box.buy:Click()
+    check(A.OverpayShown() and #M.bids == bids0, "gear at 3x its usual price asks first")
+    A.OverpayBox().yes:Click(); M.advance(1)
+    check(#M.bids == bids0 + 1 and A.BUY.buy == nil, "and Buy anyway buys it")
+    pickBoots()
+    F.browse.box.buy:Click()
+    pickBoots()
+    check(not A.OverpayShown(), "opening the item again drops the question")
+    A.ConfirmOverpay()
+    check(#M.bids == bids0 + 1, "and a stale yes buys nothing")
+    prices[12346].h = { [1] = 280, [2] = 280 }
+    pickBoots()
+    F.browse.box.buy:Click(); M.advance(1)
+    check(not A.OverpayShown() and #M.bids == bids0 + 2, "near the usual price it buys straight away")
+    prices[12346].h = { [1] = 100, [2] = 100 }
+    ns.db.opts.buyConfirm = false
+    pickBoots()
+    F.browse.box.buy:Click(); M.advance(1)
+    check(not A.OverpayShown() and #M.bids == bids0 + 3, "with the setting off it never asks")
+    ns.db.opts.buyConfirm = true
+    prices[2840].h, prices[12346].h = keepBar, keepBoots
 
     -- Buyouts and bids side by side, never mixed up: price each vs the whole
     -- auction, the next bid in its own column, bid-only auctions apart.

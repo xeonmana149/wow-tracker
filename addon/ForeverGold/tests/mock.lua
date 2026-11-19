@@ -75,6 +75,7 @@ function methods:GetStringHeight() return 12 * math.max(1, math.ceil(#self._text
 function methods:GetCenter() return 100, 100 end
 function methods:GetLeft() return 900 end
 function methods:GetTop() return 700 end
+function methods:GetBottom() return 90 end
 function methods:GetEffectiveScale() return 1 end
 function methods:GetFrameLevel() return 1 end
 function methods:GetParent() return self._parent end
@@ -138,7 +139,7 @@ function CreateFrame(kind, name, parent, template)
 end
 
 UIParent = newWidget("Frame", "UIParent")
-WorldFrame = newWidget("Frame", "WorldFrame"); WorldFrame._h = 900
+WorldFrame = newWidget("Frame", "WorldFrame"); WorldFrame._h = 900; WorldFrame._w = 1600
 Minimap = newWidget("Frame", "Minimap"); Minimap._w = 140
 GameTooltip = newWidget("GameTooltip", "GameTooltip")
 ItemRefTooltip = newWidget("GameTooltip", "ItemRefTooltip")
@@ -510,6 +511,8 @@ C_SuperTrack = {
 -- The game's on-screen waypoint marker (follows the tracked pin).
 Enum.NavigationState = { Invalid = 0, Occluded = 1, InRange = 2, Disabled = 3 }
 M.navFrame = newWidget("Frame", nil, nil)
+-- Where the game's waypoint marker is on screen (WorldFrame is 1600 x 900).
+M.navFrame.GetCenter = function() return M.navX or 800, M.navY or 300 end
 M.navDistance = 60
 C_Navigation = {
     GetFrame = function() return (M.tracking == "waypoint" and not M.navGone) and M.navFrame or nil end,
@@ -663,18 +666,30 @@ function C_AuctionHouse.StartCommoditiesPurchase(id, qty)
         M.fire("COMMODITY_PRICE_UPDATED", math.floor(total / qty), total)
     end)
 end
+-- M.buyError = code: the game refuses on the spot, firing the error before
+-- the call returns. M.buySilent: no answer ever comes. M.buyLate: the answer
+-- comes after 30 seconds.
+local function buyAnswer(event, arg)
+    if M.buySilent then return end
+    C_Timer.After(M.buyLate and 30 or 0.2, function() M.fire(event, arg) end)
+end
 function C_AuctionHouse.ConfirmCommoditiesPurchase(id, qty)
     assert(M.quoteFor and M.quoteFor.id == id and M.quoteFor.qty == qty, "confirm without a matching quote")
-    M.bought[#M.bought + 1] = { id = id, qty = qty }
     M.quoteFor = nil
-    C_Timer.After(0.2, function() M.fire("COMMODITY_PURCHASE_SUCCEEDED") end)
+    if M.buyError then M.fire("AUCTION_HOUSE_SHOW_ERROR", M.buyError) return end
+    M.bought[#M.bought + 1] = { id = id, qty = qty }
+    buyAnswer("COMMODITY_PURCHASE_SUCCEEDED")
 end
 function C_AuctionHouse.CancelCommoditiesPurchase() M.quoteFor = nil end
 function C_AuctionHouse.PlaceBid(aid, amount)
     assert(type(aid) == "number" and type(amount) == "number" and amount >= 1, "bad PlaceBid")
+    if M.buyError then M.fire("AUCTION_HOUSE_SHOW_ERROR", M.buyError) return end
     M.bids[#M.bids + 1] = { aid = aid, amount = amount }
-    C_Timer.After(0.2, function() M.fire("AUCTION_HOUSE_PURCHASE_COMPLETED", aid) end)
+    buyAnswer("AUCTION_HOUSE_PURCHASE_COMPLETED", aid)
 end
+AuctionHouseUtil = { GetErrorText = function(e)
+    return ({ [10] = "Internal auction error", [7] = "The auction house is busy" })[e]
+end }
 -- The game's category list (Blizzard_AuctionHouseUI)
 AuctionCategories = {
     { name = "Weapons", filters = { { classID = 2 } }, subCategories = { { name = "Swords", filters = { { classID = 2, subClassID = 7 } } } } },
