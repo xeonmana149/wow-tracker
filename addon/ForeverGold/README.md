@@ -115,7 +115,10 @@ game's. It has the game's three tabs, plus what the addon knows:
   **Suspicious** marks prices that make no sense - mostly a gray item listed for
   far more than a vendor pays, which is gold being passed between accounts - and
   items whose usual price was built from listings like that. They're never
-  called deals, and selling never undercuts them.
+  called deals, and selling never undercuts them. Searches, categories and
+  Deals leave out anything whose cheapest price is like that, and the result
+  count says how many were hidden. Open an item to see every listing,
+  suspicious ones included and tagged.
 - **Sell** - a proposed listing for everything in your bags that can go on the
   auction house. The ones the advice recommends are ticked; tick or untick the
   rest (remembered). Press "Price check" once: every ticked item is looked up

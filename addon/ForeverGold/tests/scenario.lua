@@ -2005,6 +2005,20 @@ do
     check(sword == "Maybe - check buyouts" and swordHint:find("bid"),
         "a lowest price that's only a bid isn't called a deal: " .. tostring(sword))
 
+    -- A gray item listed for a fortune (gold changing hands) is left out of the list
+    local junkEntry
+    for _, a in ipairs(M.auctions) do if a[1] == 12345 then junkEntry = a end end
+    local junkPrice = junkEntry[2]
+    junkEntry[2] = 3000000
+    local hiddenSword = dealText("Worn Junk Sword")
+    check(hiddenSword == nil and #F.browse.results.data == 0, "a 300g gray sword isn't listed")
+    check(strip(F.browse.state:GetText()):find("1 suspicious hidden", 1, true),
+        "the count says it was hidden: " .. strip(F.browse.state:GetText()))
+    check((F.browse.results.empty:GetText() or ""):find("gold changing hands", 1, true), "and the empty list says why")
+    junkEntry[2] = junkPrice
+    check(dealText("Worn Junk Sword") ~= nil and not strip(F.browse.state:GetText()):find("hidden", 1, true),
+        "at a normal price it's back, with no hidden note")
+
     -- Ctrl+click gear: try it on in the dressing room
     dealText("Cheap Mail Boots")
     local bootsRow

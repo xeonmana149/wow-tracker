@@ -468,7 +468,7 @@ function A.Search(text, category)
     BUY.query = text or ""
     BUY.category = category
     BUY.mode, BUY.item, BUY.deals = "list", nil, nil
-    BUY.results, BUY.seen = {}, {}
+    BUY.results, BUY.seen, BUY.oddHidden = {}, {}, 0
     BUY.dirty = true
     BUY.searching = true
     BUY.message = nil
@@ -530,7 +530,7 @@ local function onBrowse(added)
     if added then
         addResults(added)
     else
-        BUY.results, BUY.seen = {}, {}
+        BUY.results, BUY.seen, BUY.oddHidden = {}, {}, 0
         BUY.dirty = true
         addResults(ns.try(AH.GetBrowseResults))
     end
@@ -557,7 +557,7 @@ end)
 function A.ShowDeals()
     BUY.mode, BUY.item, BUY.category = "list", nil, "deals"
     BUY.deals = true
-    BUY.results = {}
+    BUY.results, BUY.oddHidden = {}, 0
     BUY.dirty = true
     BUY.message = nil
     for _, f in ipairs(ns.VendorFlips()) do
@@ -1531,37 +1531,50 @@ local function refreshBrowse()
     p.back:SetShown(inItem and true or false)
     local where = type(BUY.category) == "table" and BUY.category.name
         and (" in " .. ns.StripCodes(BUY.category.name):gsub("^%s+", "")) or ""
-    if BUY.searching then
-        p.state:SetText("Searching" .. where .. "... " .. #BUY.results .. " found")
-    elseif inItem then
-        p.state:SetText("")
-    else
-        p.state:SetText(#BUY.results > 0 and (plural(#BUY.results, "result") .. where) or "")
+    -- Gray and white things listed for a fortune are gold changing hands
+    -- (see ns.Suspicious): nobody should buy them, so they're left out of
+    -- the list, and the count above it says how many were.
+    local function stateText()
+        local shown = #BUY.results - (BUY.oddHidden or 0)
+        local hidden = (BUY.oddHidden or 0) > 0 and (GREY .. "(" .. BUY.oddHidden .. " suspicious hidden)|r") or ""
+        if BUY.searching then
+            return "Searching" .. where .. "... " .. shown .. " found  " .. hidden
+        end
+        local text = shown > 0 and (plural(shown, "result") .. where) or ""
+        return text .. (text ~= "" and hidden ~= "" and "  " or "") .. hidden
     end
+    p.state:SetText(inItem and "" or stateText())
 
     if not inItem then
-        p.results:SetEmpty(BUY.searching and "Searching..."
-            or (BUY.query ~= "" or BUY.category) and "Nothing found."
-            or "Search by name, pick a category, or try Deals for the bargains from your last scan.")
+        local function emptyText()
+            if BUY.searching then
+                return "Searching..."
+            elseif (BUY.oddHidden or 0) > 0 then
+                return plural(BUY.oddHidden, "item") .. " found, all priced like gold changing hands between accounts"
+                    .. " (a gray or white item listed for many times what it's worth). Hidden - don't buy them."
+            elseif BUY.query ~= "" or BUY.category then
+                return "Nothing found."
+            end
+            return "Search by name, pick a category, or try Deals for the bargains from your last scan."
+        end
+        p.results:SetEmpty(emptyText())
         if not BUY.dirty then
             p.results:Render()
             return
         end
         BUY.dirty = false
         local rows = {}
-        for i, r in ipairs(BUY.results) do
+        local hidden = 0
+        local function addRow(r)
+            local i = #rows + 1
             local info = r.key and keyInfo(r.key)
             local name = (info and info.itemName) or ns.ItemName(r.id)
             local usual = usualText(r.id)
             local vs, pct = versus(r.price, usual)
             local vendor = ns.VendorSell(r.id)
             local hint
-            local odd = r.price and ns.Suspicious(r.id, r.price)
-            local doubt = not odd and ns.PriceDoubt(r.id)
-            if odd then
-                vs = SUSPICIOUS
-                hint = odd
-            elseif vendor and r.price and vendor > r.price and verifiedBuyout(r, info) then
+            local doubt = ns.PriceDoubt(r.id)
+            if vendor and r.price and vendor > r.price and verifiedBuyout(r, info) then
                 vs = "|cff40e060Vendor pays " .. ns.StripCodes(ns.Money(vendor)) .. "|r"
                 hint = "A vendor pays " .. ns.StripCodes(ns.Money(vendor)) .. " each, more than the "
                     .. ns.StripCodes(ns.Money(r.price)) .. " buyout. Buy it and sell it to any vendor."
@@ -1597,6 +1610,16 @@ local function refreshBrowse()
                 hint = (hint and (hint .. "\n") or "") .. "Click to see every listing and buy.",
             }
         end
+        for _, r in ipairs(BUY.results) do
+            if r.price and ns.Suspicious(r.id, r.price) then
+                hidden = hidden + 1
+            else
+                addRow(r)
+            end
+        end
+        BUY.oddHidden = hidden
+        p.state:SetText(stateText())
+        p.results:SetEmpty(emptyText())
         p.results:SetData(rows, true)
         return
     end

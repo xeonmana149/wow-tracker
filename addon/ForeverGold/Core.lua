@@ -18,7 +18,7 @@ local ADDON, ns = ...
 _G.ForeverGold = ns
 
 ns.TITLE = "Forever Gold"
-ns.VERSION = "1.9.4"
+ns.VERSION = "1.9.5"
 -- The auction house keeps 5% of every sale.
 ns.AH_CUT = 0.05
 
