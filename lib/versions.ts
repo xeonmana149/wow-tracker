@@ -9,7 +9,7 @@
 // treated as "different, so out of date" by whoever's checking.
 export const LATEST_VERSIONS = {
   addon: "1.9.17",
-  tray: "2.2.34",
+  tray: "2.2.35",
   // The Forever Gold gold-making addon. The tray app updates copies that
   // are already installed when this changes (scripts/release.mjs sets it).
   foreverGold: "1.9.4",
