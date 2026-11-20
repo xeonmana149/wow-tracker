@@ -51,6 +51,9 @@ const track = (id, dur, title) =>
 const elapse = (ms) =>
   db.query("update public.radio_station_state set started_at = started_at - make_interval(secs => $1::float8 / 1000)", [ms]);
 const sid = (await db.query("select id from public.radio_stations where slug = $1", [S])).rows[0].id;
+// Most tests check the playlist's order, so they run with shuffle off; the
+// shuffle tests at the end turn it on.
+await db.query("update public.radio_stations set shuffle = false where slug = $1", [S]);
 
 await t("empty station is idle", async () => {
   const s = await state();
@@ -340,6 +343,94 @@ await t("YouTube songs are allowed; malformed ids aren't", async () => {
   assert.equal(bad.status, 400);
   const sp = await rpc("radio_upsert_track", { p_provider: "spotify", p_provider_id: "4cOdK2wGLETKBW3PvgPWqT", p_title: "x", p_artist: null, p_duration: null, p_permalink: null, p_artwork: null });
   assert.equal(sp.status, 400);
+});
+
+await t("import mixes SoundCloud and YouTube songs", async () => {
+  const r = await call("radio_import_tracks", {
+    p_slug: S,
+    p_user: alice,
+    p_tracks: [
+      { provider: "soundcloud", id: "9101", title: "SC song", artist: "A", durationMs: 30000, permalink: null, artwork: null },
+      { provider: "youtube", id: "dQw4w9WgXcQ", title: "YT song", artist: "B", durationMs: null, permalink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", artwork: null },
+    ],
+    p_replace: true,
+  });
+  assert.equal(r.imported, 2);
+  const cat = await call("radio_catalog", { p_slug: S, p_user: alice });
+  assert.deepEqual(cat.map((x) => x.provider).sort(), ["soundcloud", "youtube"]);
+});
+
+await t("only hosts/moderators can switch shuffle", () =>
+  expectCode("forbidden", call("radio_moderate", { p_slug: S, p_user: bob, p_action: "set_shuffle", p_args: { shuffle: true } })));
+
+await t("shuffle: every song once per round, never the same song twice in a row", async () => {
+  // A clean ten-song playlist, played by a station with requests out of the way.
+  await db.query("update public.radio_queue set status = 'removed' where status in ('pending', 'needs_approval')");
+  const ids = [];
+  for (let i = 0; i < 10; i++) ids.push(String(9200 + i));
+  await call("radio_import_tracks", {
+    p_slug: S,
+    p_user: alice,
+    p_tracks: ids.map((id) => ({ provider: "soundcloud", id, title: "S" + id, artist: "A", durationMs: 20000, permalink: null, artwork: null })),
+    p_replace: true,
+  });
+  const s0 = await call("radio_moderate", { p_slug: S, p_user: alice, p_action: "set_shuffle", p_args: { shuffle: true } });
+  assert.equal(s0.station.shuffle, true);
+  const played = [];
+  let last = null;
+  for (let i = 0; i < 30; i++) {
+    await call("radio_moderate", { p_slug: S, p_user: alice, p_action: "advance", p_args: {} });
+    const s = await state();
+    const title = s.now.track.title;
+    assert.notEqual(title, last, "same song twice in a row");
+    last = title;
+    played.push(title);
+  }
+  // Rounds line up with the playlist after the first advance landed somewhere in round one,
+  // so check every window of 10 in a row that starts at a round boundary: find one by
+  // looking for 10 distinct songs in a row anywhere.
+  let fullRound = false;
+  for (let i = 0; i + 10 <= played.length; i++) if (new Set(played.slice(i, i + 10)).size === 10) fullRound = true;
+  assert.ok(fullRound, "a full round of 10 different songs");
+  const orders = [];
+  for (let r = 0; r < 3; r++) orders.push(played.slice(r * 10, r * 10 + 10).join(","));
+  assert.ok(new Set(orders).size > 1, "order changes between rounds");
+  const counts = {};
+  for (const p of played) counts[p] = (counts[p] || 0) + 1;
+  assert.ok(Object.values(counts).every((c) => c >= 2 && c <= 4), "each song plays about as often: " + JSON.stringify(counts));
+});
+
+await t("songs added while shuffled mix into what's still to come", async () => {
+  const r = await call("radio_import_tracks", {
+    p_slug: S,
+    p_user: alice,
+    p_tracks: [{ provider: "youtube", id: "M7lc1UVf-VE", title: "New one", artist: "YT", durationMs: null, permalink: null, artwork: null }],
+    p_replace: false,
+  });
+  assert.equal(r.imported, 1);
+  const s = await state();
+  const cp = (await db.query("select curated_position from public.radio_station_state where station_id = $1", [sid])).rows[0].curated_position;
+  const pos = (await db.query(
+    "select t.position from public.radio_station_tracks t join public.radio_tracks k on k.id = t.track_id where t.station_id = $1 and k.provider_id = 'M7lc1UVf-VE'",
+    [sid]
+  )).rows[0].position;
+  assert.ok(pos > cp, "the new song is still to come this round");
+  const dupes = await db.query("select position, count(*) from public.radio_station_tracks where station_id = $1 and active group by position having count(*) > 1", [sid]);
+  assert.equal(dupes.rows.length, 0, "no two songs share a place");
+  assert.equal(s.catalogSize, 11);
+});
+
+await t("shuffle off plays in the order added", async () => {
+  await call("radio_moderate", { p_slug: S, p_user: alice, p_action: "set_shuffle", p_args: { shuffle: false } });
+  const tracks = ["9301", "9302", "9303"].map((id) => ({ provider: "soundcloud", id, title: "O" + id, artist: "A", durationMs: 20000, permalink: null, artwork: null }));
+  await call("radio_import_tracks", { p_slug: S, p_user: alice, p_tracks: tracks, p_replace: true });
+  await db.query("update public.radio_station_state set curated_position = -1 where station_id = $1", [sid]);
+  const seen = [];
+  for (let i = 0; i < 4; i++) {
+    await call("radio_moderate", { p_slug: S, p_user: alice, p_action: "advance", p_args: {} });
+    seen.push((await state()).now.track.title);
+  }
+  assert.deepEqual(seen, ["O9301", "O9302", "O9303", "O9301"]);
 });
 
 const sha = (s) => crypto.createHash("sha256").update(s).digest("hex");

@@ -1,6 +1,6 @@
 import { fail, handle, ok, readJson, requireCaller, rpc, SLUG } from "../../../../../../lib/radio/server";
 import { isArtworkUrl, isSoundCloudPage, lookUpTrack, normalizeSoundCloudUrl } from "../../../../../../lib/radio/soundcloud";
-import { lookUpYouTube, parseYouTubeUrl } from "../../../../../../lib/radio/youtube";
+import { lookUpYouTube, parseYouTubeUrl, youTubeWatchUrl } from "../../../../../../lib/radio/youtube";
 
 // Azeroth Radio: things a signed-in listener (or a station's host and
 // moderators) can do. The SQL functions enforce who may do what, the
@@ -17,7 +17,10 @@ import { lookUpYouTube, parseYouTubeUrl } from "../../../../../../lib/radio/yout
 //   POST duration  { instanceId, durationMs }      player-reported song length
 //   POST report    { instanceId, kind, detail }    "it doesn't play for me"
 //   POST moderate  { action, args }                host / moderator tools
-//   POST import    { tracks, replace }             host / moderator: set the playlist
+//   POST add       { url }                         host / moderator: add one SoundCloud
+//                                                  or YouTube song to the playlist
+//   POST import    { tracks, replace }             host / moderator: add a whole playlist
+//                                                  (SoundCloud and/or YouTube songs)
 
 type Ctx = { params: Promise<{ slug: string; action: string }> };
 
@@ -27,7 +30,8 @@ const id = (v: unknown, what: string) =>
   typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? v : fail("bad_request", `Missing or bad ${what}.`);
 const bool = (v: unknown, what: string) => (typeof v === "boolean" ? v : fail("bad_request", `Missing ${what}.`));
 const REPORT_KINDS = new Set(["unavailable", "preview", "blocked", "network", "autoplay", "sync", "other"]);
-const MOD_ACTIONS = new Set(["approve", "remove", "advance", "set_mode", "pause_requests", "set_skip", "catalog_remove", "catalog_clear"]);
+const MOD_ACTIONS = new Set(["approve", "remove", "advance", "set_mode", "pause_requests", "set_skip", "set_shuffle", "catalog_remove", "catalog_clear"]);
+const YT_ID = /^[A-Za-z0-9_-]{11}$/;
 
 async function slugOf(params: Ctx["params"]) {
   const { slug, action } = await params;
@@ -77,6 +81,8 @@ export async function POST(req: Request, { params }: Ctx) {
         const args = b.args && typeof b.args === "object" && !Array.isArray(b.args) ? b.args : {};
         return ok(await rpc("radio_moderate", { p_slug: slug, p_user: u, p_action: act, p_args: args }));
       }
+      case "add":
+        return ok(await addSong(slug, u, b));
       case "import":
         return ok(await importTracks(slug, u, b));
       default:
@@ -130,10 +136,15 @@ async function request(slug: string, user: string, b: Record<string, unknown>) {
   if (norm.kind === "playlist") fail("unsupported", "That's a playlist - request one song at a time.");
   // Counts lookups too, so nobody can make us call SoundCloud endlessly.
   await rpc("radio_rate", { p_user: user, p_action: "lookup", p_max: 15, p_window: "10 minutes" });
-  const found = await lookUpTrack(norm.url);
+  const trackId = await soundCloudTrack(norm.url);
+  return rpc("radio_request", { p_slug: slug, p_user: user, p_track: trackId, p_suggestion_url: null });
+}
+
+async function soundCloudTrack(url: string) {
+  const found = await lookUpTrack(url);
   if (!found.ok) fail("unsupported", found.error);
   const t = found.track;
-  const trackId = await rpc<number>("radio_upsert_track", {
+  return rpc<number>("radio_upsert_track", {
     p_provider: "soundcloud",
     p_provider_id: t.providerId,
     p_title: t.title,
@@ -142,32 +153,106 @@ async function request(slug: string, user: string, b: Record<string, unknown>) {
     p_permalink: t.permalink,
     p_artwork: t.artwork,
   });
-  return rpc("radio_request", { p_slug: slug, p_user: user, p_track: trackId, p_suggestion_url: null });
 }
 
-// The host's desktop app reads the playlist through SoundCloud's own player
-// and sends what it says about each song. Only ids, titles and links - never
-// audio.
+async function youTubeTrack(id: string) {
+  const found = await lookUpYouTube(id);
+  if (!found.ok) fail("unsupported", found.error);
+  const t = found.track;
+  return rpc<number>("radio_upsert_track", {
+    p_provider: "youtube",
+    p_provider_id: t.providerId,
+    p_title: t.title,
+    p_artist: t.artist,
+    p_duration: null,
+    p_permalink: t.permalink,
+    p_artwork: t.artwork,
+  });
+}
+
+// Host / moderator: add one song by its link to the station's own playlist.
+// (Whole playlists come through "import", read by the app's player.)
+async function addSong(slug: string, user: string, b: Record<string, unknown>) {
+  const raw = typeof b.url === "string" ? b.url.trim() : "";
+  if (!raw) fail("bad_request", "Paste a SoundCloud or YouTube link.");
+  if (raw.length > 2000) fail("unsupported", "That's too long to be a song link.");
+  // Checks the caller may manage this station before calling anyone else.
+  const me = await rpc<{ stations: { slug: string; role: string }[] }>("radio_me", { p_user: user });
+  if (!me.stations.some((s) => s.slug === slug)) fail("forbidden", "Only this station's host and moderators can do that.");
+  await rpc("radio_rate", { p_user: user, p_action: "lookup", p_max: 30, p_window: "10 minutes" });
+
+  let trackId: number;
+  const yt = parseYouTubeUrl(raw);
+  if (yt) {
+    if (!yt.ok) fail("unsupported", yt.error.replace("request one song at a time", "the app reads playlists itself"));
+    trackId = await youTubeTrack(yt.id);
+  } else {
+    const norm = normalizeSoundCloudUrl(raw);
+    if (!norm.ok) fail("unsupported", norm.other ? "Only SoundCloud and YouTube songs can play on a station." : norm.error);
+    if (norm.kind === "playlist") fail("unsupported", "That's a playlist - the app reads playlists itself.");
+    trackId = await soundCloudTrack(norm.url);
+  }
+  return rpc("radio_moderate", { p_slug: slug, p_user: user, p_action: "catalog_add", p_args: { trackIds: [trackId] } });
+}
+
+// A host's desktop app reads a playlist through SoundCloud's or YouTube's own
+// player and sends what it says about each song. Only ids, titles and links -
+// never audio. YouTube's player only gives video ids, so their titles come
+// from YouTube's public oEmbed, which also leaves out videos that can't be
+// played outside YouTube.
 async function importTracks(slug: string, user: string, b: Record<string, unknown>) {
   if (!Array.isArray(b.tracks) || b.tracks.length === 0) fail("bad_request", "No songs to import.");
   if (b.tracks.length > 500) fail("bad_request", "Import up to 500 songs at a time.");
   const seen = new Set<string>();
-  const tracks = [];
+  type Row = { provider: string; id: string; title: string | null; artist: string | null; durationMs: number | null; permalink: string | null; artwork: string | null };
+  const tracks: Row[] = [];
   for (const raw of b.tracks as Record<string, unknown>[]) {
     if (!raw || typeof raw !== "object") continue;
+    const provider = raw.provider === "youtube" ? "youtube" : "soundcloud";
     const pid = String(raw.id ?? "");
-    if (!/^\d{1,20}$/.test(pid) || seen.has(pid)) continue;
-    seen.add(pid);
+    if (provider === "soundcloud" ? !/^\d{1,20}$/.test(pid) : !YT_ID.test(pid)) continue;
+    if (seen.has(provider + ":" + pid)) continue;
+    seen.add(provider + ":" + pid);
     const dur = Number(raw.durationMs);
+    const title = String(raw.title ?? "").trim().slice(0, 300) || null;
     tracks.push({
+      provider,
       id: pid,
-      title: String(raw.title ?? "").trim().slice(0, 300) || "Untitled",
+      title,
       artist: raw.artist ? String(raw.artist).trim().slice(0, 200) : null,
-      durationMs: Number.isFinite(dur) && dur >= 1000 && dur <= 10_800_000 ? Math.round(dur) : null,
-      permalink: isSoundCloudPage(raw.permalink) ? raw.permalink : null,
-      artwork: isArtworkUrl(raw.artwork) ? raw.artwork : null,
+      durationMs: provider === "soundcloud" && Number.isFinite(dur) && dur >= 1000 && dur <= 10_800_000 ? Math.round(dur) : null,
+      permalink: provider === "soundcloud" ? (isSoundCloudPage(raw.permalink) ? raw.permalink : null) : youTubeWatchUrl(pid),
+      artwork: provider === "soundcloud" ? (isArtworkUrl(raw.artwork) ? raw.artwork : null) : null,
     });
   }
-  if (!tracks.length) fail("bad_request", "None of those songs had a SoundCloud id.");
-  return rpc("radio_import_tracks", { p_slug: slug, p_user: user, p_tracks: tracks, p_replace: b.replace === true });
+  if (!tracks.length) fail("bad_request", "None of those were SoundCloud or YouTube songs.");
+
+  // Make sure the caller manages this station before asking YouTube about anything.
+  const me = await rpc<{ stations: { slug: string; role: string }[] }>("radio_me", { p_user: user });
+  if (!me.stations.some((s) => s.slug === slug)) fail("forbidden", "Only this station's host and moderators can do that.");
+
+  const yt = tracks.filter((t) => t.provider === "youtube");
+  const skipped: string[] = [];
+  if (yt.length) {
+    if (yt.length > 200) fail("bad_request", "Add up to 200 YouTube videos at a time.");
+    let next = 0;
+    const worker = async () => {
+      while (next < yt.length) {
+        const t = yt[next++];
+        const found = await lookUpYouTube(t.id);
+        if (!found.ok) {
+          skipped.push(t.id);
+          continue;
+        }
+        t.title = found.track.title;
+        t.artist = found.track.artist;
+        t.artwork = found.track.artwork;
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(8, yt.length) }, worker));
+  }
+  const keep = tracks.filter((t) => !(t.provider === "youtube" && skipped.includes(t.id))).map((t) => ({ ...t, title: t.title || "Untitled" }));
+  if (!keep.length) fail("unsupported", "None of those videos can be played outside YouTube.");
+  const res = await rpc<Record<string, unknown>>("radio_import_tracks", { p_slug: slug, p_user: user, p_tracks: keep, p_replace: b.replace === true });
+  return { ...res, skipped: skipped.length };
 }

@@ -33,6 +33,9 @@ const state = (as) => api("GET", `/api/radio/stations/${S}`, { as }).then((r) =>
 const sql = (q, params) =>
   fetch(DB + "/dev/sql", { method: "POST", body: JSON.stringify({ sql: q, params }) }).then((r) => r.json());
 
+// The early tests check the playlist's order, so they run with shuffle off.
+await sql("update public.radio_stations set shuffle = false");
+
 await t("station list and state need no sign-in, are never cached", async () => {
   const r = await api("GET", "/api/radio/stations");
   assert.equal(r.status, 200);
@@ -197,6 +200,55 @@ await t("guessing codes is rate limited", async () => {
     if (r.status === 429) limited = true;
   }
   assert.ok(limited);
+});
+
+// ---- The host's playlist: songs by link, YouTube playlists, shuffle ----
+await t("only the host can add songs by link", async () => {
+  const r = await post("add", "bob", { url: "https://soundcloud.com/forss/flickermood" });
+  assert.equal(r.status, 403);
+});
+await t("host adds a real SoundCloud song and a real YouTube video by link", async () => {
+  const before = (await api("GET", `/api/radio/stations/${S}/catalog`)).body.tracks.length;
+  const a = await post("add", "alice", { url: "https://soundcloud.com/forss/flickermood" });
+  assert.equal(a.status, 200, JSON.stringify(a.body));
+  const b = await post("add", "alice", { url: "https://www.youtube.com/watch?v=M7lc1UVf-VE" });
+  assert.equal(b.status, 200, JSON.stringify(b.body));
+  const cat = (await api("GET", `/api/radio/stations/${S}/catalog`)).body.tracks;
+  assert.equal(cat.length, before + 2);
+  assert.ok(cat.some((x) => x.provider === "youtube" && x.providerId === "M7lc1UVf-VE" && x.title && x.title !== "Untitled"));
+});
+await t("adding a playlist link or another service by link is refused with a reason", async () => {
+  for (const url of ["https://soundcloud.com/forss/sets/soulhack", "https://www.youtube.com/playlist?list=PL123", "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT"]) {
+    const r = await post("add", "alice", { url });
+    assert.equal(r.status, 400, url);
+    assert.ok(r.body.error.length > 10);
+  }
+});
+await t("a YouTube playlist import gets titles from YouTube and leaves out unplayable videos", async () => {
+  const r = await post("import", "alice", {
+    replace: false,
+    tracks: [
+      { provider: "youtube", id: "dQw4w9WgXcQ" },
+      { provider: "youtube", id: "aaaaaaaaaaa" }, // doesn't exist
+      { provider: "youtube", id: "bad" },
+      { provider: "soundcloud", id: "1004", title: "Song D", durationMs: 60000 },
+    ],
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.imported, 2);
+  assert.equal(r.body.skipped, 1);
+  const cat = (await api("GET", `/api/radio/stations/${S}/catalog`)).body.tracks;
+  const rick = cat.find((x) => x.providerId === "dQw4w9WgXcQ");
+  assert.ok(rick && rick.title && rick.title !== "Untitled", JSON.stringify(rick));
+  assert.ok(!cat.some((x) => x.providerId === "aaaaaaaaaaa"));
+});
+await t("the host switches shuffle on and off", async () => {
+  assert.equal((await post("moderate", "bob", { action: "set_shuffle", args: { shuffle: true } })).status, 403);
+  const on = await post("moderate", "alice", { action: "set_shuffle", args: { shuffle: true } });
+  assert.equal(on.status, 200);
+  assert.equal(on.body.station.shuffle, true);
+  const off = await post("moderate", "alice", { action: "set_shuffle", args: { shuffle: false } });
+  assert.equal(off.body.station.shuffle, false);
 });
 
 console.log(`\nradio API tests: ${passed} passed, ${failures.length} failed`);

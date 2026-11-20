@@ -32,6 +32,9 @@ create table if not exists public.radio_stations (
   created_by uuid,
   created_at timestamptz not null default now()
 );
+-- Shuffle (added 2026-11-20): the station's own playlist plays in a random
+-- order, every song once before any repeats, reshuffled each time round.
+alter table public.radio_stations add column if not exists shuffle boolean not null default true;
 
 create table if not exists public.radio_station_roles (
   station_id uuid not null references public.radio_stations(id) on delete cascade,
@@ -252,6 +255,36 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- Shuffle
+-- ---------------------------------------------------------------------------
+-- The songs still to come this time round (after curated_position), in a new
+-- random order. Songs already played this round keep their places.
+create or replace function public.radio_shuffle_rest(p_station uuid) returns void
+language plpgsql as $$
+declare cp integer;
+begin
+  select coalesce(curated_position, -1) into cp from public.radio_station_state where station_id = p_station;
+  cp := coalesce(cp, -1);
+  update public.radio_station_tracks t set position = cp + r.rn
+    from (select x.track_id, (row_number() over (order by random()))::integer as rn
+          from public.radio_station_tracks x
+          where x.station_id = p_station and x.active and x.position > cp) r
+    where t.station_id = p_station and t.track_id = r.track_id;
+end $$;
+
+-- A new round: every song in a new random order, with the one that just
+-- played last so it never plays twice in a row.
+create or replace function public.radio_shuffle_all(p_station uuid, p_last bigint) returns void
+language plpgsql as $$
+begin
+  update public.radio_station_tracks t set position = r.rn - 1
+    from (select x.track_id, (row_number() over (order by (x.track_id is not distinct from p_last), random()))::integer as rn
+          from public.radio_station_tracks x
+          where x.station_id = p_station and x.active) r
+    where t.station_id = p_station and t.track_id = r.track_id;
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- The timeline
 -- ---------------------------------------------------------------------------
 -- What plays next: in request mode the most-voted waiting request (earliest
@@ -279,6 +312,8 @@ begin
       and (n = 1 or t.track_id is distinct from p_current_track)
     order by t.position limit 1;
   if track_id is null then
+    -- End of the playlist: round again (reshuffled first when shuffle is on).
+    if st.shuffle and n > 1 then perform public.radio_shuffle_all(p_station, p_current_track); end if;
     select t.track_id, t.position into track_id, curated_position from public.radio_station_tracks t
       where t.station_id = p_station and t.active and (n = 1 or t.track_id is distinct from p_current_track)
       order by t.position limit 1;
@@ -401,7 +436,8 @@ begin
 
   return jsonb_build_object(
     'station', jsonb_build_object('id', st.id, 'slug', st.slug, 'name', st.name, 'description', st.description,
-      'mode', st.mode, 'requestsPaused', st.requests_paused, 'skipMinVotes', st.skip_min_votes, 'skipRatio', st.skip_ratio),
+      'mode', st.mode, 'requestsPaused', st.requests_paused, 'skipMinVotes', st.skip_min_votes, 'skipRatio', st.skip_ratio,
+      'shuffle', st.shuffle),
     'serverNow', floor(extract(epoch from clock_timestamp()) * 1000),
     'now', jsonb_build_object(
       'instanceId', s.instance_id,
@@ -613,6 +649,9 @@ begin
         skip_min_votes = least(100, greatest(1, coalesce((p_args->>'minVotes')::int, skip_min_votes))),
         skip_ratio = least(1, greatest(0.05, coalesce((p_args->>'ratio')::numeric, skip_ratio)))
         where id = sid;
+    when 'set_shuffle' then
+      update public.radio_stations set shuffle = coalesce((p_args->>'shuffle')::boolean, true) where id = sid;
+      if (select shuffle from public.radio_stations where id = sid) then perform public.radio_shuffle_rest(sid); end if;
     when 'catalog_add' then
       -- p_args.trackIds: radio_tracks ids the API has just upserted, in order.
       select coalesce(max(position), -1) into pos from public.radio_station_tracks where station_id = sid;
@@ -622,6 +661,8 @@ begin
         insert into public.radio_station_tracks (station_id, track_id, position, active) values (sid, tid, pos, true)
           on conflict (station_id, track_id) do update set active = true, position = excluded.position;
       end loop;
+      -- Shuffled stations mix new songs in among the ones still to come.
+      if (select shuffle from public.radio_stations where id = sid) then perform public.radio_shuffle_rest(sid); end if;
     when 'catalog_remove' then
       update public.radio_station_tracks set active = false where station_id = sid and track_id = (p_args->>'trackId')::bigint;
     when 'catalog_clear' then
@@ -664,7 +705,9 @@ end $$;
 
 -- A host or moderator imports songs into the station's own playlist, in
 -- order (from the official player's track list; the API has checked each
--- entry's fields). p_replace switches off everything not in this import.
+-- entry's fields). Each entry is a SoundCloud track or a YouTube video
+-- ("provider", default soundcloud). p_replace switches off everything not in
+-- this import.
 create or replace function public.radio_import_tracks(p_slug text, p_user uuid, p_tracks jsonb, p_replace boolean) returns jsonb
 language plpgsql as $$
 declare sid uuid; t jsonb; tid bigint; ids bigint[] := '{}'; n integer := 0;
@@ -676,7 +719,7 @@ begin
     perform public.radio_fail('bad_request', 'Import up to 500 songs at a time.');
   end if;
   for t in select * from jsonb_array_elements(p_tracks) loop
-    tid := public.radio_upsert_track('soundcloud', t->>'id', t->>'title', t->>'artist',
+    tid := public.radio_upsert_track(coalesce(nullif(t->>'provider', ''), 'soundcloud'), t->>'id', t->>'title', t->>'artist',
       nullif(t->>'durationMs', '')::integer, t->>'permalink', t->>'artwork');
     ids := ids || tid;
     n := n + 1;
