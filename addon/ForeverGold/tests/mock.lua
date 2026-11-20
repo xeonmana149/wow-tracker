@@ -261,6 +261,7 @@ M.items = {
     [1705] = { "Lesser Moonstone", 2, 150, 3 }, [2842] = { "Silver Bar", 2, 100, 7 }, [3470] = { "Rough Grinding Stone", 1, 5, 7 },
     [12345] = { "Worn Junk Sword", 0, 900, 2 }, [6358] = { "Oily Blackmouth", 1, 4, 7 },
     [12346] = { "Cheap Mail Boots", 1, 900, 4 }, [12347] = { "Bid Only Cloak", 1, 2000, 4 },
+    [12348] = { "Large Axe", 1, 121, 2 },
 }
 M.loaded = {}
 local function info(id)
@@ -752,7 +753,8 @@ function CloseMail() M.fire("MAIL_CLOSED") end
 
 -- Item subclasses (trade goods: 5 cloth, 6 leather, 7 metal & stone, 9 herb)
 for id, sub in pairs({ [2770] = 7, [2840] = 7, [2771] = 7, [3576] = 7, [2841] = 7, [2835] = 7, [2836] = 7, [2775] = 7,
-    [2842] = 7, [2589] = 5, [765] = 9 }) do
+    [2842] = 7, [2589] = 5, [765] = 9,
+    [12346] = 3, [12347] = 1, [12348] = 1, [2853] = 3 }) do -- mail boots, cloth cloak, axe, mail bracers
     M.items[id][6] = sub
 end
 M.items[2996] = { "Bolt of Linen Cloth", 1, 40, 7, 0, 5 }

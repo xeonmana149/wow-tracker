@@ -98,9 +98,11 @@ export function addressKey(req: Request) {
 
 export const SLUG = /^[a-z0-9][a-z0-9-]{0,47}$/;
 
-export async function readJson(req: Request): Promise<Record<string, unknown>> {
+// An import of 500 songs with long titles and links can pass 200 KB, so the
+// import route allows more.
+export async function readJson(req: Request, maxChars = 200_000): Promise<Record<string, unknown>> {
   const text = await req.text();
-  if (text.length > 200_000) fail("bad_request", "That's too much at once.");
+  if (text.length > maxChars) fail("bad_request", "That's too much at once.");
   if (!text) return {};
   try {
     const v = JSON.parse(text);

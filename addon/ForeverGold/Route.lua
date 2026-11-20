@@ -2515,6 +2515,40 @@ local function drawSoft()
 end
 beam.DrawSoft = drawSoft
 
+-- Each part runs on its own (2026-11-19, a friend's beams all went off at
+-- once and the error was gone by the time anyone could look). One that
+-- fails is saved with the line it failed on (see ns.Err), hidden, and tried
+-- again half a minute later; the others carry on. One that keeps failing
+-- stays off until /reload.
+local RETRY_AFTER, GIVE_UP_AFTER = 30, 5
+local PARTS = {
+    { name = "loot-beam (nearest spot)", run = updateSpot, hide = function() end, slow = true },
+    { name = "loot-beam (on the object)", run = drawSoft, hide = hideSoft },
+    { name = "loot-beam (on the marker)", run = drawBeam, hide = hideBeam },
+}
+beam.parts = PARTS
+
+local function stackOf(err)
+    local trace = (debugstack and debugstack(2, 12, 0)) or (debug and debug.traceback and debug.traceback("", 2)) or ""
+    return tostring(err) .. "\n" .. trace
+end
+
+local function runPart(p, now)
+    if p.off and now < p.off then
+        return
+    end
+    local ok, err = xpcall(p.run, stackOf)
+    if ok then
+        return
+    end
+    local msg, stack = err:match("^(.-)\n(.*)$")
+    p.fails = (p.fails or 0) + 1
+    p.off = now + (p.fails >= GIVE_UP_AFTER and math.huge or RETRY_AFTER)
+    ns.Err(p.name, msg or err, stack)
+    pcall(p.hide)
+end
+beam.RunPart = runPart
+
 ns.Listen("READY", function()
     applyCVars(wantSoft())
     local driver = CreateFrame("Frame", nil, UIParent)
@@ -2527,26 +2561,19 @@ ns.Listen("READY", function()
             return
         end
         since = since + elapsed
-        local ok, err = true, nil
-        if since >= 1 then
+        local now = GetTime()
+        local second = since >= 1
+        if second then
             since = 0
             -- The option was switched: set the game's settings, or put them back.
             if wantSoft() ~= (ns.db.beamCVars ~= nil) then
                 applyCVars(wantSoft())
             end
-            ok, err = pcall(updateSpot)
         end
-        if ok then
-            ok, err = pcall(drawSoft)
-        end
-        if ok then
-            ok, err = pcall(drawBeam)
-        end
-        if not ok then
-            ns.Err("loot-beam", err)
-            hideBeam()
-            hideSoft()
-            driver:SetScript("OnUpdate", nil)
+        for _, p in ipairs(PARTS) do
+            if second or not p.slow then
+                runPart(p, now)
+            end
         end
     end)
     beam.driver = driver

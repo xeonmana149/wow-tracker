@@ -137,7 +137,36 @@ do
     local why = ns.Suspicious(JUNK, 900 * 50)
     check(why and why:find("50x") and why:find("gold"), "a gray item at 50x what a vendor pays is suspicious: " .. tostring(why))
     check(not ns.Suspicious(JUNK, 1500), "a gray item a bit over vendor price isn't")
-    check(not ns.Suspicious(BOOTS, 900 * 50), "only gray items are judged against the vendor price")
+    check(not ns.Suspicious(BOOTS, 900 * 15), "white gear a fair bit over vendor price isn't")
+    local whyBoots = ns.Suspicious(BOOTS, 900 * 50)
+    check(whyBoots and whyBoots:find("Plain white gear at 50x", 1, true), "white gear at 50x what a vendor pays is: " .. tostring(whyBoots))
+    check(not ns.Suspicious(2589, 13 * 200), "trade goods aren't judged against the vendor price")
+    -- A Large Axe any vendor sells for 4s 84c, "selling" for 12g 74s
+    local AXE = 12348
+    ns.Item(AXE)
+    ns.db.vendor[AXE] = { p = 484, t = time(), npc = "Oliver Dwor", zone = "Tirisfal Glades" }
+    local whyAxe = ns.Suspicious(AXE, 127400)
+    check(whyAxe and whyAxe:find("Any vendor sells this for 4s 84c", 1, true), "a vendor's axe at 263x the shop price is: " .. tostring(whyAxe))
+    check(not ns.Suspicious(AXE, 484 * 6), "a few times the shop price isn't (people pay to skip the walk)")
+    -- The rest of that list: 23c bracers at 40s, a 2s 84c cudgel at 31s
+    ns.db.vendor[2853] = { p = 23, t = time() }
+    check(ns.Suspicious(2853, 4000), "23c bracers at 40s are too")
+    check(not ns.Suspicious(2853, 230), "but not at 2s 30c")
+    ns.db.vendor[2853] = nil
+    local P0 = ns.R().prices
+    local savedAxe = P0[AXE]
+    P0[AXE] = { p = 127400, q = 1, t = time(), b = true }
+    ns.Fire("VENDOR_UPDATED")
+    check(ns.ResaleValue(AXE) == nil, "and it's worth nothing as a resale price")
+    local axeDeal = false
+    for _, v in ipairs(ns.VendorDeals()) do if v.id == AXE then axeDeal = true end end
+    check(not axeDeal, "so 'buy from a vendor, sell at auction' doesn't offer it")
+    P0[AXE] = { p = 1500, q = 1, t = time(), b = true }
+    ns.Fire("VENDOR_UPDATED")
+    check(ns.ResaleValue(AXE), "a sane listing for it still counts")
+    P0[AXE] = savedAxe
+    ns.db.vendor[AXE] = nil
+    ns.Fire("VENDOR_UPDATED")
     local P = ns.R().prices
     local savedJunk, savedLinen = P[JUNK], P[LINEN_ID]
     local d = ns.Today()
@@ -910,6 +939,41 @@ do
     ns.db.opts.lootBeam = true
     M.update(0.05)
     check(f:IsShown(), "and back on")
+
+    -- One part failing doesn't take the others down, is saved with where
+    -- it failed, and is tried again later.
+    local soft = B.parts[2]
+    local realRun = soft.run
+    local calls = 0
+    soft.run = function() calls = calls + 1; error("boom") end
+    local errsBefore = #ns.errors
+    M.update(0.05)
+    check(calls == 1 and #ns.errors == errsBefore + 1, "a failing part is caught")
+    local saved = ns.db.errorLog and ns.db.errorLog[1]
+    check(saved and saved.w == "loot-beam (on the object)" and saved.e:find("boom", 1, true) and saved.v == ns.VERSION
+        and saved.e:find(":%d+:") and saved.s and saved.s ~= "", "and saved with the version and where it failed: " .. tostring(saved and saved.e))
+    M.update(0.05)
+    check(f:IsShown(), "the marker's beam keeps going")
+    check(calls == 1, "the failing part waits before trying again")
+    M.advance(31)
+    M.update(0.05)
+    check(calls == 2 and ns.db.errorLog[1].n == 2, "half a minute later it's tried again (same error counted, not repeated)")
+    for _ = 1, 4 do M.advance(31); M.update(0.05) end
+    local stuck = calls
+    M.advance(31); M.update(0.05)
+    check(calls == stuck and stuck == 5, "after 5 failures it stays off until /reload")
+    soft.run, soft.fails, soft.off = realRun, nil, nil
+    M.printed = M.printed or {}
+    local printedBefore = #M.printed
+    SlashCmdList.FOREVERGOLD("debug")
+    local said = {}
+    for i = printedBefore + 1, #M.printed do said[#said + 1] = strip(M.printed[i]) end
+    local joined = table.concat(said, " / ")
+    check(joined:find("saved errors", 1, true) and joined:find("loot-beam (on the object)  (x5): ", 1, true)
+        and joined:find("boom", 1, true), "/gold debug shows the saved error, with how often")
+    -- These were on purpose: not errors for the end-of-run count.
+    for _ = 1, #ns.errors - errsBefore do table.remove(ns.errors, 1) end
+    ns.db.errorLog = nil
 end
 ForeverGoldGuide.skip._scripts.OnClick(ForeverGoldGuide.skip)
 WorldMapFrame.OnMapChanged(WorldMapFrame)

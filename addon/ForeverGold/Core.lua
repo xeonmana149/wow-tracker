@@ -18,7 +18,7 @@ local ADDON, ns = ...
 _G.ForeverGold = ns
 
 ns.TITLE = "Forever Gold"
-ns.VERSION = "1.9.3"
+ns.VERSION = "1.9.4"
 -- The auction house keeps 5% of every sale.
 ns.AH_CUT = 0.05
 
@@ -35,9 +35,26 @@ end
 ns.errors = {}
 local warned = {}
 
-function ns.Err(where, err)
+-- Errors are also kept in the saved file (db.errorLog, the last 10), with
+-- where in the code they happened, so one that turns up on someone else's
+-- PC can be read afterwards: /gold debug shows them after a /reload too.
+local ERROR_LOG_MAX = 10
+function ns.Err(where, err, stack)
     table.insert(ns.errors, 1, tostring(where) .. ": " .. tostring(err))
     ns.errors[21] = nil
+    if ns.db then
+        local log = type(ns.db.errorLog) == "table" and ns.db.errorLog or {}
+        ns.db.errorLog = log
+        local text = tostring(err)
+        local last = log[1]
+        if last and last.w == where and last.e == text then
+            last.n, last.t = (last.n or 1) + 1, time()
+        else
+            table.insert(log, 1, { t = time(), v = ns.VERSION, w = tostring(where), e = text, n = 1,
+                s = type(stack) == "string" and stack:sub(1, 800) or nil })
+            log[ERROR_LOG_MAX + 1] = nil
+        end
+    end
     if not warned[where] then
         warned[where] = true
         ns.Print("|cffff7070a part of the addon hit a problem (" .. tostring(where)
@@ -688,11 +705,27 @@ SlashCmdList["FOREVERGOLD"] = function(msg)
             ns.Print("events this client doesn't have: " .. table.concat(miss, ", "))
         end
         if #ns.errors == 0 then
-            ns.Print("no errors recorded.")
+            ns.Print("no errors this session.")
         else
             ns.Print("most recent errors:")
             for i = 1, math.min(8, #ns.errors) do
                 print("  " .. ns.errors[i])
+            end
+        end
+        local log = type(ns.db.errorLog) == "table" and ns.db.errorLog or {}
+        if #log > 0 then
+            ns.Print("saved errors (newest first, kept after a /reload):")
+            for i = 1, math.min(5, #log) do
+                local e = log[i]
+                print("  " .. date("%d %b %H:%M", e.t or 0) .. "  v" .. tostring(e.v) .. "  " .. tostring(e.w)
+                    .. ((e.n or 1) > 1 and ("  (x" .. e.n .. ")") or "") .. ": " .. tostring(e.e))
+                if e.s then
+                    for line in e.s:gmatch("[^\n]+") do
+                        if line:find("ForeverGold", 1, true) then
+                            print("      " .. line:gsub("^.-AddOns[/\\]", ""))
+                        end
+                    end
+                end
             end
         end
     elseif msg == "reset prices" then

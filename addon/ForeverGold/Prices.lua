@@ -124,9 +124,53 @@ local function plainMoney(c)
     return ns.StripCodes and ns.StripCodes(ns.Money(floor(c + 0.5))) or tostring(floor(c + 0.5))
 end
 
-function ns.Suspicious(id, price)
-    if not id or not price or price <= 0 or not isGray(id) then
+-- The same trick with things anyone can buy from a vendor (2026-11-19, a
+-- 4s 84c Large Axe "selling" for 12g): nobody pays 10x the shop price for
+-- something the shop never runs out of. And with plain white gear, which
+-- is worth what a vendor pays for it.
+local SHOP_TIMES = 10     -- over 10x what a vendor that never runs out charges...
+local SHOP_OVER = 2000    -- ...and at least 20s over it (a 23c bracer "selling" for 40s)
+local WHITE_TIMES = 40    -- white weapons and armour at over 40x what a vendor pays...
+local WHITE_OVER = 2000   -- ...and at least 20s over it
+local CLASS_WEAPON, CLASS_ARMOR, CLASS_RECIPE = 2, 4, 9
+local SUB_FISHING_POLE, SUB_ARMOR_MISC = 20, 0 -- poles, shirts and tabards really do sell above vendor
+
+local function plainGear(it)
+    if not it or it.q ~= 1 then
+        return false
+    end
+    if it.c == CLASS_WEAPON then
+        return it.s ~= SUB_FISHING_POLE
+    end
+    return it.c == CLASS_ARMOR and it.s ~= SUB_ARMOR_MISC
+end
+
+local function oddForVendorItem(id, price)
+    local it = ns.Item(id)
+    if it and it.c == CLASS_RECIPE then
         return nil
+    end
+    local shop = ns.VendorBuy and ns.VendorBuy(id)
+    if shop and shop > 0 and price > shop * SHOP_TIMES and price - shop >= SHOP_OVER then
+        return "Any vendor sells this for " .. plainMoney(shop) .. ", so nobody really pays " .. plainMoney(price)
+            .. " (" .. floor(price / shop + 0.5) .. "x). A price like this is almost always gold being passed"
+            .. " between accounts. Don't buy it, and don't count on selling at it."
+    end
+    local v = ns.VendorSell(id)
+    if plainGear(it) and v and price > v * WHITE_TIMES and price - v >= WHITE_OVER then
+        return "Plain white gear at " .. floor(price / v + 0.5) .. "x what a vendor pays (" .. plainMoney(v)
+            .. "). It's worth about what a vendor gives, so a price like this is almost always gold being"
+            .. " passed between accounts. Don't buy it, and don't count on selling at it."
+    end
+    return nil
+end
+
+function ns.Suspicious(id, price)
+    if not id or not price or price <= 0 then
+        return nil
+    end
+    if not isGray(id) then
+        return oddForVendorItem(id, price)
     end
     local v = ns.VendorSell(id)
     if v and v > 0 then

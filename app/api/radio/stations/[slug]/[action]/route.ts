@@ -47,7 +47,7 @@ export async function POST(req: Request, { params }: Ctx) {
   return handle(async () => {
     const { slug, action } = await slugOf(params);
     const who = await requireCaller(req);
-    const b = await readJson(req);
+    const b = await readJson(req, action === "import" ? 1_000_000 : 200_000);
     const u = who.userId;
     switch (action) {
       case "presence":

@@ -268,6 +268,14 @@ end
 function ns.ResaleValue(id)
     local s, r = ns.SaleSpeed(id)
     local p = ns.AHPrice(id)
+    -- Gold changing hands isn't a price anyone else gets (see ns.Suspicious):
+    -- a nonsense listing is ignored, and so are sales averaging a nonsense price.
+    if p and ns.Suspicious(id, p) then
+        p = nil
+    end
+    if s and r and r.avg > 0 and ns.Suspicious(id, r.avg) then
+        s, r = nil, nil
+    end
     if s and r then
         if r.avg > 0 and s ~= "rarely" then
             -- If someone is already listing it cheaper than it has been

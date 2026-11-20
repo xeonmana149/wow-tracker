@@ -2,7 +2,7 @@
 ## Title: |cffffd100Forever Gold|r
 ## Notes: Plain-English gold making. Scans the auction house and tells you what to craft, farm, sell and flip with your own characters and professions. Type /gold.
 ## Author: Jordan
-## Version: 1.9.3
+## Version: 1.9.4
 ## IconTexture: Interface\AddOns\ForeverGold\Icon
 ## SavedVariables: ForeverGoldDB
 ## AddonCompartmentFunc: ForeverGold_OnAddonCompartmentClick
