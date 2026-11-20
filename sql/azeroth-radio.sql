@@ -47,9 +47,10 @@ create table if not exists public.radio_station_roles (
 -- provider's own player reports. duration_ms is null until known.
 create table if not exists public.radio_tracks (
   id bigint generated always as identity primary key,
-  -- Songs a station can play: SoundCloud tracks and YouTube videos, each
-  -- through its own official player. (Spotify's rules don't allow shared
-  -- listening, so Spotify links only ever become suggestions.)
+  -- Songs a station can play: SoundCloud tracks, through SoundCloud's own
+  -- embedded player. Links to other services (YouTube, Spotify, ...) only
+  -- ever become suggestions. ('youtube' is still allowed by this check only
+  -- so older rows load; radio_upsert_track refuses new ones.)
   provider text not null check (provider in ('soundcloud', 'youtube')),
   provider_id text not null,
   check (case provider when 'soundcloud' then provider_id ~ '^[0-9]{1,20}$'
@@ -618,9 +619,29 @@ end $$;
 -- ---------------------------------------------------------------------------
 -- Host and moderator actions
 -- ---------------------------------------------------------------------------
+-- Adds songs to the end of a station's playlist, in order, skipping any that
+-- are already on it (and repeats within the list). A song that was removed
+-- earlier comes back at the end. Returns how many were added.
+create or replace function public.radio_catalog_add(p_station uuid, p_ids bigint[]) returns integer
+language plpgsql as $$
+declare pos integer; tid bigint; added integer := 0;
+begin
+  select coalesce(max(position), -1) into pos from public.radio_station_tracks where station_id = p_station;
+  foreach tid in array coalesce(p_ids, '{}') loop
+    continue when exists (select 1 from public.radio_station_tracks where station_id = p_station and track_id = tid and active);
+    pos := pos + 1;
+    insert into public.radio_station_tracks (station_id, track_id, position, active) values (p_station, tid, pos, true)
+      on conflict (station_id, track_id) do update set active = true, position = excluded.position;
+    added := added + 1;
+  end loop;
+  -- Shuffled stations mix new songs in among the ones still to come.
+  if added > 0 and (select shuffle from public.radio_stations where id = p_station) then perform public.radio_shuffle_rest(p_station); end if;
+  return added;
+end $$;
+
 create or replace function public.radio_moderate(p_slug text, p_user uuid, p_action text, p_args jsonb) returns jsonb
 language plpgsql as $$
-declare sid uuid; qid bigint; n integer; pos integer; t jsonb; tid bigint;
+declare sid uuid; qid bigint; n integer; pos integer; t jsonb; tid bigint; ids bigint[];
 begin
   sid := public.radio_station_id(p_slug);
   perform public.radio_require_mod(sid, p_user);
@@ -654,15 +675,12 @@ begin
       if (select shuffle from public.radio_stations where id = sid) then perform public.radio_shuffle_rest(sid); end if;
     when 'catalog_add' then
       -- p_args.trackIds: radio_tracks ids the API has just upserted, in order.
-      select coalesce(max(position), -1) into pos from public.radio_station_tracks where station_id = sid;
-      for t in select * from jsonb_array_elements(coalesce(p_args->'trackIds', '[]'::jsonb)) loop
-        tid := (t #>> '{}')::bigint;
-        pos := pos + 1;
-        insert into public.radio_station_tracks (station_id, track_id, position, active) values (sid, tid, pos, true)
-          on conflict (station_id, track_id) do update set active = true, position = excluded.position;
-      end loop;
-      -- Shuffled stations mix new songs in among the ones still to come.
-      if (select shuffle from public.radio_stations where id = sid) then perform public.radio_shuffle_rest(sid); end if;
+      ids := array(select (x #>> '{}')::bigint from jsonb_array_elements(coalesce(p_args->'trackIds', '[]'::jsonb)) x);
+      n := public.radio_catalog_add(sid, ids);
+      if n = 0 and cardinality(ids) > 0 then
+        perform public.radio_fail('duplicate', case when cardinality(ids) = 1 then 'That song is already in the station''s playlist.'
+          else 'Those songs are already in the station''s playlist.' end);
+      end if;
     when 'catalog_remove' then
       update public.radio_station_tracks set active = false where station_id = sid and track_id = (p_args->>'trackId')::bigint;
     when 'catalog_clear' then
@@ -689,6 +707,9 @@ create or replace function public.radio_upsert_track(p_provider text, p_provider
 language plpgsql as $$
 declare tid bigint;
 begin
+  if p_provider is distinct from 'soundcloud' then
+    perform public.radio_fail('unsupported', 'Only SoundCloud songs can play on Azeroth Radio.');
+  end if;
   insert into public.radio_tracks (provider, provider_id, title, artist, duration_ms, permalink_url, artwork_url)
     values (p_provider, p_provider_id, left(p_title, 300), left(p_artist, 200),
       case when p_duration between 1000 and 10800000 then p_duration end, left(p_permalink, 500), left(p_artwork, 500))
@@ -710,7 +731,7 @@ end $$;
 -- this import.
 create or replace function public.radio_import_tracks(p_slug text, p_user uuid, p_tracks jsonb, p_replace boolean) returns jsonb
 language plpgsql as $$
-declare sid uuid; t jsonb; tid bigint; ids bigint[] := '{}'; n integer := 0;
+declare sid uuid; t jsonb; tid bigint; ids bigint[] := '{}'; n integer := 0; added integer;
 begin
   sid := public.radio_station_id(p_slug);
   perform public.radio_require_mod(sid, p_user);
@@ -726,11 +747,14 @@ begin
   end loop;
   perform public.radio_tick(sid);
   perform 1 from public.radio_station_state where station_id = sid for update;
+  -- Replace: the playlist becomes this list, in this order.
   if p_replace then
-    update public.radio_station_tracks set active = false where station_id = sid and not (track_id = any(ids));
+    update public.radio_station_tracks set active = false where station_id = sid;
   end if;
-  perform public.radio_moderate(p_slug, p_user, 'catalog_add', jsonb_build_object('trackIds', to_jsonb(ids)));
-  return jsonb_build_object('imported', n, 'state', public.radio_get_state(p_slug, p_user));
+  added := public.radio_catalog_add(sid, ids);
+  update public.radio_station_state set queue_rev = queue_rev + 1 where station_id = sid;
+  -- imported: new to the playlist. duplicates: already on it (or listed twice).
+  return jsonb_build_object('imported', added, 'duplicates', n - added, 'state', public.radio_get_state(p_slug, p_user));
 end $$;
 
 -- Creating a station is a one-off admin step (SQL editor):
@@ -789,6 +813,15 @@ language sql stable as $$
     'stations', coalesce((select jsonb_agg(jsonb_build_object('slug', s.slug, 'role', r.role))
       from public.radio_station_roles r join public.radio_stations s on s.id = r.station_id where r.user_id = p_user), '[]'::jsonb))
 $$;
+
+-- ---------------------------------------------------------------------------
+-- SoundCloud only: take any YouTube songs (from before) out of station
+-- playlists and the request queues. Safe to run again.
+-- ---------------------------------------------------------------------------
+update public.radio_station_tracks set active = false
+  where active and track_id in (select id from public.radio_tracks where provider <> 'soundcloud');
+update public.radio_queue set status = 'removed'
+  where status in ('pending', 'needs_approval') and track_id in (select id from public.radio_tracks where provider <> 'soundcloud');
 
 -- ---------------------------------------------------------------------------
 -- Only the website's server (service role) may run any of this.

@@ -19,9 +19,9 @@ const SLUG = /^[A-Za-z0-9_-]{1,100}$/;
 const SECRET = /^s-[A-Za-z0-9]{3,40}$/;
 
 // Services stations can't play. A link to one of these becomes a labelled
-// suggestion instead of a queued song. (YouTube links are handled before
-// this, in youtube.ts.)
+// suggestion instead of a queued song.
 const OTHER_SERVICES: [RegExp, string][] = [
+  [/(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/, "YouTube"],
   [/(^|\.)spotify\.(com|link)$/, "Spotify"],
   [/(^|\.)bandcamp\.com$/, "Bandcamp"],
   [/(^|\.)music\.apple\.com$/, "Apple Music"],
@@ -70,13 +70,13 @@ export function normalizeSoundCloudUrl(input: unknown): Normalized {
       if (re.test(host)) {
         return fail(
           name === "Spotify"
-            ? "Spotify doesn't allow its songs in shared stations - only SoundCloud and YouTube."
-            : `${name} links can't be played in stations - only SoundCloud and YouTube.`,
+            ? "Spotify doesn't allow its songs in shared stations - only SoundCloud."
+            : `${name} links can't be played on Azeroth Radio - only SoundCloud.`,
           name
         );
       }
     }
-    return fail("Only SoundCloud and YouTube links can be played.", "Other");
+    return fail("Only SoundCloud links can be played.", "Other");
   }
   if (parts.length === 0) return fail("That's SoundCloud's home page - copy a song's link instead.");
   if (!parts.every((p) => SLUG.test(p))) return fail("That doesn't look like a SoundCloud link.");

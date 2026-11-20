@@ -3,6 +3,7 @@
 // "Time passing" is simulated by moving the station's started_at back.
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import { startFakeSupabase, USERS } from "./fake-supabase.mjs";
 
 const { rpc, db, close } = await startFakeSupabase({ port: 0, quiet: true });
@@ -336,28 +337,60 @@ await t("playlist import: mods only, keeps order, replace switches off the rest"
   assert.deepEqual(again.map((x) => x.title), ["Two", "One"]);
 });
 
-await t("YouTube songs are allowed; malformed ids aren't", async () => {
-  const ok = await call("radio_upsert_track", { p_provider: "youtube", p_provider_id: "M7lc1UVf-VE", p_title: "Demo", p_artist: "YT", p_duration: null, p_permalink: "https://www.youtube.com/watch?v=M7lc1UVf-VE", p_artwork: null });
-  assert.ok(ok > 0);
-  const bad = await rpc("radio_upsert_track", { p_provider: "youtube", p_provider_id: "123", p_title: "x", p_artist: null, p_duration: null, p_permalink: null, p_artwork: null });
+await t("a song already in the playlist isn't added again", async () => {
+  const tracks = [
+    { id: "9301", title: "Dup A", artist: "A", durationMs: 30000, permalink: null, artwork: null },
+    { id: "9302", title: "Dup B", artist: "A", durationMs: 30000, permalink: null, artwork: null },
+  ];
+  await call("radio_import_tracks", { p_slug: S, p_user: alice, p_tracks: tracks, p_replace: true });
+  // Importing again (plus one new song, and one listed twice): only the new one is added.
+  const more = [...tracks, { id: "9303", title: "Dup C", artist: "A", durationMs: 30000, permalink: null, artwork: null }, tracks[0]];
+  const r = await call("radio_import_tracks", { p_slug: S, p_user: alice, p_tracks: more, p_replace: false });
+  assert.equal(r.imported, 1);
+  assert.equal(r.duplicates, 3);
+  const cat = await call("radio_catalog", { p_slug: S, p_user: alice });
+  assert.deepEqual(cat.map((x) => x.title), ["Dup A", "Dup B", "Dup C"]);
+  // Adding one song that's already there is refused, and nothing moves.
+  const tidA = cat[0].id;
+  await expectCode("duplicate", call("radio_moderate", { p_slug: S, p_user: alice, p_action: "catalog_add", p_args: { trackIds: [tidA] } }));
+  const cat2 = await call("radio_catalog", { p_slug: S, p_user: alice });
+  assert.deepEqual(cat2.map((x) => x.title), ["Dup A", "Dup B", "Dup C"]);
+  // A song that was removed can be added back (at the end).
+  await call("radio_moderate", { p_slug: S, p_user: alice, p_action: "catalog_remove", p_args: { trackId: tidA } });
+  await call("radio_moderate", { p_slug: S, p_user: alice, p_action: "catalog_add", p_args: { trackIds: [tidA] } });
+  const cat3 = await call("radio_catalog", { p_slug: S, p_user: alice });
+  assert.deepEqual(cat3.map((x) => x.title), ["Dup B", "Dup C", "Dup A"]);
+  // Replace with a list that names a song twice keeps it once.
+  const rep = await call("radio_import_tracks", { p_slug: S, p_user: alice, p_tracks: [tracks[1], tracks[1], tracks[0]], p_replace: true });
+  assert.equal(rep.imported, 2);
+  assert.equal(rep.duplicates, 1);
+  const cat4 = await call("radio_catalog", { p_slug: S, p_user: alice });
+  assert.deepEqual(cat4.map((x) => x.title), ["Dup B", "Dup A"]);
+});
+
+await t("only SoundCloud songs can be added (YouTube and Spotify are refused)", async () => {
+  const yt = await rpc("radio_upsert_track", { p_provider: "youtube", p_provider_id: "M7lc1UVf-VE", p_title: "Demo", p_artist: "YT", p_duration: null, p_permalink: "https://www.youtube.com/watch?v=M7lc1UVf-VE", p_artwork: null });
+  assert.equal(yt.status, 400);
+  const bad = await rpc("radio_upsert_track", { p_provider: "soundcloud", p_provider_id: "abc", p_title: "x", p_artist: null, p_duration: null, p_permalink: null, p_artwork: null });
   assert.equal(bad.status, 400);
   const sp = await rpc("radio_upsert_track", { p_provider: "spotify", p_provider_id: "4cOdK2wGLETKBW3PvgPWqT", p_title: "x", p_artist: null, p_duration: null, p_permalink: null, p_artwork: null });
   assert.equal(sp.status, 400);
 });
 
-await t("import mixes SoundCloud and YouTube songs", async () => {
-  const r = await call("radio_import_tracks", {
+await t("old YouTube songs are taken out when the SQL is run again", async () => {
+  await call("radio_import_tracks", {
     p_slug: S,
     p_user: alice,
-    p_tracks: [
-      { provider: "soundcloud", id: "9101", title: "SC song", artist: "A", durationMs: 30000, permalink: null, artwork: null },
-      { provider: "youtube", id: "dQw4w9WgXcQ", title: "YT song", artist: "B", durationMs: null, permalink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", artwork: null },
-    ],
+    p_tracks: [{ provider: "soundcloud", id: "9101", title: "SC song", artist: "A", durationMs: 30000, permalink: null, artwork: null }],
     p_replace: true,
   });
-  assert.equal(r.imported, 2);
+  // A YouTube song from before (put in directly, as the old version could).
+  const yt = (await db.query("insert into public.radio_tracks (provider, provider_id, title) values ('youtube', 'dQw4w9WgXcQ', 'Old YT') returning id")).rows[0].id;
+  await db.query("insert into public.radio_station_tracks (station_id, track_id, position, active) values ($1, $2, 999, true)", [sid, yt]);
+  assert.equal((await call("radio_catalog", { p_slug: S, p_user: alice })).length, 2);
+  await db.exec(fs.readFileSync(new URL("../../sql/azeroth-radio.sql", import.meta.url), "utf8"));
   const cat = await call("radio_catalog", { p_slug: S, p_user: alice });
-  assert.deepEqual(cat.map((x) => x.provider).sort(), ["soundcloud", "youtube"]);
+  assert.deepEqual(cat.map((x) => x.provider), ["soundcloud"]);
 });
 
 await t("only hosts/moderators can switch shuffle", () =>
@@ -404,14 +437,14 @@ await t("songs added while shuffled mix into what's still to come", async () => 
   const r = await call("radio_import_tracks", {
     p_slug: S,
     p_user: alice,
-    p_tracks: [{ provider: "youtube", id: "M7lc1UVf-VE", title: "New one", artist: "YT", durationMs: null, permalink: null, artwork: null }],
+    p_tracks: [{ provider: "soundcloud", id: "9777", title: "New one", artist: "SC", durationMs: 40000, permalink: null, artwork: null }],
     p_replace: false,
   });
   assert.equal(r.imported, 1);
   const s = await state();
   const cp = (await db.query("select curated_position from public.radio_station_state where station_id = $1", [sid])).rows[0].curated_position;
   const pos = (await db.query(
-    "select t.position from public.radio_station_tracks t join public.radio_tracks k on k.id = t.track_id where t.station_id = $1 and k.provider_id = 'M7lc1UVf-VE'",
+    "select t.position from public.radio_station_tracks t join public.radio_tracks k on k.id = t.track_id where t.station_id = $1 and k.provider_id = '9777'",
     [sid]
   )).rows[0].position;
   assert.ok(pos > cp, "the new song is still to come this round");
