@@ -1,0 +1,9 @@
+{
+  "name": "azeroth-radio-dev",
+  "private": true,
+  "description": "Local stand-in for Supabase (PGlite + the two endpoints the radio routes use), for testing Azeroth Radio without touching the real database.",
+  "type": "module",
+  "dependencies": {
+    "@electric-sql/pglite": "0.2.17"
+  }
+}
