@@ -18,7 +18,7 @@ local ADDON, ns = ...
 _G.ForeverGold = ns
 
 ns.TITLE = "Forever Gold"
-ns.VERSION = "1.9.5"
+ns.VERSION = "1.9.6"
 -- The auction house keeps 5% of every sale.
 ns.AH_CUT = 0.05
 
@@ -315,6 +315,25 @@ function ns.InitDB()
         opts.mailReserveFree = true
     end
     if opts.mailReserve == nil then opts.mailReserve = 0 end
+    -- Up to 1.9.5, casting Find Herbs saved a herb spot where you stood. A
+    -- real herb is always saved with its name, so herb spots with no name
+    -- are those. Cleared once.
+    if not opts.findHerbsFixed then
+        for mapID, list in pairs(db.nodes) do
+            if type(list) == "table" then
+                for i = #list, 1, -1 do
+                    local n = list[i]
+                    if type(n) == "table" and n.k == "herb" and (n.n == nil or n.n == "") then
+                        table.remove(list, i)
+                    end
+                end
+                if #list == 0 then
+                    db.nodes[mapID] = nil
+                end
+            end
+        end
+        opts.findHerbsFixed = true
+    end
     ns.db = db
     return db
 end

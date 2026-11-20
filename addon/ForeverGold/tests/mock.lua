@@ -550,7 +550,7 @@ C_NamePlate = { GetNamePlateForUnit = function(unit)
     if unit == "softinteract" and M.units and M.units.softinteract then return M.softPlate end
     return nil
 end }
-C_Spell = { GetSpellName = function(id) return ({ [2575] = "Mining", [2366] = "Herb Gathering", [7620] = "Fishing", [2657] = "Smelt Copper", [3365] = "Opening" })[id] end }
+C_Spell = { GetSpellName = function(id) return ({ [2575] = "Mining", [2366] = "Herb Gathering", [7620] = "Fishing", [2657] = "Smelt Copper", [3365] = "Opening", [2383] = "Find Herbs", [2580] = "Find Minerals" })[id] end }
 
 TooltipDataProcessor = {
     AddTooltipPostCall = function(kind, fn) M.tooltipHook = fn end,

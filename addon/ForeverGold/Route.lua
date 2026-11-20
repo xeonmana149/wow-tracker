@@ -32,6 +32,56 @@ ns.KINDS = {
 }
 ns.KIND_ORDER = { "herb", "ore", "fish", "chest" }
 
+-- A spot's own picture: the item it gives (Copper Ore for a Copper Vein,
+-- Silverleaf for Silverleaf), so the map shows what's there, not just "a
+-- herb". Anything not known here falls back to the kind's picture.
+local NODE_ITEM = {
+    ["copper vein"] = 2770, ["tin vein"] = 2771, ["iron deposit"] = 2772, ["silver vein"] = 2775,
+    ["gold vein"] = 2776, ["mithril deposit"] = 3858, ["truesilver deposit"] = 7911,
+    ["small thorium vein"] = 10620, ["rich thorium vein"] = 10620, ["dark iron deposit"] = 11370,
+    ["incendicite mineral vein"] = 3340, ["lesser bloodstone deposit"] = 4278, ["indurium mineral vein"] = 5833,
+    ["peacebloom"] = 2447, ["silverleaf"] = 765, ["earthroot"] = 2449, ["mageroyal"] = 785, ["briarthorn"] = 2450,
+    ["stranglekelp"] = 3820, ["bruiseweed"] = 2453, ["wild steelbloom"] = 3355, ["grave moss"] = 3369,
+    ["kingsblood"] = 3356, ["liferoot"] = 3357, ["fadeleaf"] = 3818, ["goldthorn"] = 3821,
+    ["khadgar's whisker"] = 3358, ["wintersbite"] = 3819, ["firebloom"] = 4625, ["purple lotus"] = 8831,
+    ["arthas' tears"] = 8836, ["sungrass"] = 8838, ["blindweed"] = 8839, ["ghost mushroom"] = 8845,
+    ["gromsblood"] = 8846, ["golden sansam"] = 13464, ["dreamfoil"] = 13463, ["mountain silversage"] = 13465,
+    ["plaguebloom"] = 13466, ["icecap"] = 13467, ["black lotus"] = 13468,
+}
+local nodeIcons = {}
+function ns.NodeIcon(n)
+    local kind = n and ns.KINDS[n.k]
+    local fallback = kind and kind.icon or 134400
+    local name = n and n.n
+    if (n and n.k ~= "ore" and n.k ~= "herb") or type(name) ~= "string" or name == "" then
+        return fallback
+    end
+    local key = name:lower():gsub("^ooze covered ", "")
+    local icon = nodeIcons[key]
+    if icon == nil then
+        local id = NODE_ITEM[key]
+        -- WoW Forever's starter herbs have a word in front ("Stunted
+        -- Silverleaf", "Wilted Peacebloom"): drop words until one is known.
+        local rest = key
+        while not id and rest:find(" ") do
+            rest = rest:gsub("^%S+%s+", "")
+            id = NODE_ITEM[rest]
+        end
+        if not id and ns.FindItemByName then
+            -- WoW Forever's own herbs are named like the herb itself; a new
+            -- "X Vein" / "X Deposit" gives "X Ore".
+            id = ns.FindItemByName(n.k == "herb" and key
+                or (key:gsub("^small ", ""):gsub("^rich ", ""):gsub(" vein$", ""):gsub(" deposit$", "") .. " ore"))
+        end
+        icon = id and C_Item and ns.try(C_Item.GetItemIconByID, id) or false
+        -- An unknown name is looked up again later (the item may be seen by then).
+        if icon or id then
+            nodeIcons[key] = icon
+        end
+    end
+    return icon or fallback
+end
+
 -- What an opened thing has to be called to count as a chest (not a quest
 -- crate, a door or a sack of grain).
 local CHEST_WORDS = { "chest", "strongbox", "coffer", "footlocker", "trunk" }
@@ -107,7 +157,10 @@ local function gatherKind(spellID)
     local kind = false
     if type(name) == "string" then
         local l = name:lower()
-        if l == "mining" or l:find("^mining") then
+        -- Find Herbs / Find Minerals only switch on minimap tracking: no node.
+        if l:find("^find ") or l:find("^track ") then
+            kind = false
+        elseif l == "mining" or l:find("^mining") then
             kind = "ore"
         elseif l:find("herb") then
             kind = "herb"
@@ -984,7 +1037,6 @@ function ns.NewPlotter(parent)
                 cx, cy = project(zone, n.x, n.y)
             end
             if cx then
-                local kind = ns.KINDS[n.k]
                 local m = self:Mark()
                 m.node = n
                 local tag = special[n]
@@ -992,7 +1044,7 @@ function ns.NewPlotter(parent)
                 m:SetSize(s + 4 * unit, s + 4 * unit)
                 m.back:SetSize(s + 2 * unit, s + 2 * unit)
                 m.icon:SetSize(s, s)
-                m.icon:SetTexture(kind and kind.icon or 134400)
+                m.icon:SetTexture(ns.NodeIcon(n))
                 m.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
                 if tag then
                     m.ring:SetSize(s + 8 * unit, s + 8 * unit)
@@ -1693,9 +1745,8 @@ local function updateMinimap()
             local k = radius * 0.92 / far
             x, y = x * k, y * k
         end
-        local kind = ns.KINDS[n.k]
         local p = miniPin()
-        p.icon:SetTexture(kind and kind.icon or 134400)
+        p.icon:SetTexture(ns.NodeIcon(n))
         p.icon:SetAlpha(1)
         p.ring:SetShown(isNext)
         p:ClearAllPoints()
@@ -2101,7 +2152,8 @@ local function placeBeam(f, region, x, y, dist, alpha, up)
     if sh <= 0 then
         sw, sh = 1024, 768
     end
-    local scale = (region:GetEffectiveScale() or 1) / (world:GetEffectiveScale() or 1)
+    local okS, rs = pcall(region.GetEffectiveScale, region)
+    local scale = ((okS and rs) or 1) / (world:GetEffectiveScale() or 1)
     local sx, sy = x * scale - sw / 2, y * scale - sh / 2
     local focal = focalLength(sh)
     local zoom = tonumber(GetCameraZoom and ns.try(GetCameraZoom) or nil) or 12
@@ -2267,8 +2319,8 @@ local function drawBeam()
         f.anchor, f.rel, f.ox, f.oy = nav, "CENTER", 0, 0
     end
     paint(f, c)
-    local nx, ny = nav:GetCenter()
-    if not nx then
+    local okC, nx, ny = pcall(nav.GetCenter, nav)
+    if not (okC and nx and ny) then
         hideBeam()
         return
     end
@@ -2503,9 +2555,11 @@ local function drawSoft()
     beam.softNode, beam.softKind = node, (c == BEAM_ROUTE and "route") or (node and "recorded") or "new"
     paint(f, c)
     -- The game only picks things out close by: a few yards when it's new.
-    local px = plate:GetCenter()
-    local py = plate:GetBottom()
-    if not (px and py) then
+    -- Some nameplates can't be measured at all ("Can't measure restricted
+    -- regions", 2026-11-20): then there's simply no beam on the object.
+    local okC, px = pcall(plate.GetCenter, plate)
+    local okB, py = pcall(plate.GetBottom, plate)
+    if not (okC and okB and px and py) then
         hideSoft()
         return
     end

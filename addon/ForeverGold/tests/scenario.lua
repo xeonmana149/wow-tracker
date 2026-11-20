@@ -699,6 +699,36 @@ for i, s in ipairs(spots) do
     M.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 2575) -- second swing at the same vein
 end
 M.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 2657) -- smelting must not count
+-- Find Herbs / Find Minerals only turn on minimap tracking: no spot
+M.player.x, M.player.y = 0.10, 0.90
+for _, id in ipairs({ 2383, 2580 }) do
+    M.fire("UNIT_SPELLCAST_SENT", "player", "", "cast", id)
+    M.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", id)
+end
+check(ns.GatherKind(2383) == nil and ns.GatherKind(2580) == nil and ns.GatherKind(2366) == "herb",
+    "Find Herbs and Find Minerals aren't gathering; Herb Gathering is")
+do -- each spot shows what it gives, not a generic leaf or pickaxe
+    local copper = C_Item.GetItemIconByID(2770)
+    check(copper and ns.NodeIcon({ k = "ore", n = "Copper Vein" }) == copper
+        and ns.NodeIcon({ k = "ore", n = "Ooze Covered Copper Vein" }) == copper, "a copper vein shows Copper Ore")
+    local herbIcon = C_Item.GetItemIconByID(2447)
+    check(herbIcon and ns.NodeIcon({ k = "herb", n = "Peacebloom" }) == herbIcon
+        and ns.NodeIcon({ k = "herb", n = "Wilted Peacebloom" }) == herbIcon, "a Peacebloom (and WoW Forever's Wilted Peacebloom) shows Peacebloom")
+    check(ns.NodeIcon({ k = "herb" }) == ns.KINDS.herb.icon and ns.NodeIcon({ k = "herb", n = "Mystery Weed" }) == ns.KINDS.herb.icon
+        and ns.NodeIcon({ k = "fish", n = "Fishing spot" }) == ns.KINDS.fish.icon, "unknown, nameless and fishing spots keep the kind's picture")
+end
+do -- spots an older version saved for Find Herbs (no name) are cleared once
+    ns.db.nodes[4343] = { { x = 0.1, y = 0.1, k = "herb", n = "", c = 3, t = time() },
+        { x = 0.2, y = 0.2, k = "herb", n = "Peacebloom", c = 1, t = time() },
+        { x = 0.3, y = 0.3, k = "ore", c = 1, t = time() } }
+    ns.db.nodes[4344] = { { x = 0.5, y = 0.5, k = "herb", c = 1, t = time() } }
+    ns.db.opts.findHerbsFixed = nil
+    ns.InitDB()
+    local left = ns.db.nodes[4343]
+    check(#left == 2 and left[1].n == "Peacebloom" and left[2].k == "ore" and ns.db.nodes[4344] == nil and ns.db.opts.findHerbsFixed,
+        "nameless herb spots are removed, real herbs and ore are kept")
+    ns.db.nodes[4343] = nil
+end
 M.fishing = true; M.player.x, M.player.y = 0.30, 0.30; M.fire("LOOT_READY"); M.advance(1); M.fishing = false
 check(#ns.db.nodes[1413] == 8, "7 veins + 1 fishing spot recorded (repeat swings merged): " .. #ns.db.nodes[1413])
 ns.ShowTab("routes"); pokeRows(); dumpRows("Routes", 8)
@@ -1197,6 +1227,16 @@ do
     ns.db.opts.beamUnrecorded = true
     M.update(1.1)
     check(M.cvars.softTargetInteract == "3" and f:IsShown(), "and on again")
+    -- A nameplate the game won't let anyone measure (2026-11-20): no beam, no error
+    local center, errsBefore = M.softPlate.GetCenter, #(ns.db.errorLog or {})
+    M.softPlate.GetCenter = function()
+        error("NamePlate2:GetCenter(): Action[FrameMeasurement] failed because[Can't measure restricted regions]")
+    end
+    M.update(0.3)
+    check(not f:IsShown() and #(ns.db.errorLog or {}) == errsBefore, "a nameplate that can't be measured: the beam just hides, no error")
+    M.softPlate.GetCenter = center
+    M.update(0.3)
+    check(f:IsShown(), "and comes back when it can be measured again")
     M.units.softinteract = nil
     M.update(1.1)
     check(not f:IsShown(), "nothing picked out: no beam")
