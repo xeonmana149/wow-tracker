@@ -176,7 +176,8 @@ under the tabs is on every tab: your **banker**, **Change banker**, and
   use, asking or auto-sending when a mailbox opens, and sending spare gold.
 - **Auto-send rules** - each rule matches one item or a material group (cloth
   and bolts, herbs, ore and bars, leather and hides, elemental, enchanting, meat
-  and fish, gems, or auction stock), sends it to a character or to "Banker"
+  and fish, gems, scrolls - every scroll, the mage's Comprehension scrolls
+  too - or auction stock), sends it to a character or to "Banker"
   (whoever your banker is), and keeps an amount in your bags (counted across
   every stack). A rule can be account-wide or for one character. Rules run top
   to bottom and the first enabled one that matches owns the item. Anything
@@ -264,23 +265,45 @@ out of sight, and the window follows them, so every key and button that opens
 bags keeps working.
 
 - **One big inventory** - every bag in one grid. Settings (the cog) can split
-  it by bag instead, hide empty slots, change the number of columns, and turn
-  the New loot row off.
+  it by bag instead, hide empty slots, change the number of columns (10 to
+  start), make the background see-through, and turn the New loot row or the
+  bag bar off.
+- **The bag bar** - your bags in a row under the title, each with its free
+  slots. Click one to hide or show its slots, hover it to light its slots up,
+  right-click it for its options: hide, show only this bag, the game's own
+  "Assign to" (Equipment, Consumables...) and "Ignore this bag" (Cleanup, Sell
+  junk), and one big inventory or split. Drop a bag on an empty bag slot to
+  put it in.
+- **Special bags are tinted** - the empty slots of quivers, ammo pouches, soul,
+  herb, mining, enchanting, engineering, gem, inscription, leatherworking and
+  reagent bags each have their own faint colour, for your alts' bags too.
+  Each special bag also sits on its own row(s) under the main grid, named in
+  its colour (Settings, or right-click the bag, mixes them back in).
 - **Your items are the game's own buttons**: click, drag, right-click to use,
-  Shift-click to link, all as usual. Alt+right-click one for Forever Gold's
-  actions.
-- **Search** dims everything that doesn't match. **Sort** is the game's own sort.
+  Shift-click to link, all as usual. Shift+right-click one to mark it for your
+  banker (again to unmark); Alt+right-click one for Forever Gold's actions.
+- **Search** opens in place of the title and dims everything that doesn't
+  match. **Sort** is the game's own sort.
 - **New loot** - what you've picked up since you last closed your bags waits in
   a row at the bottom.
 - **Your other characters** - click the character icon at the top to see any
-  character's bags, or their bank. Bags are saved whenever they change; a bank
-  each time you visit a banker. While you stand at your banker, the Bank view
-  is your real bank (right-click moves items, as usual).
+  character's bags. Bags are saved whenever they change; a bank each time you
+  visit a banker.
+- **The bank window** - right-click the character icon (or click the Bank tab)
+  to open that character's bank in its own window beside your bags. While you
+  stand at your banker it's your real bank (right-click moves items, as usual).
 - **Banker marks** - "To banker" on an item adds a mail rule that sends all of
   it to your banker (Send mail at a mailbox). Marked stacks show a letter, and
-  the footer counts them. "Never mail this" keeps it out of every rule.
-- **Sell junk** - at a vendor, one button sells your gray items (not anything
-  on the never-mail list).
+  the footer counts them. Taking the mark off also keeps the item away from
+  your banker by any group rule or quick-send pick (its own item rule still
+  works; marking it again lifts this). "Never mail this" keeps it out of
+  every rule.
+- **Junk is toned down** - gray items, and anything you mark as junk, are
+  grayed out and darkened. "Mark as junk" / "Not junk" are in the item menu
+  (Alt+right-click), so a gray you want to keep can stay bright. Settings can
+  turn the toning off.
+- **Sell junk** - at a vendor, one button sells your junk (not anything on the
+  never-mail list, nor anything in a bag set to "Ignore: Sell junk").
 - **Worth** - the footer says what the bags are worth at auction (after the
   cut, never less than a vendor pays, bound items at vendor price); hover for
   the vendor total.
@@ -322,6 +345,27 @@ trips), and the tray app sends it to your account after you log out or
 /reload. Only you can see it. The site then checks each auction against the
 latest snapshot and tells you which have been undercut.
 
+## Settings
+
+Settings live in the game's own Options window: **Options > AddOns > WoW
+Forever**. The Settings button in the Forever Gold window, the bag window's
+cog and `/gold settings` open it. It has a page each for:
+
+- **Auction Forever** - scanning, the smallest deal worth showing, buying
+  safety, undercut, listing size and duration, and auction prices in tooltips.
+- **Bags Forever** - the bag window on or off, one big inventory or split,
+  special bags on their own rows, empty slots, New loot, the bag bar, junk
+  toning, columns, background transparency, and who-has lines in tooltips.
+- **Mail Forever** - Forever Gold's mailbox or the game's, asking or sending
+  by itself, spare gold and how much to keep.
+- **Gathering Forever** - waypoints, map and minimap spots, the world map
+  button, and loot beams.
+- **Azeroth Radio** - how to listen (it plays in the tray app) and the link to
+  the radio page.
+
+The "?" button next to Settings in the Forever Gold window still has the tips,
+sale rates and what the words mean.
+
 ## Commands
 
 - `/gold` - open or close the window
@@ -333,7 +377,8 @@ latest snapshot and tells you which have been undercut.
 - `/gold track reset` - wipe the tracker's numbers
 - `/gold track save` - save the trip to Make > Farm and clear the tracker
 - `/gold market` - where the sale-rate data stands
-- `/gold bags` / `/gold bank` - open the bag window on your bags or your (saved) bank
+- `/gold settings` - Options > AddOns > WoW Forever
+- `/gold bags` / `/gold bank` - open your bags, or your bank in its own window
 - `/gold stop` - stop following a route
 - `/gold debug` - technical details if something looks wrong
 
@@ -359,7 +404,8 @@ latest snapshot and tells you which have been undercut.
 - `Mail.lua` - the mailbox's banker, rules, send plans, and the one-at-a-time collect and send queue
 - `MailUI.lua` - the mailbox window (Inbox, Send mail, Auto-send rules) that replaces the game's
 - `Inventory.lua` - every character's bags and bank, saved slot by slot, and the who-has tooltip lines
-- `BagUI.lua` - the bag window that replaces the game's bags
+- `BagUI.lua` - the bag window that replaces the game's bags, and the bank window
+- `Options.lua` - the pages in Options > AddOns > WoW Forever
 - `Icon.tga` - the addon's icon (minimap button, window title, addon list)
 
 ## Scanning

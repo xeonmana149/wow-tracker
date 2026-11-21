@@ -215,6 +215,8 @@ MB.CATS = {
     { key = "enchanting", name = "Enchanting materials", icon = 10940, test = tg(12) },
     { key = "cooking", name = "Meat & fish", icon = 2672, test = tg(8) },
     { key = "gems", name = "Gems", icon = 818, test = function(it) return it.c == 3 end },
+    { key = "scrolls", name = "Scrolls", icon = 954, test = function(it) return it.c == 0 and it.s == 4 end,
+        tip = "Every scroll: stat scrolls (Strength, Intellect...) and the mage's Comprehension scrolls (Scroll: KWYJIBO...)." },
     { key = "stock", name = "Auction stock", icon = nil, stock = true,
         tip = "Only what you have ticked to sell on the auction window's Sell tab." },
 }
@@ -464,6 +466,26 @@ function MB.SetKept(id, on)
     ns.Fire("MAIL")
 end
 
+-- Items you took the banker mark off (bag window): nothing but an item rule
+-- of their own sends them to your banker - not a group rule (Herbs, Auction
+-- stock...) and not quick-send's own picks. Marking it again lifts this.
+function MB.IsBankerBlocked(id)
+    local b = O().mailNoBanker
+    return type(b) == "table" and b[id] == true
+end
+
+function MB.SetBankerBlocked(id, on)
+    if type(O().mailNoBanker) ~= "table" then
+        O().mailNoBanker = {}
+    end
+    O().mailNoBanker[id] = on and true or nil
+    ns.Fire("MAIL")
+end
+
+local function toBanker(r)
+    return r.to == "banker" or (r.to ~= nil and r.to == MB.BankerKey())
+end
+
 ----------------------------------------------------------------------
 -- Bags, read live (never from the saved copy: this is about what's in the
 -- bags right now)
@@ -597,8 +619,9 @@ function MB.Allocate(items, rules)
         if MB.IsKept(id) then
             a.kept = true
         else
+            local blocked = MB.IsBankerBlocked(id)
             for i, r in ipairs(rules) do
-                if MB.RuleMatches(r, id) then
+                if MB.RuleMatches(r, id) and not (blocked and not r.item and toBanker(r)) then
                     a.rule, a.ruleIndex = r, i
                     break
                 end
@@ -827,8 +850,9 @@ function MB.PlanBanker()
                 plan.skipped[#plan.skipped + 1] = { id = id, why = "rule", rule = a.rule, toName = a.toName }
             end
         else
-            local why = stock[id]
-            if not why then
+            local blocked = MB.IsBankerBlocked(id)
+            local why = not blocked and stock[id] or nil
+            if not why and not blocked then
                 for key, on in pairs(cats) do
                     if on and MB.InCategory(key, id) then
                         why = "cat:" .. key

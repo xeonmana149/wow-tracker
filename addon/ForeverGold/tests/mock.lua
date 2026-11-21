@@ -998,3 +998,90 @@ function CloseAllBags() ContainerFrameCombinedBags:Hide() end
 function ToggleAllBags() if ContainerFrameCombinedBags:IsShown() then CloseAllBags() else OpenAllBags() end end
 function methods:SetID(i) self._id = i end
 function methods:GetID() return self._id or 0 end
+-- the bag bar: more bags, bag families, the game's bag settings
+for _, e in ipairs({ "BAG_SLOT_FLAGS_UPDATED", "PLAYER_EQUIPMENT_CHANGED" }) do
+    KNOWN_EVENTS[e] = true
+end
+-- M.extraBags[bag] = { size =, fam =, id =, icon =, items = { [slot] = { id, count } } }
+M.extraBags = {}
+local numSlots2 = C_Container.GetContainerNumSlots
+function C_Container.GetContainerNumSlots(bag)
+    local x = M.extraBags[bag]
+    if x then return x.size end
+    return numSlots2(bag)
+end
+local itemInfo2 = C_Container.GetContainerItemInfo
+function C_Container.GetContainerItemInfo(bag, slot)
+    local x = M.extraBags[bag]
+    if x then
+        local b = x.items and x.items[slot]
+        if not b then return nil end
+        return { itemID = b[1], stackCount = b[2], quality = 1, iconFileID = 130001,
+            hyperlink = "|cffffffff|Hitem:" .. b[1] .. "::::::::|h[?]|h|r" }
+    end
+    return itemInfo2(bag, slot)
+end
+function C_Container.GetContainerNumFreeSlots(bag)
+    local x = M.extraBags[bag]
+    if not x then return 0, 0 end
+    local used = 0
+    for _ in pairs(x.items or {}) do used = used + 1 end
+    return x.size - used, x.fam or 0
+end
+function C_Container.ContainerIDToInventoryID(bag) return 30 + bag end
+function GetInventoryItemID(unit, slot) local x = M.extraBags[slot - 30]; return x and x.id or nil end
+function GetInventoryItemTexture(unit, slot) local x = M.extraBags[slot - 30]; return x and x.icon or nil end
+Enum.BagSlotFlags = { DisableAutoSort = 1, ClassEquipment = 2, ClassConsumables = 4, ClassProfessionGoods = 8,
+    ClassJunk = 16, ClassQuestItems = 32, ExcludeJunkSell = 64, ClassReagents = 128 }
+M.bagFlags = {}
+function C_Container.GetBagSlotFlag(bag, f) return M.bagFlags[bag .. ":" .. f] or false end
+function C_Container.SetBagSlotFlag(bag, f, v) M.bagFlags[bag .. ":" .. f] = v or nil end
+function C_Container.GetBackpackSellJunkDisabled() return M.backpackNoJunk or false end
+function C_Container.SetBackpackSellJunkDisabled(v) M.backpackNoJunk = v end
+function C_Container.GetBackpackAutosortDisabled() return M.backpackNoSort or false end
+function C_Container.SetBackpackAutosortDisabled(v) M.backpackNoSort = v end
+M.putInBag = {}
+function PutItemInBag(slot) M.putInBag[#M.putInBag + 1] = slot end
+function PutItemInBackpack() M.putInBag[#M.putInBag + 1] = "backpack" end
+function PickupBagFromSlot(slot) M.pickedBag = slot end
+StackSplitFrame = CreateFrame("Frame", "StackSplitFrame", UIParent)
+StackSplitFrame:Hide()
+-- scrolls are consumables, subclass 4 (the mage's Comprehension scrolls too)
+M.items[211780] = { "Scroll: KWYJIBO", 1, 0, 0, 0, 4 }
+M.items[954] = { "Scroll of Strength", 1, 25, 0, 0, 4 }
+M.items[858] = { "Lesser Healing Potion", 1, 5, 0, 0, 1 }
+-- the game's Options window (Settings): records categories, settings and controls
+M.settings = { cats = {}, settings = {} }
+local function newCat(name, parent)
+    local c = { name = name, parent = parent, ID = 100 + #M.settings.cats, controls = {} }
+    function c:GetID() return self.ID end
+    M.settings.cats[#M.settings.cats + 1] = c
+    local layout = {}
+    function layout:AddInitializer(i) c.controls[#c.controls + 1] = i end
+    return c, layout
+end
+Settings = { VarType = { Boolean = "boolean", Number = "number", String = "string" } }
+function Settings.RegisterVerticalLayoutCategory(name) return newCat(name) end
+function Settings.RegisterVerticalLayoutSubcategory(parent, name) return newCat(name, parent) end
+function Settings.RegisterAddOnCategory(c) M.settings.addon = c end
+function Settings.RegisterProxySetting(cat, variable, varType, name, default, get, set)
+    assert(type(variable) == "string" and not M.settings.settings[variable], "duplicate setting " .. tostring(variable))
+    assert(type(name) == "string" and type(get) == "function" and type(set) == "function", "proxy setting " .. variable)
+    local s = { variable = variable, name = name, default = default, cat = cat, varType = varType }
+    function s:GetValue() return get() end
+    function s:SetValue(v) set(v) end
+    M.settings.settings[variable] = s
+    return s
+end
+function Settings.CreateCheckbox(cat, s) cat.controls[#cat.controls + 1] = { kind = "check", setting = s } end
+function Settings.CreateDropdown(cat, s, opts) cat.controls[#cat.controls + 1] = { kind = "dropdown", setting = s, options = opts() } end
+function Settings.CreateSlider(cat, s) cat.controls[#cat.controls + 1] = { kind = "slider", setting = s } end
+function Settings.CreateSliderOptions() return { SetLabelFormatter = function() end } end
+function Settings.CreateControlTextContainer()
+    local d = {}
+    return { Add = function(_, v, l) d[#d + 1] = { value = v, label = l } end, GetData = function() return d end }
+end
+function Settings.OpenToCategory(id) M.settings.opened = id end
+function CreateSettingsListSectionHeaderInitializer(name) return { kind = "header", name = name } end
+function CreateSettingsButtonInitializer(name, text, click) return { kind = "button", name = name, text = text, click = click } end
+MinimalSliderWithSteppersMixin = { Label = { Right = 1 } }

@@ -18,7 +18,7 @@ local ADDON, ns = ...
 _G.ForeverGold = ns
 
 ns.TITLE = "Forever Gold"
-ns.VERSION = "1.10.0"
+ns.VERSION = "1.11.0"
 -- The auction house keeps 5% of every sale.
 ns.AH_CUT = 0.05
 
@@ -166,7 +166,12 @@ end
 -- Formatting
 ----------------------------------------------------------------------
 
-local GOLD, SILVER, COPPER = "|cffffd100", "|cffc7c7cf", "|cffeda55f"
+-- Coin icons after each amount, like the game's own money: 1(g) 7(s) 97(c).
+local GOLD_ICON = "|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t"
+local SILVER_ICON = "|TInterface\\MoneyFrame\\UI-SilverIcon:0:0:2:0|t"
+local COPPER_ICON = "|TInterface\\MoneyFrame\\UI-CopperIcon:0:0:2:0|t"
+ns.COIN_ICONS = { g = GOLD_ICON, s = SILVER_ICON, c = COPPER_ICON }
+local WHITE = "|cffffffff"
 
 local function commas(n)
     local s = tostring(n)
@@ -178,8 +183,9 @@ local function commas(n)
 end
 ns.Commas = commas
 
--- 123456 copper -> "12g 34s". Shows the two biggest units only, because
--- nobody needs the copper on a 12 gold item.
+-- 123456 copper -> "12(g) 34(s)", each with its coin icon. Shows the two
+-- biggest units only, because nobody needs the copper on a 12 gold item.
+-- ns.StripCodes turns the icons back into g/s/c for plain text.
 function ns.Money(c)
     if type(c) ~= "number" then
         return "|cff808080--|r"
@@ -189,17 +195,17 @@ function ns.Money(c)
     local g, s, k = floor(c / 10000), floor((c % 10000) / 100), c % 100
     local out
     if g > 0 then
-        out = GOLD .. commas(g) .. "g|r"
+        out = WHITE .. commas(g) .. "|r" .. GOLD_ICON
         if g < 100 and s > 0 then
-            out = out .. " " .. SILVER .. s .. "s|r"
+            out = out .. " " .. WHITE .. s .. "|r" .. SILVER_ICON
         end
     elseif s > 0 then
-        out = SILVER .. s .. "s|r"
+        out = WHITE .. s .. "|r" .. SILVER_ICON
         if k > 0 then
-            out = out .. " " .. COPPER .. k .. "c|r"
+            out = out .. " " .. WHITE .. k .. "|r" .. COPPER_ICON
         end
     else
-        out = COPPER .. k .. "c|r"
+        out = WHITE .. k .. "|r" .. COPPER_ICON
     end
     if neg then
         out = "|cffff6060-|r" .. out
@@ -599,6 +605,9 @@ end
 local scanTip
 local function stripCodes(text)
     text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    -- coin icons back to letters: 12g 34s
+    text = text:gsub("|T[^|]-UI%-GoldIcon[^|]-|t", "g"):gsub("|T[^|]-UI%-SilverIcon[^|]-|t", "s")
+        :gsub("|T[^|]-UI%-CopperIcon[^|]-|t", "c")
     text = text:gsub("|T.-|t", ""):gsub("|A.-|a", "")
     return (text:gsub("^%s+", ""):gsub("%s+$", ""))
 end
@@ -696,12 +705,20 @@ SlashCmdList["FOREVERGOLD"] = function(msg)
         if ns.StopSession then ns.StopSession() end
     elseif msg == "market" then
         if ns.MarketStatus then ns.Print(ns.MarketStatus()) end
+    elseif msg == "settings" or msg == "options" or msg == "config" then
+        if not (ns.OpenOptions and ns.OpenOptions("auction")) and ns.ShowTab then
+            ns.ShowTab("settings")
+        end
     elseif msg == "bags" or msg == "bank" then
         if ns.BagUI then
             if not ns.BagUI.Enabled() then
                 ns.BagUI.Enable()
             end
-            ns.BagUI.Open(msg == "bank" and "bank" or "bags")
+            if msg == "bank" then
+                ns.BagUI.OpenBank()
+            else
+                ns.BagUI.Open()
+            end
         end
     elseif msg == "debug" then
         ns.Print("version " .. ns.VERSION .. ", price book '" .. tostring(ns.realmKey) .. "'")

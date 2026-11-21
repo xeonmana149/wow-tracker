@@ -450,14 +450,14 @@ local function shortGold(v)
     local neg = v < 0 and "-" or ""
     v = math.abs(v)
     if v >= 10000000 then
-        return neg .. floor(v / 10000000 + 0.5) .. "k g"
+        return neg .. floor(v / 10000000 + 0.5) .. "k" .. ns.COIN_ICONS.g
     elseif v >= 10000 then
         local g = v / 10000
-        return neg .. (g >= 100 and floor(g + 0.5) or floor(g * 10 + 0.5) / 10) .. "g"
+        return neg .. (g >= 100 and floor(g + 0.5) or floor(g * 10 + 0.5) / 10) .. ns.COIN_ICONS.g
     elseif v >= 100 then
-        return neg .. floor(v / 100 + 0.5) .. "s"
+        return neg .. floor(v / 100 + 0.5) .. ns.COIN_ICONS.s
     end
-    return neg .. floor(v + 0.5) .. "c"
+    return neg .. floor(v + 0.5) .. ns.COIN_ICONS.c
 end
 
 local GRAPH_LEFT, GRAPH_BOTTOM, GRAPH_MAX_POINTS = 54, 16, 240
@@ -3968,10 +3968,19 @@ local function createMain()
         t.button = b
         x = x + 96
     end
+    -- Settings live in the game's Options window (Options.lua); tips and
+    -- help stay here, behind the "?" button.
     f.settingsButton = button(f, "Settings", 80, 24, function()
+        if ns.OpenOptions and ns.OpenOptions("auction") then
+            return
+        end
         ns.ShowTab(UI.tab == "settings" and "todo" or "settings")
     end)
     f.settingsButton:SetPoint("TOPRIGHT", -12, -42)
+    f.helpButton = button(f, "?", 26, 24, function()
+        ns.ShowTab(UI.tab == "settings" and "todo" or "settings")
+    end)
+    f.helpButton:SetPoint("RIGHT", f.settingsButton, "LEFT", -4, 0)
 
     local bar = CreateFrame("Frame", nil, f)
     bar:SetPoint("TOPLEFT", 12, -74)

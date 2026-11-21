@@ -8,7 +8,8 @@
 -- c.inv = {
 --     bags = { size = total slots, at = when saved,
 --              slots = { { bag, slot, itemID, count, quality, link or false, bound }, ... },
---              sizes = { [bag] = slots }, order = { bag, bag, ... } },
+--              sizes = { [bag] = slots }, order = { bag, bag, ... },
+--              info = { [bag] = { icon, fam, id, name, reagent } } },
 --     bank = { ...the same, from the last visit to a banker },
 -- }
 -- c.bags / c.bank = { [itemID] = count } (c.bags is filled in Chars.lua).
@@ -21,6 +22,8 @@ local INV = {}
 ns.Inv = INV
 
 local CLASS_WEAPON, CLASS_ARMOR = 2, 4
+INV.BACKPACK_ICON = "Interface\\Buttons\\Button-Backpack-Up"
+INV.tabs = {} -- bank tab ID -> { name, icon }, from the last time the bank was open
 
 -- Your bags: the backpack and the bags in your bag slots.
 function INV.BagIDs()
@@ -42,6 +45,7 @@ function INV.BankIDs()
             for _, t in ipairs(tabs) do
                 if type(t) == "table" and t.ID then
                     ids[#ids + 1] = t.ID
+                    INV.tabs[t.ID] = { name = t.name, icon = t.icon }
                 end
             end
         end
@@ -59,6 +63,29 @@ end
 
 INV.bankOpen = false
 
+-- One of your bags right now: { icon, fam (the game's bag family bits:
+-- quiver, herb bag, ...), id (the bag item), name, reagent } and its free slots.
+function INV.BagInfo(bag, bank)
+    local info = {}
+    local free, fam = ns.try(C_Container.GetContainerNumFreeSlots, bag)
+    info.fam = tonumber(fam) or 0
+    if bank then
+        local t = INV.tabs[bag]
+        info.icon, info.name = t and t.icon or nil, t and t.name or nil
+    elseif bag == 0 then
+        info.icon, info.name = INV.BACKPACK_ICON, "Backpack"
+    else
+        local slot = C_Container.ContainerIDToInventoryID and ns.try(C_Container.ContainerIDToInventoryID, bag)
+        if slot then
+            info.id = ns.try(GetInventoryItemID, "player", slot)
+            info.icon = ns.try(GetInventoryItemTexture, "player", slot)
+        end
+        info.name = C_Container.GetBagName and ns.try(C_Container.GetBagName, bag) or nil
+        info.reagent = (NUM_REAGENTBAG_SLOTS or 0) > 0 and bag > (NUM_BAG_SLOTS or 4) or nil
+    end
+    return info, tonumber(free) or 0
+end
+
 local function keepLink(id, link)
     if type(link) ~= "string" then
         return nil
@@ -71,8 +98,8 @@ local function keepLink(id, link)
 end
 
 -- Reads containers into { size, slots, at } and a count per item.
-local function read(ids)
-    local out, counts = { size = 0, slots = {}, sizes = {}, order = {}, at = time() }, {}
+local function read(ids, bank)
+    local out, counts = { size = 0, slots = {}, sizes = {}, order = {}, info = {}, at = time() }, {}
     if not C_Container or not C_Container.GetContainerNumSlots then
         return out, counts
     end
@@ -82,6 +109,7 @@ local function read(ids)
         if n > 0 then
             out.sizes[bag] = n
             out.order[#out.order + 1] = bag
+            out.info[bag] = (INV.BagInfo(bag, bank))
         end
         for slot = 1, n do
             local info = ns.try(C_Container.GetContainerItemInfo, bag, slot)
@@ -108,7 +136,7 @@ function INV.SaveBank()
     end
     local c = ns.Char()
     c.inv = type(c.inv) == "table" and c.inv or {}
-    local snap, counts = read(INV.BankIDs())
+    local snap, counts = read(INV.BankIDs(), true)
     if snap.size == 0 then
         return -- the bank isn't really readable (yet): keep the last copy
     end
