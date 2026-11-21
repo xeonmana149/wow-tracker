@@ -3562,11 +3562,20 @@ do
     BU.Refresh()
     ns.db.opts.bagGlow = 100
     BU.Refresh()
-    check(btn(0, 1).fgColor.a == 1, "Glow brightness 100%: full strength")
+    check(math.abs(btn(0, 1).fgColor.a - 0.8) < 1e-9, "Glow brightness 100%: 80% strength, a touch under full")
     ns.db.opts.bagGlow = nil
+    -- every slot glowed blue (2026-11-21): the template's store highlight starts shown
+    local blue = 0
+    for _, bb in ipairs(BU._live) do
+        if bb.BattlepayItemTexture and bb.BattlepayItemTexture:IsShown() then blue = blue + 1 end
+        if bb.BagIndicator and bb.BagIndicator:IsShown() then blue = blue + 1 end
+    end
+    check(#BU._live > 0 and btn(0, 1).BattlepayItemTexture ~= nil and blue == 0,
+        "no slot shows the game's blue store highlight (" .. blue .. " lit)")
+    check(cloth.fgNew.b == 1 and cloth.fgNew.r < 0.5, "new loot glows blue")
     BU.HighlightBag(BU, 0)
-    check(btn(0, 1).fgGlow:IsShown() and btn(0, 1).fgGlow.b == 1 and btn(0, 1).fgGlow.t[1]._gradient ~= nil,
-        "hovering a bag lights its slots' edges in blue, fading toward the middle")
+    check(btn(0, 1).fgGlow:IsShown() and btn(0, 1).fgGlow.b < 1 and btn(0, 1).fgGlow.r == 1 and btn(0, 1).fgGlow.t[1]._gradient ~= nil,
+        "hovering a bag lights its slots' edges warm white (blue is new loot only), fading toward the middle")
     BU.HighlightBag(BU, nil)
     -- the bag-hover glow only lasts while the mouse is on that bag (2026-11-21:
     -- a whole bag stayed lit blue after the mouse had left)

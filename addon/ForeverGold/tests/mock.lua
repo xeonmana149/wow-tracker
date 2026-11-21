@@ -136,6 +136,13 @@ function CreateFrame(kind, name, parent, template)
         local fs = newWidget("FontString", name .. "TextLeft1", w)
         fs._text = "|cffffffffXeon Mana|r"
     end
+    if template == "ContainerFrameItemButtonTemplate" then
+        -- the real template's blue store highlight starts out shown (no hidden="true")
+        w.BattlepayItemTexture = w:CreateTexture(nil, "OVERLAY")
+        w.BattlepayItemTexture:Show()
+        w.BagIndicator = w:CreateTexture(nil, "OVERLAY")
+        w.BagIndicator:Hide()
+    end
     return w
 end
 

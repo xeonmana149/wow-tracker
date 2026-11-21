@@ -278,7 +278,7 @@ bags keeps working.
   right-click it for its options: hide, show only this bag, the game's own
   "Assign to" (Equipment, Consumables...) and "Ignore this bag" (Cleanup, Sell
   junk), and one big inventory or split. Drop a bag on an empty bag slot to
-  put it in. Hovering a bag lights its slots' edges in blue.
+  put it in. Hovering a bag lights its slots' edges in warm white.
 - **The keyring** - at the right end of the bag bar (on clients that have
   one). Click it for a Keyring row with your keys; they don't count toward
   your bag slots.
@@ -294,8 +294,9 @@ bags keeps working.
 - **Item glows** (each in Settings) - an edge glow by quality (green, blue,
   purple...), gold for quest items, one for equipment set items, and red with
   a faded icon for gear you can't use. Glow brightness sets how strong they
-  are; the special-bag colours can be switched off too. New loot flashes
-  where it lies until you hover it, junk gets a small gold coin in its corner,
+  are (kept a little soft: quest gold most of all); the special-bag colours
+  can be switched off too. New loot flashes blue where it lies until you hover
+  it (blue means new, nothing else), junk gets a small gold coin in its corner,
   and Pawn's upgrades (with Pawn installed) get a green arrow.
 - **Search** opens in place of the title and dims everything that doesn't
   match. **Sort** is the game's own sort.

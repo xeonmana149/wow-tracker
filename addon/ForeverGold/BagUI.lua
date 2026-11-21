@@ -666,7 +666,9 @@ local function edgeGlow(owner, region, layer, sub, width)
     return g
 end
 
-local HOVER = { 0.35, 0.62, 1, 0.95 } -- a bag's slots, while you hover it in the bar
+-- Blue means new loot and nothing else; a hovered bag's slots light up warm white.
+local NEW_GLOW = { 0.35, 0.62, 1, 0.95 } -- new loot, until you hover it
+local HOVER = { 1, 0.95, 0.7, 0.8 } -- a bag's slots, while you hover it in the bar
 
 local function overlays(b)
     b.fgTint = b:CreateTexture(nil, "ARTWORK", nil, 7)
@@ -703,7 +705,7 @@ local function overlays(b)
     b.fgNewF:SetAllPoints()
     b.fgNewF:SetFrameLevel((b:GetFrameLevel() or 1) + 3)
     b.fgNew = edgeGlow(b.fgNewF, b.fgNewF, "OVERLAY", 3, 11)
-    b.fgNew:SetColor(1, 0.95, 0.7, 1)
+    b.fgNew:SetColor(NEW_GLOW[1], NEW_GLOW[2], NEW_GLOW[3], NEW_GLOW[4])
     b.fgNew:Show()
     if b.fgNewF.CreateAnimationGroup then
         local ag = b.fgNewF:CreateAnimationGroup()
@@ -753,6 +755,8 @@ local function holder(V, bag)
     return h
 end
 
+local BLIZZ_GLOWS = { "BattlepayItemTexture", "BagIndicator", "NewItemTexture" }
+
 local function liveButton(V, bag, slot)
     liveButtons[bag] = liveButtons[bag] or {}
     local b = liveButtons[bag][slot]
@@ -769,6 +773,17 @@ local function liveButton(V, bag, slot)
     b = made
     b:SetID(slot)
     b:SetSize(SLOT, SLOT)
+    -- The template's blue store highlight (BattlepayItemTexture) starts out
+    -- shown, and only the game's own bag frame hides it, so on our buttons
+    -- every slot glowed blue. It and the bag indicator never show here: our
+    -- own new-loot glow does that job.
+    for _, k in ipairs(BLIZZ_GLOWS) do
+        local t = rawget(b, k)
+        if type(t) == "table" then
+            if t.SetAlpha then t:SetAlpha(0) end
+            if t.Hide then t:Hide() end
+        end
+    end
     overlays(b)
     -- Shift+right-click: send to banker. Alt+right-click: Forever Gold's actions.
     -- (A plain right-click still uses it - that's the game's own click.)
@@ -1035,7 +1050,8 @@ end
 local function paintMarks(V, b, cell)
     local r, g, bl, why = BU.SlotColor(cell, V)
     if r then
-        b.fgColor:SetColor(r, g, bl, glowAlpha())
+        -- toned down: 20% under the brightness setting, quest yellow 30%
+        b.fgColor:SetColor(r, g, bl, glowAlpha() * (why == "quest" and 0.7 or 0.8))
         b.fgColor:Show()
     else
         b.fgColor:Hide()
@@ -1066,7 +1082,7 @@ local function paintMarks(V, b, cell)
         end
     end
     -- the game's own new-item glow stays until the bags close: ours does the job
-    for _, k in ipairs({ "NewItemTexture", "flashAnim", "newitemglowAnim" }) do
+    for _, k in ipairs({ "NewItemTexture", "BattlepayItemTexture", "BagIndicator", "flashAnim", "newitemglowAnim" }) do
         local part = b[k]
         if type(part) == "table" then
             if part.Stop then
