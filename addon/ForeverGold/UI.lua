@@ -3123,6 +3123,26 @@ local function buildTips()
     optionRow(rows, "lootBeam", "Loot beams: gold on a route stop, white on a spot I've recorded, light blue on one I haven't")
     optionRow(rows, "nearestBeam", "With no route running, put a white beam on the nearest spot I've recorded (only when I'm not tracking anything else)")
     optionRow(rows, "beamUnrecorded", "Beam on herbs, veins and chests right in front of me, recorded or not (turns on the game's Interact Key and its icons)")
+    Hd(rows, "Bags")
+    do
+        local on = ns.db.opts.bagUI ~= false
+        rows[#rows + 1] = { noIcon = true, title = (on and "|cff40e060[on]|r  " or "|cffff7070[off]|r  ")
+            .. "Forever Gold bags: all your bags in one window, your other characters' bags and banks, banker marks and Sell junk",
+            sub = "Click to turn " .. (on and "off (the game's own bags come back)" or "on"),
+            onClick = function()
+                if not ns.BagUI then
+                    return
+                end
+                if on then
+                    ns.db.opts.bagUI = false
+                    ns.BagUI.Uninstall()
+                else
+                    ns.BagUI.Enable()
+                end
+                ns.RefreshUI(true)
+            end }
+    end
+    optionRow(rows, "bagTooltip", "Item tooltips say which of my characters have it, in their bags or bank")
     Hd(rows, "Mailbox")
     mailRows(rows)
     Hd(rows, "Sale rates")
@@ -4722,6 +4742,10 @@ local function addTooltipLines(tooltip, data)
         else
             tooltip:AddDoubleLine("|cffffd100Auction over vendor|r", "|cffff7070vendor pays more|r")
         end
+    end
+    -- Where your characters keep it (bags and banks, saved - see Inventory.lua).
+    if ns.InventoryTooltip then
+        ns.InventoryTooltip(tooltip, id)
     end
 end
 

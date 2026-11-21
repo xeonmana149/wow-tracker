@@ -2,7 +2,7 @@
 ## Title: |cffffd100Forever Gold|r
 ## Notes: Plain-English gold making. Scans the auction house and tells you what to craft, farm, sell and flip with your own characters and professions. Type /gold.
 ## Author: Jordan
-## Version: 1.9.6
+## Version: 1.10.0
 ## IconTexture: Interface\AddOns\ForeverGold\Icon
 ## SavedVariables: ForeverGoldDB
 ## AddonCompartmentFunc: ForeverGold_OnAddonCompartmentClick
@@ -27,8 +27,10 @@ Farming.lua
 Sell.lua
 Poster.lua
 Mail.lua
+Inventory.lua
 Web.lua
 UI.lua
 TrackerUI.lua
 AuctionUI.lua
 MailUI.lua
+BagUI.lua

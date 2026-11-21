@@ -948,3 +948,53 @@ function C_Mail.IsCommandPending() return M.mailBusy or pending > 0 end
 function C_Mail.CanCheckInbox() return true, 0 end
 function C_Mail.HasInboxMoney(i) local m = M.inbox[i]; return m ~= nil and (m.money or 0) > 0 end
 function C_Mail.IsCODEnabled() return true end
+
+----------------------------------------------------------------------
+-- The bag window: WoW Forever's bank tabs, new items, item button
+-- helpers and the game's own (hidden) bag frames
+----------------------------------------------------------------------
+for _, e in ipairs({ "BANKFRAME_OPENED", "BANKFRAME_CLOSED", "PLAYERBANKSLOTS_CHANGED", "BAG_UPDATE", "ITEM_LOCK_CHANGED",
+    "BAG_UPDATE_COOLDOWN", "QUEST_ACCEPTED", "BAG_NEW_ITEMS_UPDATED" }) do
+    KNOWN_EVENTS[e] = true
+end
+-- M.bank[slot] = { id, count } in bank tab 6, readable while M.bankOpen
+M.bank = { { 2589, 20 }, nil, { 818, 2 } }
+M.bankSlots = 8
+Enum.BankType = { Character = 0, Guild = 1, Account = 2 }
+C_Bank = {}
+function C_Bank.FetchPurchasedBankTabData(t) assert(t == Enum.BankType.Character, "bank type"); return { { ID = 6, name = "Tab 1" } } end
+function C_Bank.CanViewBank() return true end
+local bagSlots = C_Container.GetContainerNumSlots
+function C_Container.GetContainerNumSlots(bag)
+    if bag == 6 then return M.bankOpen and M.bankSlots or 0 end
+    return bagSlots(bag)
+end
+function C_Container.GetContainerItemInfo(bag, slot)
+    local b = (bag == 0 and M.bags[slot]) or (bag == 6 and M.bankOpen and M.bank[slot]) or nil
+    if not b then return nil end
+    local it = M.items[b[1]]
+    return { itemID = b[1], stackCount = b[2], isBound = b[3] or false, isLocked = b[4] or false,
+        quality = it and it[2] or 1, iconFileID = 130000 + b[1] % 1000, hasNoValue = it ~= nil and it[3] == 0,
+        hyperlink = "|cffffffff|Hitem:" .. b[1] .. "::::::::|h[" .. (it and it[1] or "?") .. "]|h|r" }
+end
+function C_Container.SortBags() M.sorted = (M.sorted or 0) + 1 end
+function C_Container.SortBank(t) M.bankSorted = t end
+M.used = {}
+function C_Container.UseContainerItem(bag, slot) M.used[#M.used + 1] = { bag, slot } end
+function C_Container.GetBagName(bag) return bag == 0 and "Backpack" or nil end
+M.newItems = {}
+C_NewItems = {}
+function C_NewItems.IsNewItem(bag, slot) return M.newItems[bag .. ":" .. slot] or false end
+function C_NewItems.ClearAll() M.newItems = {} end
+function SetItemButtonTexture(b, t) b._icon = t end
+function SetItemButtonCount(b, n) b._count = n end
+function SetItemButtonQuality(b, q) b._quality = q end
+function SetItemButtonDesaturated(b, d) b._desat = d end
+function IsAltKeyDown() return M.alt or false end
+ContainerFrameCombinedBags = CreateFrame("Frame", "ContainerFrameCombinedBags", UIParent)
+ContainerFrameCombinedBags:Hide()
+function OpenAllBags() ContainerFrameCombinedBags:Show() end
+function CloseAllBags() ContainerFrameCombinedBags:Hide() end
+function ToggleAllBags() if ContainerFrameCombinedBags:IsShown() then CloseAllBags() else OpenAllBags() end end
+function methods:SetID(i) self._id = i end
+function methods:GetID() return self._id or 0 end

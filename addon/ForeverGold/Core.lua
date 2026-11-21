@@ -18,7 +18,7 @@ local ADDON, ns = ...
 _G.ForeverGold = ns
 
 ns.TITLE = "Forever Gold"
-ns.VERSION = "1.9.6"
+ns.VERSION = "1.10.0"
 -- The auction house keeps 5% of every sale.
 ns.AH_CUT = 0.05
 
@@ -315,6 +315,9 @@ function ns.InitDB()
         opts.mailReserveFree = true
     end
     if opts.mailReserve == nil then opts.mailReserve = 0 end
+    -- The bag window (BagUI.lua) is on unless switched off; tooltips say who has an item.
+    if opts.bagUI == nil then opts.bagUI = true end
+    if opts.bagTooltip == nil then opts.bagTooltip = true end
     -- Up to 1.9.5, casting Find Herbs saved a herb spot where you stood. A
     -- real herb is always saved with its name, so herb spots with no name
     -- are those. Cleared once.
@@ -693,6 +696,13 @@ SlashCmdList["FOREVERGOLD"] = function(msg)
         if ns.StopSession then ns.StopSession() end
     elseif msg == "market" then
         if ns.MarketStatus then ns.Print(ns.MarketStatus()) end
+    elseif msg == "bags" or msg == "bank" then
+        if ns.BagUI then
+            if not ns.BagUI.Enabled() then
+                ns.BagUI.Enable()
+            end
+            ns.BagUI.Open(msg == "bank" and "bank" or "bags")
+        end
     elseif msg == "debug" then
         ns.Print("version " .. ns.VERSION .. ", price book '" .. tostring(ns.realmKey) .. "'")
         local n = 0

@@ -256,6 +256,41 @@ everything works as before. `/gold market` shows where the data stands.
 Treat the numbers as estimates: a seller who cancels without reposting looks like
 a sale. They're best for comparing items with each other.
 
+## Your bags
+
+Opening your bags (B, or any bag button) shows Forever Gold's bag window
+instead of the game's. The game's own bags still open and close underneath,
+out of sight, and the window follows them, so every key and button that opens
+bags keeps working.
+
+- **One big inventory** - every bag in one grid. Settings (the cog) can split
+  it by bag instead, hide empty slots, change the number of columns, and turn
+  the New loot row off.
+- **Your items are the game's own buttons**: click, drag, right-click to use,
+  Shift-click to link, all as usual. Alt+right-click one for Forever Gold's
+  actions.
+- **Search** dims everything that doesn't match. **Sort** is the game's own sort.
+- **New loot** - what you've picked up since you last closed your bags waits in
+  a row at the bottom.
+- **Your other characters** - click the character icon at the top to see any
+  character's bags, or their bank. Bags are saved whenever they change; a bank
+  each time you visit a banker. While you stand at your banker, the Bank view
+  is your real bank (right-click moves items, as usual).
+- **Banker marks** - "To banker" on an item adds a mail rule that sends all of
+  it to your banker (Send mail at a mailbox). Marked stacks show a letter, and
+  the footer counts them. "Never mail this" keeps it out of every rule.
+- **Sell junk** - at a vendor, one button sells your gray items (not anything
+  on the never-mail list).
+- **Worth** - the footer says what the bags are worth at auction (after the
+  cut, never less than a vendor pays, bound items at vendor price); hover for
+  the vendor total.
+
+Item tooltips also say which of your characters have the item and where
+("Your characters have 62: Xeon Mana 55 (35 bags, 20 bank), Alt 7 (bags)").
+
+Settings > "Forever Gold bags" switches back to the game's bags (and `/gold
+bags` turns them on again).
+
 ## Tooltips
 
 Blizzard's "Sell Price" line is replaced by a Vendor line (each, plus the
@@ -298,6 +333,7 @@ latest snapshot and tells you which have been undercut.
 - `/gold track reset` - wipe the tracker's numbers
 - `/gold track save` - save the trip to Make > Farm and clear the tracker
 - `/gold market` - where the sale-rate data stands
+- `/gold bags` / `/gold bank` - open the bag window on your bags or your (saved) bank
 - `/gold stop` - stop following a route
 - `/gold debug` - technical details if something looks wrong
 
@@ -322,6 +358,8 @@ latest snapshot and tells you which have been undercut.
 - `AuctionUI.lua` - the auction window (Browse and buy, Sell, Auctions) that replaces the game's
 - `Mail.lua` - the mailbox's banker, rules, send plans, and the one-at-a-time collect and send queue
 - `MailUI.lua` - the mailbox window (Inbox, Send mail, Auto-send rules) that replaces the game's
+- `Inventory.lua` - every character's bags and bank, saved slot by slot, and the who-has tooltip lines
+- `BagUI.lua` - the bag window that replaces the game's bags
 - `Icon.tga` - the addon's icon (minimap button, window title, addon list)
 
 ## Scanning
