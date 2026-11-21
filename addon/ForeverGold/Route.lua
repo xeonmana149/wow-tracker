@@ -49,6 +49,10 @@ local NODE_ITEM = {
     ["plaguebloom"] = 13466, ["icecap"] = 13467, ["black lotus"] = 13468,
 }
 local nodeIcons = {}
+local QUESTION_MARK = {
+    [134400] = true, [134414] = true,
+    ["Interface\\Icons\\INV_Misc_QuestionMark"] = true, ["interface\\icons\\inv_misc_questionmark"] = true,
+}
 function ns.NodeIcon(n)
     local kind = n and ns.KINDS[n.k]
     local fallback = kind and kind.icon or 134400
@@ -73,7 +77,22 @@ function ns.NodeIcon(n)
             id = ns.FindItemByName(n.k == "herb" and key
                 or (key:gsub("^small ", ""):gsub("^rich ", ""):gsub(" vein$", ""):gsub(" deposit$", "") .. " ore"))
         end
-        icon = id and C_Item and ns.try(C_Item.GetItemIconByID, id) or false
+        -- GetItemInfoInstant knows the icon without the item being cached;
+        -- GetItemIconByID hands back the question mark until it is, and that
+        -- was kept for good (2026-11-21: an ore vein showed as a "?").
+        icon = false
+        if id and C_Item then
+            if C_Item.GetItemInfoInstant then
+                icon = select(5, ns.try(C_Item.GetItemInfoInstant, id)) or false
+            end
+            if (not icon or QUESTION_MARK[icon]) and C_Item.GetItemIconByID then
+                icon = ns.try(C_Item.GetItemIconByID, id) or false
+            end
+            if QUESTION_MARK[icon] then
+                icon = false
+                id = nil -- not known yet: asked again next time
+            end
+        end
         -- An unknown name is looked up again later (the item may be seen by then).
         if icon or id then
             nodeIcons[key] = icon
@@ -712,6 +731,7 @@ local CROSS = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_7"
 -- cut them round so only the ore or herb itself shows, with a thin dark
 -- rim to keep them readable on the map. Clients without masks get the
 -- picture as it is, with nothing behind it.
+local LOGO = "Interface\\AddOns\\ForeverGold\\Icon"
 local ROUND_MASK = "Interface/CharacterFrame/TempPortraitAlphaMask"
 
 local function roundOff(owner, tex)
@@ -1587,31 +1607,37 @@ local function setupMapButton()
     end
     local sc = mapContainer()
     local b = CreateFrame("Button", "ForeverGoldMapButton", sc)
-    b:SetSize(30, 30)
+    -- Round, from the game's own button parts (dark backing, gold ring,
+    -- round glow on hover) like the map's other buttons beside it, with
+    -- Forever Gold's logo.
+    b:SetSize(31, 31)
     b:SetFrameStrata(WorldMapFrame.GetFrameStrata and WorldMapFrame:GetFrameStrata() or "HIGH")
     b.back = b:CreateTexture(nil, "BACKGROUND")
-    b.back:SetAllPoints()
-    b.back:SetColorTexture(0.05, 0.045, 0.035, 0.9)
-    b.edge = b:CreateTexture(nil, "BORDER")
-    b.edge:SetPoint("TOPLEFT", -1, 1)
-    b.edge:SetPoint("BOTTOMRIGHT", 1, -1)
-    b.edge:SetColorTexture(0.62, 0.5, 0.25, 1)
+    b.back:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    -- (the ring's art sits in the top-left of its texture, so these are the
+    -- same offsets the minimap button uses)
+    b.back:SetSize(20, 20)
+    b.back:SetPoint("TOPLEFT", 7, -5)
     b.icon = b:CreateTexture(nil, "ARTWORK")
-    b.icon:SetPoint("TOPLEFT", 3, -3)
-    b.icon:SetPoint("BOTTOMRIGHT", -3, 3)
-    b.icon:SetTexture(ns.KINDS.herb.icon)
-    b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    b.icon:SetTexture(LOGO)
+    b.icon:SetSize(19, 19)
+    b.icon:SetPoint("TOPLEFT", 6, -5)
+    roundOff(b, b.icon)
+    b.edge = b:CreateTexture(nil, "OVERLAY")
+    b.edge:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    b.edge:SetSize(53, 53)
+    b.edge:SetPoint("TOPLEFT")
     -- A red slash across it while everything is hidden.
-    b.off = b:CreateTexture(nil, "OVERLAY")
-    b.off:SetPoint("CENTER")
-    b.off:SetSize(34, 3)
+    b.off = b:CreateTexture(nil, "OVERLAY", nil, 2)
+    b.off:SetPoint("CENTER", b.icon, "CENTER")
+    b.off:SetSize(24, 3)
     b.off:SetColorTexture(0.9, 0.2, 0.15, 0.95)
     if b.off.SetRotation then
         b.off:SetRotation(-0.785)
     end
-    local hl = b:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints()
-    hl:SetColorTexture(1, 0.9, 0.6, 0.15)
+    if b.SetHighlightTexture then
+        b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+    end
     if b.RegisterForClicks then
         b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     end

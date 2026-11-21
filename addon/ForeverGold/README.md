@@ -433,7 +433,7 @@ sale rates and what the words mean.
 - `Inventory.lua` - every character's bags and bank, saved slot by slot, and the who-has tooltip lines
 - `BagUI.lua` - the bag window that replaces the game's bags, and the bank window
 - `Options.lua` - the pages in Options > AddOns > WoW Forever
-- `Icon.tga` - the addon's icon (minimap button, window title, addon list)
+- `Icon.tga` - the addon's icon (minimap button, world map button, window title, addon list)
 
 ## Scanning
 

@@ -98,7 +98,7 @@ end
 function methods:SetStartPoint(point, rel, x, y) assert(type(x) == "number" and type(y) == "number" and x == x and y == y, "bad line start") end
 function methods:SetEndPoint(point, rel, x, y) assert(type(x) == "number" and type(y) == "number" and x == x and y == y, "bad line end") end
 function methods:SetColorTexture(r, g, b, a) assert(type(r) == "number" and type(g) == "number" and type(b) == "number", "SetColorTexture needs numbers") end
-function methods:SetTexture(t) assert(t ~= nil, "SetTexture(nil)") end
+function methods:SetTexture(t) assert(t ~= nil, "SetTexture(nil)"); self._texture = t end
 function methods:SetAtlas(a) assert(type(a) == "string", "SetAtlas needs a name"); self._atlas = a end
 function methods:SetOwner(owner, anchor) assert(owner ~= nil and type(anchor) == "string", "SetOwner") ; self._lines = {} end
 function methods:AddLine(text) assert(type(text) == "string", "AddLine needs text, got " .. type(text)); self._lines = self._lines or {}; self._lines[#self._lines + 1] = text end

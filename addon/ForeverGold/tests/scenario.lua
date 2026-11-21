@@ -724,6 +724,13 @@ do -- each spot shows what it gives, not a generic leaf or pickaxe
         and ns.NodeIcon({ k = "herb", n = "Wilted Peacebloom" }) == herbIcon, "a Peacebloom (and WoW Forever's Wilted Peacebloom) shows Peacebloom")
     check(ns.NodeIcon({ k = "herb" }) == ns.KINDS.herb.icon and ns.NodeIcon({ k = "herb", n = "Mystery Weed" }) == ns.KINDS.herb.icon
         and ns.NodeIcon({ k = "fish", n = "Fishing spot" }) == ns.KINDS.fish.icon, "unknown, nameless and fishing spots keep the kind's picture")
+    -- an item the game hasn't loaded yet gives the question mark (2026-11-21:
+    -- an ore vein showed as a "?" for good): the kind's picture until it loads
+    local real = C_Item.GetItemIconByID
+    C_Item.GetItemIconByID = function() return 134400 end
+    check(ns.NodeIcon({ k = "ore", n = "Silver Vein" }) == ns.KINDS.ore.icon, "an ore not loaded yet shows the ore picture, not a question mark")
+    C_Item.GetItemIconByID = real
+    check(ns.NodeIcon({ k = "ore", n = "Silver Vein" }) == real(2775), "and its own picture once it has loaded")
 end
 do -- spots an older version saved for Find Herbs (no name) are cleared once
     ns.db.nodes[4343] = { { x = 0.1, y = 0.1, k = "herb", n = "", c = 3, t = time() },
@@ -1047,6 +1054,8 @@ do
     -- The map's gathering button and its filter
     local mb = ForeverGoldMapButton
     check(mb and mb:IsShown(), "the world map has a gathering button")
+    check(mb.icon._texture == "Interface\\AddOns\\ForeverGold\\Icon" and mb.edge._texture == "Interface\\Minimap\\MiniMap-TrackingBorder",
+        "it's round with a gold ring like the map's other buttons, showing Forever Gold's logo")
     check(toggles["kind-herb"] and toggles["kind-ore"] and toggles["kind-fish"] and toggles["kind-chest"] and toggles.route,
         "OpenMap's menu has a switch per kind and the route line (each can be starred onto its bar)")
     mb:Click()
