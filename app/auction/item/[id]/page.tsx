@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { H_DAY, H_EXP, H_LOW, H_MIN, H_MKT, H_POSTS, H_QTY, H_SOLD, H_SOLDP } from "../../../../lib/market";
-import { AH_CUT, getMarket, itemBasics, itemDetail, SPEED_TEXT, type CraftLine, type Market } from "../../../../lib/marketView";
+import { AH_CUT, getMarket, itemBasics, itemDetail, SPEED_TEXT, suspiciousPrice, type CraftLine, type Market } from "../../../../lib/marketView";
 import AddToList from "../../AddToList";
 import MarketStatus, { NoMarket } from "../../MarketStatus";
 import { dayNumber, Empty, ItemIcon, ItemLink, Money, Panel, perDayText, SpeedBadge, TD, TH, TR } from "../../ui";
@@ -109,11 +109,19 @@ export default async function AuctionItemPage({ params, searchParams }: { params
     );
   }
 
-  const ladder: { price: number; qty: number; n: number; running: number; spent: number }[] = [];
+  const ladder: { price: number; qty: number; n: number; running: number; spent: number; odd: string | null }[] = [];
   for (const [price, qty, n] of d.ladder) {
     const prev = ladder[ladder.length - 1];
-    ladder.push({ price, qty, n, running: (prev?.running ?? 0) + qty, spent: (prev?.spent ?? 0) + (price > 0 ? price * qty : 0) });
+    ladder.push({
+      price,
+      qty,
+      n,
+      running: (prev?.running ?? 0) + qty,
+      spent: (prev?.spent ?? 0) + (price > 0 ? price * qty : 0),
+      odd: suspiciousPrice(m, id, price),
+    });
   }
+  const oddCount = ladder.filter((l) => l.odd).reduce((sum, l) => sum + l.n, 0);
 
   const byProf = new Map<string, typeof d.usedIn>();
   for (const rec of d.usedIn) byProf.set(rec.prof, [...(byProf.get(rec.prof) ?? []), rec]);
@@ -180,7 +188,14 @@ export default async function AuctionItemPage({ params, searchParams }: { params
                 <tbody>
                   {ladder.map((l) => (
                     <tr key={l.price} className={TR}>
-                      <td className={TD}>{l.price ? <Money c={l.price} /> : <span className="text-gray-500">bid only</span>}</td>
+                      <td className={TD}>
+                        {l.price ? <Money c={l.price} /> : <span className="text-gray-500">bid only</span>}
+                        {l.odd && (
+                          <span className="ml-2 text-xs font-semibold text-red-400" title={`${l.odd}. Almost certainly gold changing hands between accounts, not a real price. Don't buy it, and don't price yours to match.`}>
+                            Suspicious
+                          </span>
+                        )}
+                      </td>
                       <td className={`${TD} text-right tabular-nums`}>{l.qty.toLocaleString()}</td>
                       <td className={`${TD} text-right tabular-nums`}>{l.n}</td>
                       <td className={`${TD} text-right`}>
@@ -195,6 +210,12 @@ export default async function AuctionItemPage({ params, searchParams }: { params
                 </tbody>
               </table>
               {d.ladder.length >= 40 && <p className="mt-2 text-xs text-gray-500">Showing the 40 cheapest prices.</p>}
+              {oddCount > 0 && (
+                <p className="mt-2 text-xs text-red-300/80">
+                  {oddCount} suspicious {oddCount === 1 ? "auction" : "auctions"}: priced like gold changing hands between accounts.
+                  They&apos;re left out of the sold prices and deals.
+                </p>
+              )}
             </div>
           )}
         </Panel>

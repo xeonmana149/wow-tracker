@@ -387,6 +387,7 @@ function C_AuctionHouse.SendBrowseQuery(q)
     assert(type(q) == "table" and type(q.searchString) == "string" and #q.filters >= 7 and #q.sorts == 2, "bad browse query")
     M.queries = (M.queries or 0) + 1
     M.lastBrowse = q
+    M.browseCount = (M.browseCount or 0) + 1
     AHS.pos, AHS.results = 0, {}
     AHS.list = nil
     if q.searchString ~= "" then

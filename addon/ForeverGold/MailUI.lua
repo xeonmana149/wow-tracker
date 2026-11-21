@@ -4,7 +4,7 @@
 --   Inbox            your mail on the left, the one you pick on the right:
 --                    take one attachment, take the gold, or collect all
 --                    (never C.O.D., GM mail or a sale still pending).
---   Send mail        To banker (quick-send), Apply rules, or Custom mail.
+--   Send mail        New mail, To banker (quick-send), or Auto-send (your rules).
 --                    Every mail, stack and copper of postage is shown first;
 --                    then one click per mail sends it.
 --   Auto-send rules  which materials go to which character, in order.
@@ -33,7 +33,7 @@ local LIST_W = W - PAD * 3 - SIDE_W
 local CLASS_ICONS = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
 local GREEN, RED, GOLD = "|cff8fd37a", "|cffff7070", "|cffffd100"
 
-local U = { tab = "inbox", mode = "banker", sel = {}, form = { picks = {} } }
+local U = { tab = "inbox", mode = "custom", sel = {}, form = { picks = {} } }
 ns.MailUI = U
 local win
 
@@ -1091,9 +1091,9 @@ end
 ----------------------------------------------------------------------
 
 local MODES = {
-    banker = { title = "Send to your banker", sub = "Auction stock and the categories you added. Crafting materials and anything a rule sends elsewhere stay." },
-    rules = { title = "Your rules, ready to send", sub = "Matching materials grouped by recipient, with your keep amounts left in your bags." },
-    custom = { title = "Compose a mail", sub = "Pick a recipient and the stacks to attach. Gold and C.O.D. are optional." },
+    banker = { title = "To banker", sub = "Auction stock and the categories you added. Crafting materials and anything a rule sends elsewhere stay." },
+    rules = { title = "Auto-send: your rules, ready to send", sub = "Matching materials grouped by recipient, with your keep amounts left in your bags." },
+    custom = { title = "New mail", sub = "Pick a recipient and the stacks to attach. Gold and C.O.D. are optional." },
 }
 
 local SKIP_TEXT = {
@@ -1123,7 +1123,8 @@ local function buildSend(f)
     p.sub:SetWordWrap(false)
     p.modes = {}
     local x = PAD
-    for _, m in ipairs({ { "banker", "To banker" }, { "rules", "Apply rules" }, { "custom", "Custom mail" } }) do
+    -- New mail first; Auto-send sends what your auto-send rules match
+    for _, m in ipairs({ { "custom", "New mail" }, { "banker", "To banker" }, { "rules", "Auto-send" } }) do
         local key = m[1]
         local b = button(p, m[2], 110, 24, function() U.SetMode(key) end)
         b:SetPoint("TOPLEFT", x, -42)

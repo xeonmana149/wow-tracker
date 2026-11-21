@@ -10,6 +10,8 @@
 --             then press Post once per listing.
 --   Auctions  your auctions with live undercut checks, and one-click-each
 --             cancelling of the undercut ones.
+--   Deals     Browse's Deals category, a click away: the bargains from your
+--             last scan (Search there looks through them).
 -- "Game's window" switches back to Blizzard's auction window (remembered);
 -- a button above that window switches back here.
 --
@@ -461,6 +463,10 @@ function A.Search(text, category)
     if not ns.ahOpen then
         return
     end
+    if category == "deals" then
+        -- Deals picked: Search looks through the deals (2026-11-21)
+        return A.ShowDeals(text)
+    end
     if ns.scan and ns.scan.active then
         buyMsg("Wait for the price scan to finish, then search.")
         return
@@ -553,28 +559,59 @@ ns.On("AUCTION_HOUSE_BROWSE_FAILURE", function()
 end)
 
 -- Our own list: everything the last scan found under vendor price or well
--- under its usual price.
-function A.ShowDeals()
+-- under its usual price. text: only the deals whose name has it.
+local function nameHas(id, text)
+    if text == "" then
+        return true
+    end
+    local it = ns.Item(id)
+    local name = (it and it.n) or (C_Item and C_Item.GetItemNameByID and ns.try(C_Item.GetItemNameByID, id)) or ""
+    return name:lower():find(text, 1, true) ~= nil
+end
+
+function A.ShowDeals(text)
+    text = (text or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
     BUY.mode, BUY.item, BUY.category = "list", nil, "deals"
     BUY.deals = true
+    BUY.query = text
+    BUY.searching = false
     BUY.results, BUY.oddHidden = {}, 0
     BUY.dirty = true
     BUY.message = nil
     for _, f in ipairs(ns.VendorFlips()) do
-        BUY.results[#BUY.results + 1] = { id = f.id, qty = f.listed or 0, price = f.price,
-            why = "|cff40e060Vendor pays " .. ns.StripCodes(ns.Money(f.vendor)) .. "|r", profit = f.profit }
+        if nameHas(f.id, text) then
+            BUY.results[#BUY.results + 1] = { id = f.id, qty = f.listed or 0, price = f.price,
+                why = "|cff40e060Vendor pays " .. ns.StripCodes(ns.Money(f.vendor)) .. "|r", profit = f.profit }
+        end
     end
     if ns.Bargains then
         for _, b in ipairs(ns.Bargains()) do
-            local price, listed = ns.AHPrice(b.id)
-            BUY.results[#BUY.results + 1] = { id = b.id, qty = listed or 0, price = price or b.price,
-                why = "|cff40e060Well under usual|r", profit = b.profit }
+            if nameHas(b.id, text) then
+                local price, listed = ns.AHPrice(b.id)
+                BUY.results[#BUY.results + 1] = { id = b.id, qty = listed or 0, price = price or b.price,
+                    why = "|cff40e060Well under usual|r", profit = b.profit }
+            end
         end
     end
     if #BUY.results == 0 then
-        BUY.message = ns.R().lastScan and "No deals in your last scan. Scan again later - they come and go."
+        BUY.message = text ~= "" and ("No deals match \"" .. text .. "\". Clear the search to see them all.")
+            or ns.R().lastScan and "No deals in your last scan. Scan again later - they come and go."
             or "Deals come from a price scan. Press Scan prices first."
     end
+    A.Refresh()
+end
+
+-- Clicking the picked Deals category again: nothing picked, an empty list
+-- (or a search of everything, if there's text in the box).
+function A.LeaveDeals(text)
+    text = text or ""
+    if text:match("%S") then
+        return A.Search(text, nil)
+    end
+    BUY.mode, BUY.item, BUY.category, BUY.deals = "list", nil, nil, nil
+    BUY.query, BUY.results, BUY.seen, BUY.oddHidden = "", {}, {}, 0
+    BUY.dirty = true
+    BUY.message = nil
     A.Refresh()
 end
 
@@ -1097,7 +1134,28 @@ end
 
 local tabs = {}
 
+-- Which tab button is lit: Deals while Browse shows the deals.
+local function litTabs()
+    local onDeals = A.tab == "browse" and BUY.category == "deals"
+    for k, b in pairs(tabs) do
+        b:SetOn((k == "deals" and onDeals) or (k == A.tab and not onDeals))
+    end
+end
+
 local function setTab(key)
+    if key == "deals" then
+        A.tab = "browse"
+        win.browse:SetShown(true)
+        win.sell:SetShown(false)
+        win.mine:SetShown(false)
+        A.openCategory = nil
+        if win.browse.search then
+            win.browse.search:SetText("")
+        end
+        A.ShowDeals()
+        litTabs()
+        return
+    end
     A.tab = key
     for k, b in pairs(tabs) do
         b:SetOn(k == key)
@@ -1140,12 +1198,16 @@ local function buildBrowse(f)
     -- The category you picked stays picked: Search (even with an empty box)
     -- looks inside it. Click it again to search everything.
     local function picked()
-        return type(BUY.category) == "table" and BUY.category or nil
+        return (type(BUY.category) == "table" or BUY.category == "deals") and BUY.category or nil
     end
     p.cats.onClick = function(d)
         if d.deals then
             A.openCategory = nil
-            A.ShowDeals()
+            if BUY.category == "deals" then
+                A.LeaveDeals(p.search:GetText() or "") -- clicked again: deselect it
+            else
+                A.ShowDeals(p.search:GetText() or "")
+            end
             return
         end
         local cur = picked()
@@ -1456,13 +1518,14 @@ local function createWindow()
     rule:SetPoint("TOPLEFT", 12, -70)
     rule:SetPoint("TOPRIGHT", -12, -70)
     local x = 12
-    for _, t in ipairs({ { "browse", "Browse" }, { "sell", "Sell" }, { "auctions", "Auctions" } }) do
+    for _, t in ipairs({ { "browse", "Browse" }, { "sell", "Sell" }, { "auctions", "Auctions" }, { "deals", "Deals" } }) do
         local key = t[1]
         local b = button(f, t[2], 100, 24, function() setTab(key) end)
         b:SetPoint("TOPLEFT", x, -42)
         tabs[key] = b
         x = x + 104
     end
+    f.tabs = tabs
 
     f.footRule = tex(f, "BORDER", C.edge[1], C.edge[2], C.edge[3], 0.5)
     f.footRule:SetHeight(1)
@@ -2102,6 +2165,7 @@ function A.Refresh()
         return
     end
     local scanText = refreshHead()
+    litTabs()
     if A.tab == "browse" then
         refreshBrowse()
     elseif A.tab == "sell" then

@@ -2125,6 +2125,28 @@ do
     check(A.BUY.deals and flips > 0 and #A.BUY.results == flips, "Deals lists the bargains from the last scan: " .. #A.BUY.results)
     A.Refresh()
     check(F.browse.results.rows[1]:IsShown() and strip(F.browse.results.rows[1].cells[5]:GetText()) ~= "", "each deal says why")
+    -- the Deals tab, searching inside Deals, and clicking Deals again
+    A.SetTab("sell")
+    F.tabs.deals:Click()
+    check(A.tab == "browse" and F.browse:IsShown() and A.BUY.category == "deals" and #A.BUY.results == flips
+        and F.tabs.deals.on and not F.tabs.browse.on, "a Deals tab after Auctions opens the deals")
+    local first = A.BUY.results[1]
+    local firstName = ns.Item(first.id).n
+    F.browse.search:SetText(firstName)
+    local browsesBefore = M.browseCount or 0
+    F.browse.go:Click()
+    check(A.BUY.category == "deals" and #A.BUY.results >= 1 and A.BUY.results[1].id == first.id
+        and #A.BUY.results < flips + 1 and (M.browseCount or 0) == browsesBefore,
+        "Search with Deals picked looks through the deals and stays in Deals: " .. #A.BUY.results .. " for " .. firstName)
+    F.browse.search:SetText("")
+    local dealsRow
+    for _, c in ipairs(F.browse.cats.data or {}) do if c.deals then dealsRow = c end end
+    F.browse.cats.onClick(dealsRow or { deals = true })
+    A.Refresh()
+    check(A.BUY.category == nil and not A.BUY.deals and #A.BUY.results == 0 and F.browse.cats.selected == nil
+        and F.tabs.browse.on and not F.tabs.deals.on, "clicking Deals again deselects it")
+    F.browse.cats.onClick(dealsRow or { deals = true })
+    check(A.BUY.category == "deals", "and once more picks it again")
     ns.db.opts.dealMin = keepMin
     ns.Fire("PRICES_UPDATED")
 
@@ -3134,12 +3156,13 @@ end
 out("== mail: scrolls")
 do
     local MB = ns.Mail
-    check(MB.CAT.scrolls and MB.InCategory("scrolls", 211780) and MB.InCategory("scrolls", 954)
+    check(MB.CAT.scrolls and MB.InCategory("scrolls", 211780) and not MB.InCategory("scrolls", 954)
         and not MB.InCategory("scrolls", 858) and not MB.InCategory("scrolls", 2447),
-        "the Scrolls group takes every scroll (the mage's Comprehension ones too), not potions or herbs")
+        "the Comprehension scrolls group takes the mage's scrolls only, not stat scrolls, potions or herbs")
+    check(MB.CAT.scrolls.icon == 211780, "with a Comprehension scroll's own icon")
     local found
     for _, o in ipairs(ns.MailUI.MatchOptions()) do if o.value == "scrolls" then found = o end end
-    check(found and found.text == "Scrolls", "and it's offered when you make a rule")
+    check(found and found.text == "Comprehension scrolls", "and it's offered when you make a rule")
     local r = MB.AddRule({ cat = "scrolls", to = "banker", on = true, keep = 0, scope = "account" })
     check(r and r.cat == "scrolls" and MB.SaveRule(r.id, { cat = "scrolls", keep = 2 }), "a Scrolls rule can be made and edited")
     MB.DeleteRule(r.id)
@@ -3355,6 +3378,13 @@ do
     check(#locked == 7 and locked[1].nextUp and not locked[2].nextUp and locked[1].lock:IsShown(),
         "7 bank bag slots locked; the first is the next to buy")
     check(BV.win.buy:IsShown() and strip(BV.win.buyCost:GetText()) == "Cost: 1g", "Cost: 1g and a Purchase button, as the game's bank shows")
+    do
+        local n = BV._cols
+        local gridW = 8 * 2 + n * 39 - 2
+        check(n >= 10 and BV.win:GetWidth() == gridW and gridW >= BV._barW,
+            "the slots fill the window to its right edge, however wide the bar of locked slots makes it ("
+            .. n .. " columns, " .. BV.win:GetWidth() .. " wide)")
+    end
     BV.win.buy:Click()
     check(M.popup and M.popup.which == "CONFIRM_BUY_BANK_TAB" and M.popup.data.bankType == Enum.BankType.Character,
         "Purchase asks with the game's own confirm")
@@ -3377,7 +3407,7 @@ do
     M.fire("BANKFRAME_CLOSED"); M.bankOpen = false; M.advance(1)
     check(not BV.win:IsShown() and not win:IsShown(), "walking away closes the bank window and the bags it opened")
     BU.OpenBank()
-    check(not BU.IsLive(BV) and strip(BV.win.sub:GetText()):find("^SAVED") and not BV.win.buy:IsShown(),
+    check(not BU.IsLive(BV) and strip(BV.win.sub:GetText()) == "" and not BV.win.buy:IsShown(),
         "away from it, the bank shows the saved copy, without Purchase: " .. strip(BV.win.sub:GetText()))
     local lockedSaved = 0
     for _, b in ipairs(BV._bagBtns) do if b:IsShown() and b.locked then lockedSaved = lockedSaved + 1 end end
@@ -3385,6 +3415,15 @@ do
     local bankCells = BU.Cells(BV)
     check(#bankCells == 18 and bankCells[1].id == 2589 and bankCells[2].empty and bankCells[3].id == 818,
         "in its real slots, gaps included")
+    local arts, shownArts = 0, 0
+    for i = 1, BV._usedBg do
+        if BV._bgs[i].art:IsShown() then shownArts = shownArts + 1 end
+        arts = arts + 1
+    end
+    local emptySaved = 0
+    for _, c in ipairs(bankCells) do if not c.id then emptySaved = emptySaved + 1 end end
+    check(shownArts == emptySaved and shownArts > 0,
+        "its empty slots show the same slot picture as the live bank (" .. shownArts .. " of " .. arts .. ")")
     -- closing our window at the banker ends the visit, like the game's
     M.bankOpen = true
     M.fire("BANKFRAME_OPENED"); M.advance(1)
@@ -3412,6 +3451,10 @@ do
     check(BU.char == "Alt-PvP" and #altCells == 4 and altCells[1].id == 2589 and altCells[2].empty and not altCells[1].live
         and strip(win.title:GetText()) == "Alt's Inventory", "their bags, from the last save")
     check(buttonFor(0, 2) == nil and not win.sort:IsShown(), "your own (live) buttons are put away, and there's nothing to sort")
+    local altArt = 0
+    for i = 1, BU._usedBg do if BU._bgs[i].art:IsShown() then altArt = altArt + 1 end end
+    check(altArt == 2 and strip(win.sub:GetText()) == "",
+        "their empty slots show the same slot picture as your own, and no SAVED note (" .. altArt .. " empty)")
     win.who:Click("RightButton")
     check(BV.win:IsShown() and BV.char == "Alt-PvP" and BV.win.note:IsShown(), "their bank isn't saved yet: its window says so")
     BV.win:Hide()
@@ -3494,6 +3537,11 @@ do
     BU.ResetUnusable(); BU.Refresh()
     local axe = btn(0, 3)
     check(axe.fgWhy == "unusable" and axe.fgColor.r == 1 and axe.fgColor.g < 0.2, "gear you can't use glows red")
+    M.cantUse[774] = true -- red text on a gem's tooltip (like "Locked" on a lockbox)
+    BU.ResetUnusable(); BU.Refresh()
+    check(btn(0, 1).fgWhy ~= "unusable", "but only gear and recipes: red text on anything else doesn't count")
+    M.cantUse[774] = nil
+    BU.ResetUnusable(); BU.Refresh()
     M.pawnUp = { ["0:3"] = true }
     BU.Refresh()
     check(btn(0, 3).fgUp:IsShown() and not mal.fgUp:IsShown(), "Pawn's upgrades get a green arrow")
@@ -3520,6 +3568,30 @@ do
     check(btn(0, 1).fgGlow:IsShown() and btn(0, 1).fgGlow.b == 1 and btn(0, 1).fgGlow.t[1]._gradient ~= nil,
         "hovering a bag lights its slots' edges in blue, fading toward the middle")
     BU.HighlightBag(BU, nil)
+    -- the bag-hover glow only lasts while the mouse is on that bag (2026-11-21:
+    -- a whole bag stayed lit blue after the mouse had left)
+    local barBtn
+    for _, bb in ipairs(BU._bagBtns) do if bb:IsShown() and bb.bag == 0 then barBtn = bb end end
+    barBtn.IsMouseOver = function() return true end
+    barBtn._scripts.OnEnter(barBtn)
+    BU.Refresh()
+    check(btn(0, 1).fgGlow:IsShown(), "hovering a bag keeps its slots lit through a refresh")
+    barBtn.IsMouseOver = function() return false end -- left without the game saying so
+    BU.Refresh()
+    check(not btn(0, 1).fgGlow:IsShown() and BU.hot == nil, "once the mouse has gone, the next refresh puts them out")
+    barBtn.IsMouseOver = function() return true end
+    barBtn._scripts.OnEnter(barBtn)
+    barBtn:Hide()
+    barBtn._scripts.OnHide(barBtn)
+    check(not btn(0, 1).fgGlow:IsShown() and BU.hot == nil, "and so does the bag's button going away under the mouse")
+    barBtn.IsMouseOver = nil
+    BU.Refresh()
+    -- moving an item shows at once, not after the half-second bag rescan
+    M.bags[1], M.bags[2] = M.bags[2], M.bags[1]
+    M.fire("BAG_UPDATE_DELAYED"); M.advance(0.02)
+    check(btn(0, 1).fgCell.id == 4865 and btn(0, 2).fgCell.id == 774, "a moved item shows in its new slot on the next frame")
+    M.bags[1], M.bags[2] = M.bags[2], M.bags[1]
+    M.fire("BAG_UPDATE_DELAYED"); M.advance(1)
     -- money: soulbound and bind-on-pickup things count at a vendor, never at auction
     local a1, v1 = BU.Worth({ { id = 2589, count = 1, bound = true } })
     check(a1 == 0 and v1 == 13, "a soulbound item counts at a vendor, not at auction")

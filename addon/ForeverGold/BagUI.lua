@@ -52,6 +52,8 @@ local BAG_ICON = "Interface\\Icons\\INV_Misc_Bag_08"
 local BANK_ICON = "Interface\\Icons\\INV_Misc_Bag_10_Blue"
 local GUILD_ICON = "Interface\\Icons\\INV_Misc_TabardPVP_01"
 local EMPTY_BAG_ICON = "Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag"
+-- What an empty item slot shows (the game's own buttons show it too)
+local EMPTY_SLOT_ART = "Interface\\PaperDoll\\UI-Backpack-EmptySlot"
 
 -- whether the client ships one of its UI atlases
 local function hasAtlas(name)
@@ -73,6 +75,13 @@ end
 
 local function cols()
     return min(16, max(6, tonumber(O().bagCols) or 10))
+end
+
+-- The columns a window lays out: the Columns setting, or more when its
+-- title or bag bar need a wider window, so the slots fill it to the right
+-- edge instead of leaving a gap (2026-11-21, the bank's locked slots).
+local function viewCols(V)
+    return (V and V._cols) or cols()
 end
 local function showEmpty()
     return O().bagEmpty ~= false
@@ -884,7 +893,11 @@ local function slotBg(V)
     local t = V._bgs[V._usedBg]
     if not t then
         local body = V.win.body
-        t = { edge = body:CreateTexture(nil, "BACKGROUND", nil, 1), fill = body:CreateTexture(nil, "BACKGROUND", nil, 2) }
+        t = { edge = body:CreateTexture(nil, "BACKGROUND", nil, 1), fill = body:CreateTexture(nil, "BACKGROUND", nil, 2),
+            art = body:CreateTexture(nil, "BACKGROUND", nil, 3) }
+        t.art:SetTexture(EMPTY_SLOT_ART)
+        t.art:SetAllPoints(t.fill)
+        t.art:Hide()
         t.glow = edgeGlow(body, t.fill, "ARTWORK", 1, 10)
         t.glow:SetColor(HOVER[1], HOVER[2], HOVER[3], HOVER[4])
         V._bgs[V._usedBg] = t
@@ -919,7 +932,9 @@ local function glowAlpha()
 end
 
 local CLASS_QUEST = 12
-local CAN_BE_UNUSABLE = { [0] = true, [2] = true, [4] = true, [9] = true } -- consumables, weapons, armour, recipes
+-- Only gear and recipes (2026-11-21: lockboxes, meat and other trade goods
+-- were turning red from other red tooltip text, such as "Locked").
+local CAN_BE_UNUSABLE = { [2] = true, [4] = true, [9] = true } -- weapons, armour, recipes
 local unusable = {}
 BU.ResetUnusable = function() unusable = {} end
 
@@ -934,7 +949,11 @@ function BU.Unusable(cell)
         return false
     end
     local it = ns.Item(cell.id)
-    if it and it.c ~= nil and not CAN_BE_UNUSABLE[it.c] then
+    local class = it and it.c
+    if class == nil and C_Item and C_Item.GetItemInfoInstant then
+        class = select(6, ns.try(C_Item.GetItemInfoInstant, cell.id))
+    end
+    if not CAN_BE_UNUSABLE[class] then
         return false
     end
     local key = tostring(cell.link or cell.id)
@@ -1117,7 +1136,7 @@ BU.BagName = function(bag, V) return bagName(V or BU, bag) end
 
 -- Lays cells out in rows from y; returns the new y.
 local function placeRow(V, list, y, q)
-    local n = cols()
+    local n = viewCols(V)
     local body = V.win.body
     for i, cell in ipairs(list) do
         local col, row = (i - 1) % n, floor((i - 1) / n)
@@ -1136,6 +1155,8 @@ local function placeRow(V, list, y, q)
         bg.glow:Hide() -- it follows the slot's fill
         bg.edge:Show()
         bg.fill:Show()
+        -- a saved empty slot has no button: the same slot picture a live one shows
+        bg.art:SetShown(not cell.live and not cell.id)
         local b
         if cell.live then
             b = liveButton(V, cell.bag, cell.slot)
@@ -1175,10 +1196,12 @@ local function placeRow(V, list, y, q)
     return y - (floor((#list - 1) / n) + 1) * (SLOT + GAP)
 end
 
--- Hovering a bag lights up its slots (nil: none).
-function BU.HighlightBag(V, bag)
+-- Hovering a bag lights up its slots (nil: none). btn: the bar button the
+-- mouse is on, so a refresh only lights them again while it still is.
+function BU.HighlightBag(V, bag, btn)
     V = V or BU
     V.hot = bag
+    V.hotBtn = bag ~= nil and btn or nil
     for _, p in ipairs(V._placed) do
         local on = bag ~= nil and p.bag == bag
         if p.b then
@@ -1189,6 +1212,20 @@ function BU.HighlightBag(V, bag)
     end
 end
 
+-- Is the mouse still on the bar button that lit a bag, and is it still
+-- that bag's button?
+function BU.StillHovered(V)
+    local btn = V.hotBtn
+    if type(btn) ~= "table" or btn.bag ~= V.hot or not btn:IsShown() then
+        return false
+    end
+    if type(btn.IsMouseOver) ~= "function" then
+        return false
+    end
+    local ok, over = pcall(btn.IsMouseOver, btn)
+    return ok and over == true
+end
+
 local function sectionHead(V, y, left, right)
     local h = heading(V)
     local body = V.win.body
@@ -1196,7 +1233,7 @@ local function sectionHead(V, y, left, right)
     h.left:SetPoint("TOPLEFT", body, "TOPLEFT", 0, y - 1)
     h.left:SetText(left)
     h.right:ClearAllPoints()
-    h.right:SetPoint("TOPRIGHT", body, "TOPLEFT", cols() * (SLOT + GAP) - GAP, y - 1)
+    h.right:SetPoint("TOPRIGHT", body, "TOPLEFT", viewCols(V) * (SLOT + GAP) - GAP, y - 1)
     h.right:SetText(right or "")
     return y - SECTION
 end
@@ -1376,12 +1413,17 @@ local function bagButton(V, i)
         BU.BagClick(V, self.bag, which, self)
     end)
     b:SetScript("OnEnter", function(self)
-        BU.HighlightBag(V, self.bag)
+        BU.HighlightBag(V, self.bag, self)
         bagTip(V, self)
     end)
     b:SetScript("OnLeave", function()
         BU.HighlightBag(V, nil)
         untip()
+    end)
+    b:SetScript("OnHide", function(self)
+        if V.hotBtn == self then
+            BU.HighlightBag(V, nil)
+        end
     end)
     -- drag a bag out of its slot, or drop one in
     b:SetScript("OnDragStart", function(self)
@@ -1601,13 +1643,7 @@ local function refreshView(V)
     if not INV.SetFace(win.who.icon, who) then
         K.setIcon(win.who.icon, V.where == "bank" and BANK_ICON or BAG_ICON)
     end
-    if live then
-        win.sub:SetText("")
-    elseif d.at then
-        win.sub:SetText("SAVED " .. (ns.Ago and ns.Ago(d.at) or ""))
-    else
-        win.sub:SetText("")
-    end
+    win.sub:SetText("")
     if win.tabBags then
         win.tabBags:SetOn(true)
         win.tabBank:SetOn(BV.win ~= nil and BV.win:IsShown() and BV.where == "bank")
@@ -1663,6 +1699,17 @@ local function refreshView(V)
         end
     end
     layoutBar(V, d, freeBy)
+    -- as many columns as fill the width the title and the bag bar need
+    do
+        local titleW = win.title:IsShown() and (tonumber(win.title:GetStringWidth() or 0) or 0) or 140
+        V._headW = PAD + 24 + 6 + titleW + 12 + (16 + 5 + 20 + 5 + 16 + 5 + 22 + 5)
+        local need = max(V._headW, V._barW or 0, 290)
+        local n = cols()
+        while n < 24 and PAD * 2 + n * (SLOT + GAP) - GAP < need do
+            n = n + 1
+        end
+        V._cols = n
+    end
     local top = HEAD + (barShown() and BAR or 0)
     win.body:ClearAllPoints()
     win.body:SetPoint("TOPLEFT", PAD, -top)
@@ -1747,8 +1794,12 @@ local function refreshView(V)
         y = sectionHead(V, y, "New loot", plural(#fresh, "item"))
         y = placeRow(V, fresh, y, q)
     end
-    if V.hot then
-        BU.HighlightBag(V, V.hot)
+    if V.hot ~= nil then
+        if BU.StillHovered(V) then
+            BU.HighlightBag(V, V.hot, V.hotBtn)
+        else
+            BU.HighlightBag(V, nil)
+        end
     end
     for _, b in ipairs(V._prevLive or {}) do
         -- only if no other view has taken it since
@@ -1780,10 +1831,9 @@ local function refreshView(V)
 
     -- size
     -- fitted to the grid, but never cutting off the title or the bag bar
-    local n = cols()
+    local n = viewCols(V)
     local w = PAD * 2 + n * (SLOT + GAP) - GAP
-    local titleW = win.title:IsShown() and (tonumber(win.title:GetStringWidth() or 0) or 0) or 140
-    local headW = PAD + 24 + 6 + titleW + 12 + (16 + 5 + 20 + 5 + 16 + 5 + 22 + 5)
+    local headW = V._headW or 0
     local h = top - y + FOOT + PAD
     win:SetScale(bagScale())
     win:SetSize(floor(max(w, headW, V._barW or 0, 290) + 0.5), floor(max(h, 120) + 0.5))
@@ -2140,7 +2190,8 @@ local function frameBorder(f)
         t[4]:SetWidth(size)
         return t
     end
-    f.fgBorder = { line(0, 0, 0, 0.95, 0, 1), line(C.goldEdge[1], C.goldEdge[2], C.goldEdge[3], 1, 1, 2) }
+    -- the gold edge at half strength, so it frames the window without glaring (2026-11-21)
+    f.fgBorder = { line(0, 0, 0, 0.95, 0, 1), line(C.goldEdge[1], C.goldEdge[2], C.goldEdge[3], 0.5, 1, 2) }
 end
 
 local function iconButton(parent, icon, tipText, onClick)
@@ -2283,7 +2334,7 @@ local function build(V, name)
         BU.Refresh()
     end)
     keys:SetScript("OnEnter", function(self)
-        BU.HighlightBag(V, self.bag)
+        BU.HighlightBag(V, self.bag, self)
         tip(self, { "Keyring", (self.used or 0) .. " of " .. (self.size or 0) .. " slots used",
             GREY .. "Click: " .. (keysShown() and "hide" or "show") .. " your keys|r" })
     end)
@@ -2764,6 +2815,19 @@ end
 for _, ev in ipairs({ "ITEM_LOCK_CHANGED", "BAG_UPDATE_COOLDOWN" }) do
     ns.On(ev, function()
         BU.Repaint()
+    end)
+end
+-- An item moved, split or arrived: redraw on the next frame. (The saved
+-- copy of your bags follows half a second later; waiting for it made every
+-- move lag, 2026-11-21.)
+for _, ev in ipairs({ "BAG_UPDATE_DELAYED", "PLAYERBANKSLOTS_CHANGED" }) do
+    ns.On(ev, function()
+        for _, V in ipairs(VIEWS) do
+            if V.win and V.win:IsShown() and isLive(V) then
+                ns.Later("bag-refresh", 0, BU.Refresh)
+                return
+            end
+        end
     end)
 end
 for _, ev in ipairs({ "QUEST_ACCEPTED", "PLAYER_MONEY", "BAG_NEW_ITEMS_UPDATED",

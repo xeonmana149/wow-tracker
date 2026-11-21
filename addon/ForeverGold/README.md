@@ -100,8 +100,10 @@ game's. It has the game's three tabs, plus what the addon knows:
 
 - **Browse** - search by name or pick a category (the game's own list). Each
   result shows the lowest price, the usual price, how it compares, and how fast
-  it sells. **Deals** at the top of the categories lists the bargains from your
-  last scan. Click a result for every listing, then buy:
+  it sells. **Deals** at the top of the categories (or the Deals tab after
+  Auctions) lists the bargains from your last scan; Search while it's picked
+  looks through the deals, and clicking it again deselects it. Click a result
+  for every listing, then buy:
   - stackable goods: type how many (or Max). The first click asks the auction
     house for the exact price; the second click, "Confirm: pay ...", buys.
     Cancel backs out. It buys cheapest first and skips your own listings.
@@ -158,13 +160,13 @@ under the tabs is on every tab: your **banker**, **Change banker**, and
   Game Master or a sale still pending, and never returns or deletes mail. C.O.D.
   mail can only be paid in the game's mailbox.
 - **Send mail** has three modes:
+  - **New mail**: recipient, subject, letter, stacks, and gold or C.O.D.
   - **To banker** (what Quick-send opens): auction stock - what the Sell advice
     says to auction or you ticked on the auction window's Sell tab, not what you
     unticked - plus the groups you added. Materials a profitable recipe of yours
     uses stay, unless you ticked them to sell, and so does anything a rule sends
     to someone else.
-  - **Apply rules**: what your rules send, grouped by recipient.
-  - **Custom mail**: recipient, subject, letter, stacks, and gold or C.O.D.
+  - **Auto-send**: what your auto-send rules send, grouped by recipient.
   Every mail, stack, quantity and copper of postage is listed before anything
   goes. Click a row to leave it out of this send; right-click to always keep it.
   Mail takes whole stacks, so if the keep amount falls inside a stack the row
@@ -176,8 +178,8 @@ under the tabs is on every tab: your **banker**, **Change banker**, and
   use, asking or auto-sending when a mailbox opens, and sending spare gold.
 - **Auto-send rules** - each rule matches one item or a material group (cloth
   and bolts, herbs, ore and bars, leather and hides, elemental, enchanting, meat
-  and fish, gems, scrolls - every scroll, the mage's Comprehension scrolls
-  too - or auction stock), sends it to a character or to "Banker"
+  and fish, gems, the mage's Comprehension scrolls (not stat scrolls) - or
+  auction stock), sends it to a character or to "Banker"
   (whoever your banker is), and keeps an amount in your bags (counted across
   every stack). A rule can be account-wide or for one character. Rules run top
   to bottom and the first enabled one that matches owns the item. Anything

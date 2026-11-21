@@ -8,6 +8,8 @@ import {
   H_DAY,
   H_MKT,
   H_SOLD,
+  H_SOLDP,
+  isOddPrice,
   type HistDay,
   type LadderRow,
   type SiteData,
@@ -126,6 +128,39 @@ export function rowFor(m: Market, id: number): Row {
   };
 }
 
+// Prices that make no sense: almost always gold being passed between
+// accounts (one lists something for a fortune, the other buys it). Same
+// rules as the Forever Gold addon's ns.Suspicious, plus "over 10x its own
+// market price" (lib/market.ts isOddPrice), since the site can see every
+// listing. Returns why, or null.
+const GRAY_TIMES = 15;
+const GRAY_OVER = 10000;
+const SHOP_TIMES = 10;
+const SHOP_OVER = 2000;
+const WHITE_TIMES = 40;
+const WHITE_OVER = 2000;
+
+export function suspiciousPrice(m: Market, id: number, price: number): string | null {
+  if (!(price > 0)) return null;
+  const b = itemBasics(m, id);
+  if (b.quality === "POOR") {
+    if (b.vendor > 0 && price > b.vendor * GRAY_TIMES && price - b.vendor >= GRAY_OVER)
+      return `A gray item at ${Math.round(price / b.vendor)}x what a vendor pays`;
+    if (b.vendor <= 0 && price >= GRAY_OVER) return "A gray item listed for a fortune";
+  }
+  const shop = VENDOR_SUPPLIES[id];
+  if (shop && price > shop * SHOP_TIMES && price - shop >= SHOP_OVER)
+    return `Any vendor sells this; ${Math.round(price / shop)}x the shop price`;
+  const plainGear =
+    b.quality === "COMMON" &&
+    ((b.cls === "Weapon" && !/fishing/i.test(b.sub)) || (b.cls === "Armor" && b.sub !== "Miscellaneous"));
+  if (plainGear && b.vendorSure && b.vendor > 0 && price > b.vendor * WHITE_TIMES && price - b.vendor >= WHITE_OVER)
+    return `Plain white gear at ${Math.round(price / b.vendor)}x what a vendor pays`;
+  const mkt = m.site.items[id]?.mkt ?? 0;
+  if (isOddPrice(price, mkt)) return `${Math.round(price / mkt)}x its market price`;
+  return null;
+}
+
 function allRows(m: Market): Row[] {
   return Object.keys(m.site.items).map((id) => rowFor(m, Number(id)));
 }
@@ -191,6 +226,25 @@ export type VendorDeal = { row: Row; qty: number; cost: number; vendorTotal: num
 const FLIP_SHARE = 0.7;
 const FLIP_MIN_PROFIT = 5000; // 50 silver
 
+// What an item has sold for lately: its last RECENT_DAYS days with sales,
+// weighted by how many sold. 0 = no sales in its history.
+const RECENT_DAYS = 2;
+export function recentSold(m: Market, id: number): number {
+  const h = m.site.items[id]?.h ?? [];
+  let qty = 0;
+  let value = 0;
+  let days = 0;
+  for (let i = h.length - 1; i >= 0 && days < RECENT_DAYS; i--) {
+    const sold = h[i][H_SOLD], price = h[i][H_SOLDP];
+    if (sold > 0 && price > 0) {
+      qty += sold;
+      value += sold * price;
+      days++;
+    }
+  }
+  return qty > 0 ? Math.round(value / qty) : 0;
+}
+
 export function flipDeals(m: Market, limit = 60): FlipDeal[] {
   if (m.hours < 12) return [];
   const out: FlipDeal[] = [];
@@ -198,7 +252,15 @@ export function flipDeals(m: Market, limit = 60): FlipDeal[] {
     const row = rowFor(m, Number(id));
     if (!(row.speed === "fast" || row.speed === "steady") || row.avgSold <= 0) continue;
     const limitQty = Math.max(1, Math.floor(row.perDay));
-    const ceiling = row.avgSold * FLIP_SHARE;
+    // Resell at what it goes for now: a price that has fallen this week
+    // isn't coming back just because it was higher on Monday (2026-11-21:
+    // Pristine Leather, 8s 60c over the week, 3s these last two days).
+    const recent = recentSold(m, Number(id));
+    const resellEach = recent > 0 ? Math.min(row.avgSold, recent) : row.avgSold;
+    // A resale price that's itself gold changing hands (a white Mace "selling"
+    // for 29g) is no price to flip at.
+    if (suspiciousPrice(m, Number(id), resellEach)) continue;
+    const ceiling = resellEach * FLIP_SHARE;
     let qty = 0;
     let cost = 0;
     let maxEach = 0;
@@ -210,9 +272,9 @@ export function flipDeals(m: Market, limit = 60): FlipDeal[] {
       maxEach = price;
     }
     if (qty === 0) continue;
-    const profit = Math.round(qty * row.avgSold * (1 - AH_CUT) - cost);
+    const profit = Math.round(qty * resellEach * (1 - AH_CUT) - cost);
     if (profit < FLIP_MIN_PROFIT) continue;
-    out.push({ row, qty, cost, maxEach, resellEach: row.avgSold, profit });
+    out.push({ row, qty, cost, maxEach, resellEach, profit });
   }
   return out.sort((a, b) => b.profit - a.profit).slice(0, limit);
 }

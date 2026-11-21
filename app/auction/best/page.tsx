@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { bestSellers, categories, getMarket, type BestSort } from "../../../lib/marketView";
+import { bestSellers, categories, getMarket, suspiciousPrice, type BestSort } from "../../../lib/marketView";
 import MarketStatus, { NoMarket } from "../MarketStatus";
 import { Empty, ItemLink, Money, perDayText, SpeedBadge, TD, TH, TR } from "../ui";
 
@@ -93,7 +93,14 @@ export default async function BestSellersPage({ searchParams }: { searchParams: 
                     <Money c={r.avgSold} />
                   </td>
                   <td className={`${TD} text-right tabular-nums`}>{r.through >= 0 ? `${r.through}%` : "-"}</td>
-                  <td className={`${TD} text-right`}>{r.min ? <Money c={r.min} /> : <span className="text-gray-500">none</span>}</td>
+                  <td className={`${TD} text-right`}>
+                    {r.min ? <Money c={r.min} /> : <span className="text-gray-500">none</span>}
+                    {r.min > 0 && suspiciousPrice(m, r.id, r.min) && (
+                      <div className="text-xs font-semibold text-red-400" title="Priced like gold changing hands between accounts, not a real price.">
+                        Suspicious
+                      </div>
+                    )}
+                  </td>
                   <td className={TD}>
                     <SpeedBadge speed={r.speed} />
                   </td>

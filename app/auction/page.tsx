@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { bestSellers, categories, getMarket, searchItems } from "../../lib/marketView";
+import { bestSellers, categories, getMarket, searchItems, suspiciousPrice } from "../../lib/marketView";
 import MarketStatus, { NoMarket } from "./MarketStatus";
 import { Empty, ItemLink, Money, perDayText, SpeedBadge, TD, TH, TR } from "./ui";
 
@@ -75,7 +75,14 @@ export default async function AuctionSearchPage({ searchParams }: { searchParams
                   <td className={`${TD} max-w-[320px]`}>
                     <ItemLink row={r} house={house} />
                   </td>
-                  <td className={`${TD} text-right`}>{r.min ? <Money c={r.min} /> : <span className="text-gray-500">none</span>}</td>
+                  <td className={`${TD} text-right`}>
+                    {r.min ? <Money c={r.min} /> : <span className="text-gray-500">none</span>}
+                    {r.min > 0 && suspiciousPrice(m, r.id, r.min) && (
+                      <div className="text-xs font-semibold text-red-400" title="Priced like gold changing hands between accounts, not a real price.">
+                        Suspicious
+                      </div>
+                    )}
+                  </td>
                   <td className={`${TD} text-right tabular-nums`}>{r.listed.toLocaleString()}</td>
                   <td className={`${TD} text-right`}>{r.avgSold ? <Money c={r.avgSold} /> : <span className="text-gray-500">-</span>}</td>
                   <td className={`${TD} text-right tabular-nums`}>{perDayText(r.perDay)}</td>

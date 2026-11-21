@@ -215,8 +215,11 @@ MB.CATS = {
     { key = "enchanting", name = "Enchanting materials", icon = 10940, test = tg(12) },
     { key = "cooking", name = "Meat & fish", icon = 2672, test = tg(8) },
     { key = "gems", name = "Gems", icon = 818, test = function(it) return it.c == 3 end },
-    { key = "scrolls", name = "Scrolls", icon = 954, test = function(it) return it.c == 0 and it.s == 4 end,
-        tip = "Every scroll: stat scrolls (Strength, Intellect...) and the mage's Comprehension scrolls (Scroll: KWYJIBO...)." },
+    -- Only the mage's Comprehension scrolls ("Scroll: KWYJIBO", "Scroll: UPDOG"...),
+    -- never stat scrolls ("Scroll of Strength"), which sit in the same subclass.
+    { key = "scrolls", name = "Comprehension scrolls", icon = 211780,
+        test = function(it) return it.c == 0 and it.s == 4 and type(it.n) == "string" and it.n:find("^Scroll: ") ~= nil end,
+        tip = "The mage's Comprehension scrolls (Scroll: KWYJIBO, Scroll: UPDOG...). Stat scrolls like Scroll of Strength aren't included." },
     { key = "stock", name = "Auction stock", icon = nil, stock = true,
         tip = "Only what you have ticked to sell on the auction window's Sell tab." },
 }

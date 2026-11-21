@@ -163,6 +163,30 @@ export function summarizeListings(a: AuctionColumns): Map<number, ItemNow> {
   return out;
 }
 
+// Gold changing hands: one account lists something for a fortune, another
+// buys it. Nobody else pays that, so such a "sale" isn't a price (2026-11-21:
+// a few Flash Powder at ~50g each made it "sell for" 47s 56c when it goes for
+// 32c, and the Deals page called every 99c listing a bargain). A price is
+// one of those when it's over ODD_TIMES the item's market price and at
+// least ODD_OVER above it. The same rule marks listings Suspicious on the
+// website (lib/marketView.ts).
+export const ODD_TIMES = 10;
+export const ODD_OVER = 2000; // 20 silver
+export const isOddPrice = (price: number, mkt: number) => mkt > 0 && price > mkt * ODD_TIMES && price - mkt >= ODD_OVER;
+
+// A day's average sold price. Over SOLD_CAP x that day's market price, it
+// was dragged up by gold-trade "sales" (days recorded before they were left
+// out, where a handful can sit among thousands of real ones), so the day's
+// market price stands in for it.
+const SOLD_CAP = 3;
+function soldAvg(c: DayCounts | undefined, p: PriceDay | undefined): number {
+  if (!c || c[SOLD_Q] <= 0) return 0;
+  const avg = c[SOLD_V] / c[SOLD_Q];
+  const n = p ? p[PX_N] : 0;
+  const mkt = p && n > 0 ? p[PX_MKT] / n : 0;
+  return Math.round(mkt > 0 && avg > mkt * SOLD_CAP ? mkt : avg);
+}
+
 function recordPrices(day: HouseDay, a: AuctionColumns) {
   const px = day.px ?? (day.px = {});
   for (const [item, n] of summarizeListings(a)) {
@@ -213,6 +237,9 @@ export function applySnapshot(prev: HouseState | null, house: number, snapT: num
     const p = prev.a;
     const prevIndex = new Map<number, number>();
     for (let i = 0; i < p.id.length; i++) prevIndex.set(p.id[i], i);
+    // Each item's market price last hour, to leave gold-trade "sales" out.
+    const prevNow = summarizeListings(p);
+    const odd = (item: number, price: number) => isOddPrice(price, prevNow.get(item)?.mkt ?? 0);
 
     // New auctions this hour, by item, for spotting cancel-and-repost.
     const fresh = new Map<number, Listing[]>();
@@ -229,7 +256,7 @@ export function applySnapshot(prev: HouseState | null, house: number, snapT: num
       } else {
         stillHere.add(l.id);
         const boughtPart = p.qty[i] - l.qty;
-        if (boughtPart > 0 && p.price[i] > 0) {
+        if (boughtPart > 0 && p.price[i] > 0 && !odd(l.item, p.price[i])) {
           bump(day, l.item, SOLD_Q, boughtPart);
           bump(day, l.item, SOLD_V, boughtPart * p.price[i]);
         }
@@ -250,7 +277,7 @@ export function applySnapshot(prev: HouseState | null, house: number, snapT: num
           arr.splice(k, 1);
           bump(day, item, CANC_N, 1);
           stats.cancelled++;
-        } else if (price > 0) {
+        } else if (price > 0 && !odd(item, price)) {
           bump(day, item, SOLD_N, 1);
           bump(day, item, SOLD_Q, qty);
           bump(day, item, SOLD_V, qty * price);
@@ -297,12 +324,16 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 export function computeRates(state: HouseState): HouseRates {
   let cov = 0;
   const tot = new Map<string, DayCounts>();
+  const soldValue = new Map<string, number>(); // sold value from each day's capped average
   for (const day of Object.values(state.days)) {
     cov += day.cov;
     for (const [item, row] of Object.entries(day.items)) {
       const t = tot.get(item);
       if (!t) tot.set(item, row.slice());
       else for (let f = 0; f < row.length; f++) t[f] += row[f];
+      if (row[SOLD_Q] > 0) {
+        soldValue.set(item, (soldValue.get(item) ?? 0) + soldAvg(row, day.px?.[item]) * row[SOLD_Q]);
+      }
     }
   }
   const covDays = cov / 86400;
@@ -330,7 +361,7 @@ export function computeRates(state: HouseState): HouseRates {
     items[key] = [
       covDays > 0 ? round1(t[SOLD_Q] / covDays) : 0,
       through,
-      t[SOLD_Q] > 0 ? Math.round(t[SOLD_V] / t[SOLD_Q]) : 0,
+      t[SOLD_Q] > 0 ? Math.round((soldValue.get(key) ?? t[SOLD_V]) / t[SOLD_Q]) : 0,
       n.min,
       n.qty,
       covDays > 0 ? round1(t[POST_N] / covDays) : 0,
@@ -389,7 +420,7 @@ export function computeSite(state: HouseState, rates: HouseRates = computeRates(
       h.push([
         d,
         c ? c[SOLD_Q] : 0,
-        c && c[SOLD_Q] > 0 ? Math.round(c[SOLD_V] / c[SOLD_Q]) : 0,
+        soldAvg(c, p),
         p && n > 0 ? Math.round(p[PX_MIN] / n) : 0,
         p ? p[PX_LOW] : 0,
         p && n > 0 ? Math.round(p[PX_MKT] / n) : 0,
