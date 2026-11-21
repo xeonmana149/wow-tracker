@@ -31,6 +31,8 @@ local function refreshBasics()
     c.faction = ns.player.faction
     c.level = ns.player.level
     c.class = ns.player.class
+    c.race = ns.player.race or c.race
+    c.sex = ns.player.sex or c.sex
     c.realmKey = ns.realmKey
     c.money = ns.try(GetMoney) or c.money or 0
     c.seen = time()

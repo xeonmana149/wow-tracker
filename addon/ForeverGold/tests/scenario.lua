@@ -1019,6 +1019,13 @@ WorldMapFrame._scripts.OnShow(WorldMapFrame)
 do
     local wp = ns.WorldMapPlot()
     check(wp and wp.usedMarks == 8 and wp.usedLines > 0, "world map: every spot and the route: " .. tostring(wp and wp.usedMarks))
+    local mk = wp.marks[1]
+    check(not mk.back:IsShown() and mk._mouse, "spot icons have no dark square behind them, and notice the mouse")
+    GameTooltip._lines = {}
+    mk._scripts.OnEnter(mk)
+    local tipHead = strip(GameTooltip._lines[1] or "")
+    check(mk.node and tipHead == mk.node.n and strip(GameTooltip._lines[2] or ""):find("gathered"),
+        "hovering a spot on the map says what it is: " .. tipHead .. " / " .. strip(GameTooltip._lines[2] or ""))
     -- OpenMap's stitched map: spots placed through its API, our switch in its menu
     local toggles, events = {}, {}
     OpenMapAPI = {
@@ -1235,16 +1242,19 @@ do
     ns.db.opts.beamUnrecorded = true
     M.update(1.1)
     check(M.cvars.softTargetInteract == "3" and f:IsShown(), "and on again")
-    -- A nameplate the game won't let anyone measure (2026-11-20): no beam, no error
+    -- A nameplate the game won't let anyone measure (2026-11-20): the beam
+    -- still stands on it, from an estimate, and nothing errors
     local center, errsBefore = M.softPlate.GetCenter, #(ns.db.errorLog or {})
     M.softPlate.GetCenter = function()
         error("NamePlate2:GetCenter(): Action[FrameMeasurement] failed because[Can't measure restricted regions]")
     end
     M.update(0.3)
-    check(not f:IsShown() and #(ns.db.errorLog or {}) == errsBefore, "a nameplate that can't be measured: the beam just hides, no error")
+    local _, anchor = f:GetPoint()
+    check(f:IsShown() and anchor == M.softPlate and #(ns.db.errorLog or {}) == errsBefore,
+        "a nameplate that can't be measured: the beam still stands on it, no error")
     M.softPlate.GetCenter = center
     M.update(0.3)
-    check(f:IsShown(), "and comes back when it can be measured again")
+    check(f:IsShown(), "and still does once it can be measured again")
     M.units.softinteract = nil
     M.update(1.1)
     check(not f:IsShown(), "nothing picked out: no beam")
@@ -3068,16 +3078,16 @@ do
     for _, c in ipairs(M.settings.cats) do
         if c.parent == M.settings.addon then names[#names + 1] = c.name end
     end
-    check(M.settings.addon and M.settings.addon.name == "WoW Forever"
+    check(M.settings.addon and M.settings.addon.name == "WoW Tracker"
         and table.concat(names, ", ") == "Auction Forever, Bags Forever, Mail Forever, Gathering Forever, Azeroth Radio",
-        "Options > AddOns > WoW Forever, with its pages: " .. table.concat(names, ", "))
+        "Options > AddOns > WoW Tracker, with its pages: " .. table.concat(names, ", "))
     local S = M.settings.settings
     local function count(cat, kind)
         local n = 0
         for _, c in ipairs(cat.controls) do if c.kind == kind then n = n + 1 end end
         return n
     end
-    check(count(OPT.cats.auction, "check") >= 4 and count(OPT.cats.auction, "dropdown") == 5 and count(OPT.cats.bags, "slider") == 2
+    check(count(OPT.cats.auction, "check") >= 4 and count(OPT.cats.auction, "dropdown") == 5 and count(OPT.cats.bags, "slider") == 4
         and count(OPT.cats.gathering, "check") == 9 and count(OPT.cats.mail, "check") == 4,
         "each page has the game's own checkboxes, dropdowns and sliders")
     check(S.FOREVERGOLD_BAGSPLIT:GetValue() == false, "split by bag reads off")
@@ -3147,7 +3157,7 @@ do
     local win = BU.win
     check(win and win:IsShown() and ContainerFrameCombinedBags:GetParent() ~= UIParent,
         "opening your bags shows Forever Gold's window; the game's bag frame is tucked away")
-    check(strip(win.title:GetText()) == "Xeon Mana's Inventory" and strip(win.sub:GetText()) == "FOREVER BAGS",
+    check(strip(win.title:GetText()) == "Xeon Mana's Inventory" and strip(win.sub:GetText()) == "",
         "titled with your name: " .. strip(win.title:GetText()))
     check(strip(win.slots:GetText()) == "9 / 16  7 free", "the footer counts slots: " .. strip(win.slots:GetText()))
     local cells = BU.Cells()
@@ -3174,9 +3184,14 @@ do
     ns.db.opts.bagSplit = nil
     -- new loot gathers at the bottom
     M.newItems["0:3"] = true; BU.Refresh()
+    local _, _, _, _, sy0 = buttonFor(0, 3):GetPoint()
+    local _, _, _, _, cy0 = buttonFor(0, 2):GetPoint()
+    check(sy0 == cy0, "new loot stays where it is by default (it flashes instead)")
+    ns.db.opts.bagNew = true; BU.Refresh()
     local _, _, _, _, sy = buttonFor(0, 3):GetPoint()
     local _, _, _, _, cy = buttonFor(0, 2):GetPoint()
-    check(sy < cy - 41, "a new item sits in the New loot row under the bags: " .. tostring(sy) .. " vs " .. tostring(cy))
+    ns.db.opts.bagNew = nil
+    check(sy < cy - 39, "a new item sits in the New loot row under the bags: " .. tostring(sy) .. " vs " .. tostring(cy))
     win:Hide(); OpenAllBags(); M.advance(0.5)
     check(next(M.newItems) == nil, "closing your bags clears what's new")
     -- banker marks are mail rules
@@ -3301,6 +3316,12 @@ do
     for _, r in ipairs(rows2) do if strip(r.text) == "Equipment" then r.onClick() end end
     check(M.bagFlags["2:" .. Enum.BagSlotFlags.ClassEquipment] == true, "Assign to Equipment uses the game's own bag setting")
     check(rowTexts(BU.BagRows(BU, 3)):find("No bag here", 1, true), "an empty bag slot says so")
+    NUM_REAGENTBAG_SLOTS = 1
+    BU.Refresh()
+    check(BU.BagName(5) == "Empty reagent bag slot" and BU.BagName(3) == "Empty bag slot"
+        and rowTexts(BU.BagRows(BU, 5)):find("No reagent bag here", 1, true), "the last slot is the reagent bag slot, and says so")
+    NUM_REAGENTBAG_SLOTS = nil
+    BU.Refresh()
     local backRows = BU.BagRows(BU, 0)
     for _, r in ipairs(backRows) do if strip(r.text) == "Sell junk" then r.onClick() end end
     check(M.backpackNoJunk == true and #BU.Junk() == 0, "Ignore this bag: Sell junk - the Sell junk button leaves the backpack alone")
@@ -3312,26 +3333,67 @@ do
     M.extraBags = {}
     M.fire("BAG_UPDATE_DELAYED"); M.advance(1)
 
-    -- the bank opens in its own window
+    -- the bank: talking to a banker opens our bank window (and your bags) instead of the game's
+    check(BankFrame:GetParent() ~= UIParent, "the game's bank frame is kept out of sight, before it ever shows")
+    win:Hide()
     M.bankOpen = true
+    BankFrame:Show() -- the game shows its frame (under our hidden parent): the visit stays open
     M.fire("BANKFRAME_OPENED"); M.advance(1)
     local me = ns.Char()
     check(me.inv.bank and me.inv.bank.size == 8 and #me.inv.bank.slots == 2 and me.bank[2589] == 20 and me.bank[818] == 2,
         "the bank's tab is saved when you visit it")
-    BU.Pick(nil, "bank")
-    check(BV.win and BV.win:IsShown() and win:IsShown() and BU.IsLive(BV) and buttonFor(6, 1) ~= nil,
-        "Bank opens its own window beside your bags; at the banker it's the live bank")
+    check(BV.win and BV.win:IsShown() and win:IsShown() and BU.IsLive(BV) and buttonFor(6, 1) ~= nil and not M.gameBankHidOnUs,
+        "at the banker our bank window opens, live, beside your bags")
     check(strip(BV.win.title:GetText()) == "Xeon Mana's Bank" and strip(win.title:GetText()) == "Xeon Mana's Inventory",
         "two windows: the bank and the inventory")
+    -- its bag bar: the bank itself, then its bag slots, locked until bought
+    local mainBtn = barButton(BV, 6)
+    check(mainBtn and BU.BagName(6, BV) == "Bank" and BV._info[6].icon == ns.Inv.BANK_ICON,
+        "the first button is the bank itself, with the game's bank icon (not a ?)")
+    local locked = {}
+    for _, b in ipairs(BV._bagBtns) do if b:IsShown() and b.locked then locked[#locked + 1] = b end end
+    check(#locked == 7 and locked[1].nextUp and not locked[2].nextUp and locked[1].lock:IsShown(),
+        "7 bank bag slots locked; the first is the next to buy")
+    check(BV.win.buy:IsShown() and strip(BV.win.buyCost:GetText()) == "Cost: 1g", "Cost: 1g and a Purchase button, as the game's bank shows")
+    BV.win.buy:Click()
+    check(M.popup and M.popup.which == "CONFIRM_BUY_BANK_TAB" and M.popup.data.bankType == Enum.BankType.Character,
+        "Purchase asks with the game's own confirm")
+    StaticPopupDialogs.CONFIRM_BUY_BANK_TAB.OnAccept(nil, M.popup.data)
+    M.bankBag = { 4500, 10 }
+    M.fire("BANK_TABS_CHANGED", Enum.BankType.Character); M.advance(1)
+    local bagBtn = barButton(BV, 7)
+    check(M.bankBought == 1 and bagBtn and BV._info[7].slot == 2 and BU.BagName(7, BV) == "Red Linen Bag"
+        and BV._info[7].icon == 133600 + 4500 % 100, "the bought slot shows the bag in it, by its own name and icon")
+    check(#me.inv.bank.order == 2 and me.inv.bank.size == 18 and me.inv.bank.bankSlots.bought == 2,
+        "and the save keeps it, with the slots bought")
+    M.picked = {}
+    bagBtn._scripts.OnDragStart(bagBtn)
+    check(M.picked[1] and M.picked[1][1] == Enum.BagIndex.Characterbanktab and M.picked[1][2] == 2,
+        "dragging a bank bag picks it up from its bank bag slot")
+    M.cursor = nil
     BU.Sort(BV)
     check(M.bankSorted == Enum.BankType.Character, "and Sort in it sorts the bank")
+    -- leaving the banker closes what it opened
     M.fire("BANKFRAME_CLOSED"); M.bankOpen = false; M.advance(1)
-    BU.Refresh()
-    check(not BU.IsLive(BV) and strip(BV.win.sub:GetText()):find("^SAVED"),
-        "away from it, the bank shows the saved copy: " .. strip(BV.win.sub:GetText()))
+    check(not BV.win:IsShown() and not win:IsShown(), "walking away closes the bank window and the bags it opened")
+    BU.OpenBank()
+    check(not BU.IsLive(BV) and strip(BV.win.sub:GetText()):find("^SAVED") and not BV.win.buy:IsShown(),
+        "away from it, the bank shows the saved copy, without Purchase: " .. strip(BV.win.sub:GetText()))
+    local lockedSaved = 0
+    for _, b in ipairs(BV._bagBtns) do if b:IsShown() and b.locked then lockedSaved = lockedSaved + 1 end end
+    check(lockedSaved == 6 and BU.BagName(7, BV) == "Red Linen Bag", "the saved bank still shows its bag and the locked slots")
     local bankCells = BU.Cells(BV)
-    check(#bankCells == 8 and bankCells[1].id == 2589 and bankCells[2].empty and bankCells[3].id == 818,
+    check(#bankCells == 18 and bankCells[1].id == 2589 and bankCells[2].empty and bankCells[3].id == 818,
         "in its real slots, gaps included")
+    -- closing our window at the banker ends the visit, like the game's
+    M.bankOpen = true
+    M.fire("BANKFRAME_OPENED"); M.advance(1)
+    BV.win:Hide()
+    check(M.bankClosedByUs == 1 and not M.bankOpen, "closing the bank window at the banker ends the visit")
+    M.advance(1)
+    M.bankTabs = { { ID = 6, name = "Tab 1" } }
+    M.bankBag = nil
+    win:Show()
     -- right-click the portrait: your bank, in its own window (and again to close it)
     BV.win:Hide()
     win.who:Click("RightButton")
@@ -3373,12 +3435,16 @@ do
     -- the cog opens Options > Bags Forever
     win.settings:Click()
     check(M.settings.opened == ns.Options.cats.bags:GetID(), "the bag window's cog opens Options at Bags Forever")
+    check(win.sort.icon._atlas == "bags-button-autosort-up", "the sort button wears the game's Cleanup broom")
+    win.sort._scripts.OnMouseDown(win.sort)
+    check(win.sort.icon._atlas == "bags-button-autosort-down", "and presses in")
+    win.sort._scripts.OnMouseUp(win.sort)
     -- see-through background
     local alphaRow
-    for _, r in ipairs(BU.SettingsRows()) do if strip(r.text):find("^Background: 100%%") then alphaRow = r end end
-    check(alphaRow ~= nil, "Settings has a background transparency row")
+    for _, r in ipairs(BU.SettingsRows()) do if strip(r.text):find("^Background: 50%%") then alphaRow = r end end
+    check(alphaRow ~= nil, "Settings has a background transparency row, at 50% to start")
     alphaRow.onClick()
-    check(ns.db.opts.bagAlpha == 0.85 and math.abs(win.bg:GetAlpha() - 0.85) < 0.001, "clicking it makes the background see-through (85%)")
+    check(ns.db.opts.bagAlpha == 0.4 and math.abs(win.bg:GetAlpha() - 0.4) < 0.001, "clicking it makes the background more see-through (40%)")
     ns.db.opts.bagAlpha = nil
     -- money everywhere shows coin icons
     local m = ns.Money(10797)
@@ -3404,6 +3470,121 @@ do
     ns.db.opts.bagJunk = nil
     BU.char, BU.where = nil, "bags"
     M.bags, M.player.money = savedBags, savedMoney
+    M.fire("BAG_UPDATE_DELAYED"); M.advance(1)
+end
+
+out("== bag window: item slots, keyring, faces, guild bank")
+do
+    local BU = ns.BagUI
+    local savedBags = M.bags
+    M.bags = { { 774, 3 }, { 4865, 2 }, { 12348, 1 }, { 2589, 5 }, { 6948, 1, true }, { 5000, 1 } }
+    M.fire("BAG_UPDATE_DELAYED"); M.advance(1)
+    BU.Open(); BU.Refresh()
+    local function btn(bag, slot)
+        for _, f in ipairs(M.frames) do
+            if f._shown and f.fgCell and f.fgCell.live and f.fgCell.bag == bag and f.fgCell.slot == slot then return f end
+        end
+    end
+    local mal = btn(0, 1)
+    check(mal and mal.fgColor:IsShown() and mal.fgWhy == "quality" and mal.fgColor.g == 1,
+        "an uncommon gem glows green at its edges (Color by quality)")
+    check(btn(0, 6).fgWhy == "quest" and btn(0, 6).fgColor.r == 1 and btn(0, 6).fgColor.g > 0.8, "a quest item glows gold")
+    check(btn(0, 2).fgCoin:IsShown() and not mal.fgCoin:IsShown(), "junk gets a little gold coin in its corner")
+    M.cantUse[12348] = true
+    BU.ResetUnusable(); BU.Refresh()
+    local axe = btn(0, 3)
+    check(axe.fgWhy == "unusable" and axe.fgColor.r == 1 and axe.fgColor.g < 0.2, "gear you can't use glows red")
+    M.pawnUp = { ["0:3"] = true }
+    BU.Refresh()
+    check(btn(0, 3).fgUp:IsShown() and not mal.fgUp:IsShown(), "Pawn's upgrades get a green arrow")
+    M.pawnUp, M.cantUse = nil, {}
+    BU.ResetUnusable()
+    M.newItems["0:4"] = true
+    BU.Refresh()
+    local cloth = btn(0, 4)
+    local _, _, _, _, newY = cloth:GetPoint()
+    local _, _, _, _, oldY = mal:GetPoint()
+    check(cloth.fgNewF:IsShown() and newY == oldY, "new loot flashes where it is (no row of its own)")
+    cloth._scripts.OnEnter(cloth)
+    check(not cloth.fgNewF:IsShown() and not cloth.fgCell.new and not M.newItems["0:4"], "and stops once you hover it")
+    ns.db.opts.bagQuality = false
+    BU.Refresh()
+    check(not btn(0, 1).fgColor:IsShown(), "Color by quality off: no glow")
+    ns.db.opts.bagQuality = nil
+    BU.Refresh()
+    ns.db.opts.bagGlow = 100
+    BU.Refresh()
+    check(btn(0, 1).fgColor.a == 1, "Glow brightness 100%: full strength")
+    ns.db.opts.bagGlow = nil
+    BU.HighlightBag(BU, 0)
+    check(btn(0, 1).fgGlow:IsShown() and btn(0, 1).fgGlow.b == 1 and btn(0, 1).fgGlow.t[1]._gradient ~= nil,
+        "hovering a bag lights its slots' edges in blue, fading toward the middle")
+    BU.HighlightBag(BU, nil)
+    -- money: soulbound and bind-on-pickup things count at a vendor, never at auction
+    local a1, v1 = BU.Worth({ { id = 2589, count = 1, bound = true } })
+    check(a1 == 0 and v1 == 13, "a soulbound item counts at a vendor, not at auction")
+    local a2, v2 = BU.Worth({ { id = 900001, count = 1 } })
+    check(a2 == 0 and v2 == 401 and ns.Untradeable(900001) and not ns.Untradeable(2589),
+        "nor does a bind-on-pickup one")
+    -- the keyring
+    M.keyring = { size = 4, items = { [1] = { 5001, 1 } } }
+    M.fire("BAG_UPDATE_DELAYED"); M.advance(1)
+    BU.Refresh()
+    check(BU.win.keys:IsShown() and BU.win.keys.used == 1 and BU.win.keys.size == 4,
+        "the keyring sits at the right end of the bag bar")
+    check(btn(Enum.BagIndex.Keyring, 1) == nil, "its slots stay hidden until you click it")
+    BU.win.keys:Click()
+    check(btn(Enum.BagIndex.Keyring, 1) ~= nil and ns.db.opts.bagKeys == true, "click it: a Keyring row with your keys")
+    local slotsText = strip(BU.win.slots:GetText())
+    check(slotsText:find("^6 / 16"), "keys don't count toward your bag slots: " .. slotsText)
+    check(ns.Char().inv.bags.sizes[Enum.BagIndex.Keyring] == 4, "and the keyring is saved with your bags")
+    BU.win.keys:Click()
+    ns.db.opts.bagKeys = nil
+    M.keyring = nil
+    -- faces
+    check(ns.Char().race == "Orc" and ns.Char().sex == 2, "each character's race and gender are saved, for their face")
+    check(BU.win.who.icon._atlas == "raceicon-orc-male", "the portrait shows your character's face")
+    check(ns.Inv.FaceText(ns.Char()):find("raceicon%-orc%-male"), "and tooltips put each character's face by their name")
+    local faceRow
+    for _, r in ipairs(BU.PickerRows()) do if r.key == ns.charKey then faceRow = r end end
+    check(faceRow and faceRow.face and faceRow.face.race == "Orc", "the character list shows faces too")
+    -- the window: the game's close button, bare icons, fitted width
+    check(BU.win.close:GetWidth() == 22 and BU.win.sort:GetWidth() == 20 and BU.win.searchBtn:GetWidth() == 16,
+        "the gold-X close button, and search, sort and settings at their icon size")
+    ns.db.opts.bagCols = 8
+    BU.Refresh()
+    check(BU.win:GetWidth() < 340, "8 columns: the window fits them, no wasted space (" .. BU.win:GetWidth() .. ")")
+    ns.db.opts.bagCols = nil
+    ns.db.opts.bagScale = 0.8
+    BU.Refresh()
+    check(BU.win:GetScale() == 0.8, "the Scale slider sizes the window")
+    ns.db.opts.bagScale = nil
+    BU.Refresh()
+    -- the guild bank
+    M.guild = { name = "Forever Friends", tabs = {
+        { name = "Mats", icon = 133000, items = { [1] = { 2589, 20 }, [5] = { 818, 2 } } },
+        { name = "Gear", icon = 133001, items = {} } } }
+    M.fire("GUILDBANKFRAME_OPENED"); M.advance(1)
+    M.fire("GUILDBANKFRAME_CLOSED"); M.advance(1)
+    local gkey = ns.Char().guild
+    check(M.guildQueried == 2 and gkey and ns.db.guilds[gkey].tabs[1].slots[2][2] == 818,
+        "the guild bank is saved each visit, every tab you can see")
+    BU.Refresh()
+    check(BU.win.tabGuild:IsShown(), "a Guild bank tab down the side of your bags")
+    BU.Pick(nil, "guild")
+    local BV = BU.bank
+    check(BV.win:IsShown() and BV.where == "guild" and strip(BV.win.title:GetText()) == "Forever Friends Bank",
+        "it opens in the bank window: " .. strip(BV.win.title:GetText()))
+    local gc = BU.Cells(BV)
+    check(#gc == 196 and gc[1].id == 2589 and gc[5].id == 818 and BU.BagName(101, BV) == "Mats",
+        "its tabs, 98 slots each, by name")
+    BU.Pick(nil, "bank")
+    check(BV.where == "bank", "and Bank switches it back")
+    BV.win:Hide()
+    ns.db.guilds = nil
+    ns.Char().guild = nil
+    M.guild = nil
+    M.bags = savedBags
     M.fire("BAG_UPDATE_DELAYED"); M.advance(1)
 end
 

@@ -323,7 +323,7 @@ function P.Rebuild()
     end
     local list, names = {}, {}
     for id, count in pairs(c.bags or {}) do
-        if not (c.bound and c.bound[id]) and count > 0 then
+        if not (c.bound and c.bound[id]) and not ns.Untradeable(id) and count > 0 then
             local it = ns.Item(id)
             -- Grey junk never goes to the auction house.
             if not (it and it.q == 0) then

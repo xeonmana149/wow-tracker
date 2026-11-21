@@ -1001,6 +1001,12 @@ end
 -- into - only ever added from a real, confirmed in-game report.
 local KNOWN_TRAIT_NAMES = {}
 
+-- The Legacy perk trees, by trait tree ID, named as the game's own data
+-- names them (lib/talent-data/_legacy.json on the website). They're trait
+-- trees like talents but not class talents: the talent reader leaves them
+-- alone and collectLegacyPerks reads them.
+local LEGACY_TREES = { [1187] = "Professions", [1188] = "Adventure", [1189] = "Resourcefulness" }
+
 local function collectTraits()
     local out = { experimental = true, configs = {} }
 
@@ -1032,6 +1038,9 @@ local function collectTraits()
         if okInfo and configInfo and configInfo.treeIDs then
             for _, treeID in ipairs(configInfo.treeIDs) do
                 local okNodes, nodeIDs = safeCall(CTraits.GetTreeNodes, treeID)
+                if LEGACY_TREES[treeID] then
+                    okNodes = false -- Legacy perks, not talents (collectLegacyPerks)
+                end
                 if okNodes and nodeIDs then
                     for _, nodeID in ipairs(nodeIDs) do
                         local okNode, nodeInfo = safeCall(CTraits.GetNodeInfo, configID, nodeID)
@@ -1087,6 +1096,113 @@ local function collectTraits()
         table.insert(out.configs, entry)
     end
 
+    return out
+end
+
+-- The perks bought in the Legacy panel (2026-11-21: a point spent on a
+-- character never showed on the website). Each Legacy tree is a trait tree
+-- with a config; a node's name is its spell's name, the same name the
+-- website's perk list uses. Every tree that could be read is listed
+-- (read = true), even with nothing bought, so the website can clear perks
+-- since unlearned; a tree that couldn't be read is left out and the
+-- website keeps what it had. points: Legacy Points spent and unspent, from
+-- the trees' currency, when they share exactly one.
+local function legacyNodeName(CTraits, configID, nodeInfo)
+    local entryID = nodeInfo.activeEntry and nodeInfo.activeEntry.entryID
+        or (type(nodeInfo.entryIDs) == "table" and nodeInfo.entryIDs[1]) or nil
+    if not entryID or type(CTraits.GetEntryInfo) ~= "function" then
+        return nil
+    end
+    local okEntry, entryInfo = safeCall(CTraits.GetEntryInfo, configID, entryID)
+    local definitionID = okEntry and entryInfo and entryInfo.definitionID
+    if not definitionID or type(CTraits.GetDefinitionInfo) ~= "function" then
+        return nil
+    end
+    local okDef, defInfo = safeCall(CTraits.GetDefinitionInfo, definitionID)
+    if not (okDef and defInfo) then
+        return nil
+    end
+    local name = defInfo.overrideName
+    if type(name) ~= "string" or name == "" then
+        name = getSpellName(defInfo.spellID)
+    end
+    return name, defInfo.spellID
+end
+
+local function collectLegacyPerks()
+    local CTraits = _G.C_Traits
+    if not CTraits or type(CTraits.GetTreeNodes) ~= "function" or type(CTraits.GetNodeInfo) ~= "function" then
+        return nil
+    end
+    -- Which config each tree is bought in: its own, or the talent config
+    -- when the game keeps them together.
+    local active
+    local CClassTalents = _G.C_ClassTalents
+    if CClassTalents and type(CClassTalents.GetActiveConfigID) == "function" then
+        local ok, id = safeCall(CClassTalents.GetActiveConfigID)
+        active = ok and id or nil
+    end
+    local activeTrees = {}
+    if active and type(CTraits.GetConfigInfo) == "function" then
+        local ok, info = safeCall(CTraits.GetConfigInfo, active)
+        for _, t in ipairs(ok and info and info.treeIDs or {}) do
+            activeTrees[t] = true
+        end
+    end
+    local out = { trees = {} }
+    local currencies, seenCurrency = {}, {}
+    local treeIDs = {}
+    for id in pairs(LEGACY_TREES) do
+        treeIDs[#treeIDs + 1] = id
+    end
+    table.sort(treeIDs)
+    for _, treeID in ipairs(treeIDs) do
+        local configID
+        if type(CTraits.GetConfigIDByTreeID) == "function" then
+            local ok, id = safeCall(CTraits.GetConfigIDByTreeID, treeID)
+            configID = ok and id or nil
+        end
+        if not configID and activeTrees[treeID] then
+            configID = active
+        end
+        local okNodes, nodeIDs = safeCall(CTraits.GetTreeNodes, treeID)
+        if configID and okNodes and type(nodeIDs) == "table" and #nodeIDs > 0 then
+            local tree = { id = treeID, name = LEGACY_TREES[treeID], configID = configID, read = true, perks = {} }
+            local readAny = false
+            for _, nodeID in ipairs(nodeIDs) do
+                local okNode, nodeInfo = safeCall(CTraits.GetNodeInfo, configID, nodeID)
+                if okNode and type(nodeInfo) == "table" and (nodeInfo.ID or nodeInfo.maxRanks) then
+                    readAny = true
+                    local rank = nodeInfo.ranksPurchased or 0
+                    if rank > 0 then
+                        local name, spellID = legacyNodeName(CTraits, configID, nodeInfo)
+                        table.insert(tree.perks, { nodeID = nodeID, name = name, spellID = spellID,
+                            rank = rank, maxRank = nodeInfo.maxRanks })
+                    end
+                end
+            end
+            if readAny then
+                table.insert(out.trees, tree)
+            end
+            -- The trees' currency: Legacy Points, counted once however
+            -- many trees share it.
+            if type(CTraits.GetTreeCurrencyInfo) == "function" then
+                local okC, list = safeCall(CTraits.GetTreeCurrencyInfo, configID, treeID, false)
+                for _, c in ipairs(okC and type(list) == "table" and list or {}) do
+                    local key = c.traitCurrencyID or (#currencies + 1)
+                    if not seenCurrency[key] then
+                        seenCurrency[key] = true
+                        currencies[#currencies + 1] = { id = c.traitCurrencyID, unspent = c.quantity or 0,
+                            spent = c.spent or 0, max = c.maxQuantity }
+                    end
+                end
+            end
+        end
+    end
+    if #currencies == 1 then
+        out.points = { unspent = currencies[1].unspent, spent = currencies[1].spent }
+    end
+    out.currencies = currencies
     return out
 end
 
@@ -1798,7 +1914,7 @@ local function buildExport()
     local tocversion = select(4, safeGet("GetBuildInfo"))
     local okDate, timestamp = safeCall(_G.date, "%Y-%m-%d %H:%M:%S")
     out.meta = {
-        addonVersion = "1.9.17",
+        addonVersion = "1.9.18",
         tocversion = tocversion,
         exportedAt = okDate and timestamp or nil,
     }
@@ -1810,6 +1926,9 @@ local function buildExport()
     out.bagItems = okBags and bagItems or nil
     local okTraits, traits = pcall(collectTraits)
     out.traits = okTraits and traits or { error = "collectTraits crashed: " .. tostring(traits) }
+    -- Legacy perks bought on this character (see collectLegacyPerks)
+    local okPerks, legacyPerks = pcall(collectLegacyPerks)
+    out.legacyPerks = okPerks and legacyPerks or nil
     -- Statistics pane data (see collectStatistics above) - never lets a
     -- crash there take down the whole export, same guard as collectTraits.
     local okStats, statistics = pcall(collectStatistics)
@@ -5642,6 +5761,26 @@ SlashCmdList["WFT"] = function(rawMsg)
         cmdLegacySystemProbe()
     elseif msg == "legacytreedatadump" then
         cmdLegacyTreeDataDump()
+    elseif msg == "legacyperks" then
+        -- What the next sync sends of the Legacy perks bought on this character
+        local ok, r = pcall(collectLegacyPerks)
+        if not ok then
+            print("|cffff0000WFT legacyperks error:|r " .. tostring(r))
+        elseif not r or #r.trees == 0 then
+            print("|cffffcc00WFT legacyperks:|r no Legacy tree could be read on this client - the website keeps what its planner has.")
+        else
+            print("|cffffcc00WFT legacyperks:|r")
+            for _, t in ipairs(r.trees) do
+                local parts = {}
+                for _, p in ipairs(t.perks) do
+                    parts[#parts + 1] = (p.name or ("node " .. tostring(p.nodeID))) .. " " .. p.rank .. "/" .. tostring(p.maxRank or "?")
+                end
+                print("  " .. t.name .. " (tree " .. t.id .. "): " .. (#parts > 0 and table.concat(parts, ", ") or "nothing bought"))
+            end
+            if r.points then
+                print("  Legacy Points: " .. r.points.spent .. " spent, " .. r.points.unspent .. " unspent")
+            end
+        end
     elseif msg == "legacyframetreedump" then
         cmdLegacyFrameTreeDump()
     elseif msg == "pvprankframefind" then
@@ -5686,6 +5825,7 @@ SlashCmdList["WFT"] = function(rawMsg)
         print("  /wft achievementsprobe - dump the real Achievements/Legacy Challenges tree with completion state and checklists (diagnostic, for me to look at)")
         print("  /wft legacypointsprobe - hunt for where the in-game 'Legacy Points' number actually comes from (diagnostic, for me to look at)")
         print("  /wft legacysystemprobe - force-load Blizzard's Legacy System UI module and check what API appears (diagnostic, for me to look at - run this with the Legacy Challenges panel closed first)")
+        print("  /wft legacyperks - show the Legacy perks bought on this character, as the next sync sends them to the website")
         print("  /wft legacytreedatadump - dump LegacyTreeData, found via legacysystemprobe (diagnostic, for me to look at - run legacysystemprobe first this session)")
         print("  /wft legacyframetreedump - dump the real widget names under the Legacy Challenges panel (diagnostic, for me to look at - OPEN the panel in game first, then run this)")
         print("  /wft pvprankframefind - search the open PvP panel for 'Rank Points' and dump its frame tree (diagnostic, for me to look at - OPEN the Player vs. Player panel in game first, then run this)")

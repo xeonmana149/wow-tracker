@@ -21,7 +21,7 @@ local LUCK_MIN_KILLS = 20    -- earlier kills needed before a drop rate counts a
 
 local function itemValue(id)
     local c = ns.Char()
-    if c.bound and c.bound[id] then
+    if (c.bound and c.bound[id]) or ns.Untradeable(id) then
         return ns.VendorSell(id) or 0
     end
     return ns.SellValue(id) or 0

@@ -25,6 +25,7 @@ import { applyLiveObservation, ensureItemsExist, isUnloadedItem } from "./items"
 // the SAME `events` array that table has always been built from, rather than
 // recomputing anything.
 import { logActivity } from "./activityLog";
+import { LEGACY_CAP } from "./legacy";
 import {
   formatPlayed,
   logAuctionEvents,
@@ -151,6 +152,18 @@ export type ParsedExport = {
   // verified data before anyone's necessarily equipped them. See the
   // 2026-09-24 chat and addon 1.7.0's collectContainerItems().
   bagItems?: { id?: number; name: string; color?: string; icon?: number; tooltip?: string[] }[];
+  // Legacy perks bought in game (addon 1.9.18+, collectLegacyPerks): each
+  // tree the addon could read (read: true), with the perks bought in it,
+  // and the Legacy Points the trees share.
+  legacyPerks?: {
+    trees?: {
+      id?: number;
+      name?: string;
+      read?: boolean;
+      perks?: { name?: string; rank?: number; maxRank?: number; nodeID?: number; spellID?: number }[];
+    }[];
+    points?: { spent?: number; unspent?: number };
+  };
   traits?: {
     experimental?: boolean;
     error?: string;
@@ -1110,6 +1123,51 @@ export async function applyImport(
           `entryID ${node.entryID ?? "?"} (${node.rank}/${node.maxRank ?? node.rank})`
         );
       }
+    }
+  }
+
+  // 6. Legacy perks bought in game (addon 1.9.18+). Each tree the addon
+  //    could read replaces what's on file for that tree, so a perk bought
+  //    or unlearned in game shows on the Legacy page after the next sync;
+  //    a tree it couldn't read keeps what the planner had. The trees'
+  //    Legacy Points (spent + unspent) become the account's total.
+  const legacyTrees = (parsed.legacyPerks?.trees ?? []).filter(
+    (t) => t.read && typeof t.name === "string" && t.name !== ""
+  );
+  for (const tree of legacyTrees) {
+    try {
+      const ranks = new Map<string, number>();
+      for (const p of tree.perks ?? []) {
+        if (typeof p.name === "string" && p.name !== "" && Number(p.rank) > 0) {
+          ranks.set(p.name, Math.max(ranks.get(p.name) ?? 0, Math.floor(Number(p.rank))));
+        }
+      }
+      const { error: clearError } = await supabase
+        .from("character_legacy")
+        .delete()
+        .eq("character_id", characterId)
+        .eq("tree", tree.name);
+      if (clearError) throw clearError;
+      if (ranks.size > 0) {
+        const { error } = await supabase.from("character_legacy").upsert(
+          [...ranks].map(([perk, rank]) => ({ character_id: characterId, tree: tree.name, perk, rank })),
+          { onConflict: "character_id,tree,perk" }
+        );
+        if (error) throw error;
+      }
+    } catch (err) {
+      console.warn(`legacy perk sync failed for ${tree.name}:`, err);
+    }
+  }
+  const legacyPoints = parsed.legacyPerks?.points;
+  if (before.user_id && legacyPoints && legacyTrees.length > 0) {
+    const total = Number(legacyPoints.spent ?? 0) + Number(legacyPoints.unspent ?? 0);
+    if (Number.isFinite(total) && total >= 0) {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ legacy_points: Math.min(LEGACY_CAP, Math.floor(total)) })
+        .eq("id", before.user_id);
+      if (error) console.warn("legacy point sync failed:", error);
     }
   }
 

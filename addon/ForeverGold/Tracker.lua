@@ -165,7 +165,7 @@ end
 
 local function itemValue(id)
     local c = ns.Char()
-    if c.bound and c.bound[id] then
+    if (c.bound and c.bound[id]) or ns.Untradeable(id) then
         return ns.VendorSell(id) or 0, "vendor"
     end
     local v, how = ns.SellValue(id)
@@ -208,7 +208,7 @@ function ns.TrackerSummary()
     local from = { kills = 0, coin = s.coin, gather = 0, fish = 0, grey = 0, other = 0 }
     for _, it in ipairs(s.items) do
         local ve = ns.VendorSell(it.id) or 0
-        local an = not (c.bound and c.bound[it.id]) and ns.AHNet and ns.AHNet(it.id) or nil
+        local an = not (c.bound and c.bound[it.id]) and not ns.Untradeable(it.id) and ns.AHNet and ns.AHNet(it.id) or nil
         vend = vend + ve * it.n
         auct = auct + (an or ve) * it.n
         local info = ns.Item(it.id)

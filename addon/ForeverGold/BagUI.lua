@@ -38,18 +38,26 @@ local BV = newView("bank")
 BU.bank = BV
 local VIEWS = { BU, BV }
 
-local SLOT, GAP, PAD = 37, 4, 12
-local HEAD = 46       -- the title row
-local BAR = 32        -- the bag bar under it
-local BAGBTN = 28
-local FOOT = 34
-local SECTION = 20    -- a section's heading
+local SLOT, GAP, PAD = 37, 2, 8
+local HEAD = 34       -- the title row
+local BAR = 26        -- the bag bar under it
+local BAGBTN = 22
+local FOOT = 24
+local SECTION = 15    -- a section's heading
+local SECTION_GAP = 4 -- between the main grid and a special bag's rows
 local GREY = "|cff9a9a9a"
 local CLASS_ICONS = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
 local MAIL_ICON = "Interface\\Icons\\INV_Letter_15"
 local BAG_ICON = "Interface\\Icons\\INV_Misc_Bag_08"
 local BANK_ICON = "Interface\\Icons\\INV_Misc_Bag_10_Blue"
+local GUILD_ICON = "Interface\\Icons\\INV_Misc_TabardPVP_01"
 local EMPTY_BAG_ICON = "Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag"
+
+-- whether the client ships one of its UI atlases
+local function hasAtlas(name)
+    return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) ~= nil
+end
+
 local BASE_FILL = { 0.105, 0.10, 0.09 }
 local BASE_EDGE = { 0.20, 0.19, 0.16 }
 
@@ -73,10 +81,18 @@ local function split()
     return O().bagSplit == true
 end
 local function newSection()
-    return O().bagNew ~= false
+    return O().bagNew == true
 end
 local function barShown()
     return O().bagBar ~= false
+end
+-- the keyring's slots, shown from its button in the bag bar
+local function keysShown()
+    return O().bagKeys == true
+end
+-- the guild bank (saved each visit) in the bank window
+local function guildShown()
+    return O().bagGuild ~= false
 end
 local function specialRows()
     return O().bagSpecialRows ~= false
@@ -84,8 +100,13 @@ end
 local function junkDim()
     return O().bagJunkDim ~= false
 end
+-- The window's size, from Options (50% to 150%).
+local function bagScale()
+    return min(1.5, max(0.5, tonumber(O().bagScale) or 1))
+end
+
 local function bgAlpha()
-    return min(1, max(0.2, tonumber(O().bagAlpha) or 1))
+    return min(1, max(0.2, tonumber(O().bagAlpha) or 0.5))
 end
 BU.BgAlpha = bgAlpha
 
@@ -350,7 +371,7 @@ end
 local function liveCells(ids, where)
     local cells, size = {}, 0
     for _, bag in ipairs(ids) do
-        local n = ns.try(C_Container.GetContainerNumSlots, bag) or 0
+        local n = INV.NumSlots(bag)
         size = size + n
         for slot = 1, n do
             local info = ns.try(C_Container.GetContainerItemInfo, bag, slot)
@@ -410,15 +431,17 @@ local function collect(V)
         local cells, size = liveCells(ids, V.where)
         local order, info = {}, {}
         for _, bag in ipairs(ids) do
-            local n = ns.try(C_Container.GetContainerNumSlots, bag) or 0
+            local n = INV.NumSlots(bag)
             -- the bag bar shows your empty bag slots too, to drop a bag into
-            if n > 0 or (V.where == "bags" and bag > 0) then
+            local tab = V.where == "bank" and INV.tabs[bag]
+            if n > 0 or (V.where == "bags" and bag > 0) or (tab and (tab.slot or 0) > 1) then
                 order[#order + 1] = bag
                 info[bag] = (INV.BagInfo(bag, V.where == "bank"))
                 info[bag].size = n
             end
         end
-        return { cells = cells, size = size, order = order, info = info }
+        return { cells = cells, size = size, order = order, info = info,
+            bank = V.where == "bank" and INV.BankSlots() or nil }
     end
     local snap = INV.Snapshot(V.char or ns.charKey, V.where)
     local cells, size = savedCells(snap)
@@ -433,7 +456,8 @@ local function collect(V)
         info[bag] = copy
     end
     return { cells = cells, size = size, at = snap and snap.at or nil, missing = snap == nil,
-        order = snap and snap.order or {}, info = info }
+        order = snap and snap.order or {}, info = info, guild = snap and snap.guild or nil,
+        bank = V.where == "bank" and snap and type(snap.bankSlots) == "table" and snap.bankSlots or nil }
 end
 
 -- The cells for what a view shows now, the slot count, when it was saved
@@ -488,8 +512,9 @@ function BU.SetJunk(id, value)
     BU.Refresh()
 end
 
--- What the shown items are worth: at auction (unbound, after the cut, never
--- below what a vendor pays) and at a vendor.
+-- What the shown items are worth: at auction (only what can be traded -
+-- nothing soulbound, bind-on-pickup or quest - after the cut, never below
+-- what a vendor pays) and at a vendor (everything).
 function BU.Worth(cells)
     local ah, vendor = 0, 0
     for _, c in ipairs(cells) do
@@ -497,11 +522,13 @@ function BU.Worth(cells)
             local n = c.count or 1
             local v = ns.VendorSell(c.id) or 0
             vendor = vendor + v * n
-            local p = not c.bound and ns.AHNet and ns.AHNet(c.id)
-            if p and ns.Suspicious and ns.Suspicious(c.id, ns.AHPrice(c.id)) then
-                p = nil
+            if not ns.Untradeable(c.id, c.bound) then
+                local p = ns.AHNet and ns.AHNet(c.id)
+                if p and ns.Suspicious and ns.Suspicious(c.id, ns.AHPrice(c.id)) then
+                    p = nil
+                end
+                ah = ah + max(p or 0, v) * n
             end
-            ah = ah + max(p or 0, v) * n
         end
     end
     return floor(ah), floor(vendor)
@@ -569,6 +596,68 @@ end
 ----------------------------------------------------------------------
 
 local holders, liveButtons, nameN = {}, {}, 0
+local seen -- hovering new loot (below)
+local HINT = GREY .. "Shift+right-click: send to banker  -  Alt+right-click: more|r"
+
+-- Adds the hint to an item tooltip that belongs to one of our live slots.
+function BU.TooltipHint(tooltip)
+    local owner = tooltip and tooltip.GetOwner and tooltip:GetOwner()
+    local c = type(owner) == "table" and rawget(owner, "fgCell")
+    if c and c.live and c.id and rawget(owner, "fgUp") then
+        tooltip:AddLine(HINT)
+    end
+end
+
+-- A glow along a slot's edges that fades out toward the middle (four
+-- gradient strips), instead of tinting the whole slot.
+local WHITE = "Interface\\Buttons\\WHITE8X8"
+local function edgeGlow(owner, region, layer, sub, width)
+    local g, t = {}, {}
+    width = width or 9
+    for i = 1, 4 do
+        t[i] = owner:CreateTexture(nil, layer, nil, sub)
+        t[i]:SetTexture(WHITE)
+        if t[i].SetBlendMode then
+            t[i]:SetBlendMode("ADD")
+        end
+        t[i]:Hide()
+    end
+    t[1]:SetPoint("TOPLEFT", region, "TOPLEFT")
+    t[1]:SetPoint("TOPRIGHT", region, "TOPRIGHT")
+    t[1]:SetHeight(width)
+    t[2]:SetPoint("BOTTOMLEFT", region, "BOTTOMLEFT")
+    t[2]:SetPoint("BOTTOMRIGHT", region, "BOTTOMRIGHT")
+    t[2]:SetHeight(width)
+    t[3]:SetPoint("TOPLEFT", region, "TOPLEFT")
+    t[3]:SetPoint("BOTTOMLEFT", region, "BOTTOMLEFT")
+    t[3]:SetWidth(width)
+    t[4]:SetPoint("TOPRIGHT", region, "TOPRIGHT")
+    t[4]:SetPoint("BOTTOMRIGHT", region, "BOTTOMRIGHT")
+    t[4]:SetWidth(width)
+    g.t = t
+    function g:SetColor(r, gr, b, a)
+        if self.r == r and self.g == gr and self.b == b and self.a == a then
+            return
+        end
+        self.r, self.g, self.b, self.a = r, gr, b, a
+        local on, off = CreateColor(r, gr, b, a), CreateColor(r, gr, b, 0)
+        t[1]:SetGradient("VERTICAL", off, on)   -- top: bright at the edge
+        t[2]:SetGradient("VERTICAL", on, off)   -- bottom
+        t[3]:SetGradient("HORIZONTAL", on, off) -- left
+        t[4]:SetGradient("HORIZONTAL", off, on) -- right
+    end
+    function g:SetShown(on)
+        for i = 1, 4 do
+            t[i]:SetShown(on and true or false)
+        end
+    end
+    function g:Show() self:SetShown(true) end
+    function g:Hide() self:SetShown(false) end
+    function g:IsShown() return t[1]:IsShown() end
+    return g
+end
+
+local HOVER = { 0.35, 0.62, 1, 0.95 } -- a bag's slots, while you hover it in the bar
 
 local function overlays(b)
     b.fgTint = b:CreateTexture(nil, "ARTWORK", nil, 7)
@@ -576,11 +665,49 @@ local function overlays(b)
     b.fgTint:SetPoint("BOTTOMRIGHT", -1, 1)
     b.fgTint:Hide()
     b.fgMark = b:CreateTexture(nil, "OVERLAY", nil, 6)
-    b.fgMark:SetSize(14, 14)
-    b.fgMark:SetPoint("TOPLEFT", 1, -1)
+    b.fgMark:SetSize(13, 13)
+    b.fgMark:SetPoint("TOPRIGHT", -1, -1)
     b.fgMark:SetTexture(MAIL_ICON)
     b.fgMark:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     b.fgMark:Hide()
+    -- what the item is: quality, quest, equipment set or can't-use colour
+    b.fgColor = edgeGlow(b, b, "OVERLAY", 2, 8)
+    -- junk: a little gold coin in the corner
+    b.fgCoin = b:CreateTexture(nil, "OVERLAY", nil, 6)
+    b.fgCoin:SetSize(12, 12)
+    b.fgCoin:SetPoint("TOPLEFT", 2, -2)
+    b.fgCoin:SetTexture("Interface\\MoneyFrame\\UI-GoldIcon")
+    b.fgCoin:Hide()
+    -- an upgrade for you (Pawn says so)
+    b.fgUp = b:CreateTexture(nil, "OVERLAY", nil, 6)
+    b.fgUp:SetSize(14, 14)
+    b.fgUp:SetPoint("TOPLEFT", 1, -1)
+    if hasAtlas("bags-greenarrow") then
+        b.fgUp:SetAtlas("bags-greenarrow")
+    else
+        b.fgUp:SetTexture("Interface\\Buttons\\UI-MicroStream-Green")
+        b.fgUp:SetTexCoord(0, 1, 1, 0)
+    end
+    b.fgUp:Hide()
+    -- new loot: a pulsing glow until you hover it
+    b.fgNewF = CreateFrame("Frame", nil, b)
+    b.fgNewF:SetAllPoints()
+    b.fgNewF:SetFrameLevel((b:GetFrameLevel() or 1) + 3)
+    b.fgNew = edgeGlow(b.fgNewF, b.fgNewF, "OVERLAY", 3, 11)
+    b.fgNew:SetColor(1, 0.95, 0.7, 1)
+    b.fgNew:Show()
+    if b.fgNewF.CreateAnimationGroup then
+        local ag = b.fgNewF:CreateAnimationGroup()
+        if ag then
+            local a = ag:CreateAnimation("Alpha")
+            a:SetFromAlpha(1)
+            a:SetToAlpha(0.15)
+            a:SetDuration(0.7)
+            ag:SetLooping("BOUNCE")
+            b.fgNewAnim = ag
+        end
+    end
+    b.fgNewF:Hide()
     b.fgJunk = b:CreateTexture(nil, "OVERLAY", nil, 4)
     b.fgJunk:SetAllPoints()
     b.fgJunk:SetColorTexture(0.05, 0.04, 0.03, 0.5)
@@ -589,12 +716,8 @@ local function overlays(b)
     b.fgDim:SetAllPoints()
     b.fgDim:SetColorTexture(0, 0, 0, 0.72)
     b.fgDim:Hide()
-    b.fgGlow = b:CreateTexture(nil, "OVERLAY", nil, 5)
-    b.fgGlow:SetAllPoints()
-    b.fgGlow:SetColorTexture(1, 0.8, 0.35, 0.28)
-    if b.fgGlow.SetBlendMode then
-        b.fgGlow:SetBlendMode("ADD")
-    end
+    b.fgGlow = edgeGlow(b, b, "OVERLAY", 5, 10)
+    b.fgGlow:SetColor(HOVER[1], HOVER[2], HOVER[3], HOVER[4])
     b.fgGlow:Hide()
 end
 
@@ -653,8 +776,11 @@ local function liveButton(V, bag, slot)
         end
     end)
     b:HookScript("OnEnter", function(self)
-        if GameTooltip and GameTooltip:IsOwned(self) and self.fgCell and self.fgCell.id then
-            GameTooltip:AddLine(GREY .. "Shift+right-click: send to banker  -  Alt+right-click: more|r")
+        seen(self)
+        -- the hint comes from the game's own item tooltip hook (BU.TooltipHint), which
+        -- runs each time the button refreshes its tooltip; this is for a client without it
+        if not BU.hintHooked and GameTooltip and GameTooltip:IsOwned(self) and self.fgCell and self.fgCell.id then
+            GameTooltip:AddLine(HINT)
             GameTooltip:Show()
         end
     end)
@@ -672,9 +798,6 @@ local function paintLive(b, cell)
     pcall(SetItemButtonDesaturated, b, (cell.locked or cell.junk) and true or false)
     if b.UpdateCooldown then
         pcall(b.UpdateCooldown, b, icon)
-    end
-    if b.UpdateNewItem then
-        pcall(b.UpdateNewItem, b, cell.q)
     end
     if b.UpdateJunkItem then
         pcall(b.UpdateJunkItem, b, cell.q, cell.noValue)
@@ -708,6 +831,7 @@ local function savedButton(V)
     overlays(b)
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     b:SetScript("OnEnter", function(self)
+        seen(self)
         local c = self.fgCell
         if not (c and c.id and GameTooltip) then
             return
@@ -760,9 +884,9 @@ local function slotBg(V)
     local t = V._bgs[V._usedBg]
     if not t then
         local body = V.win.body
-        t = { edge = body:CreateTexture(nil, "BACKGROUND", nil, 1), fill = body:CreateTexture(nil, "BACKGROUND", nil, 2),
-            glow = body:CreateTexture(nil, "ARTWORK", nil, 1) }
-        t.glow:SetColorTexture(1, 0.8, 0.35, 0.22)
+        t = { edge = body:CreateTexture(nil, "BACKGROUND", nil, 1), fill = body:CreateTexture(nil, "BACKGROUND", nil, 2) }
+        t.glow = edgeGlow(body, t.fill, "ARTWORK", 1, 10)
+        t.glow:SetColor(HOVER[1], HOVER[2], HOVER[3], HOVER[4])
         V._bgs[V._usedBg] = t
     end
     return t
@@ -770,13 +894,184 @@ end
 
 local function paintBg(t, fam)
     local fill = fam and fam.c or BASE_FILL
-    local er, eg, eb = BASE_EDGE[1], BASE_EDGE[2], BASE_EDGE[3]
+    local er, eg, eb = 0.01, 0.01, 0.01
     if fam then
         er, eg, eb = edgeOf(fam.c)
     end
     local a = 0.4 + 0.6 * bgAlpha()
-    t.edge:SetColorTexture(er, eg, eb, a)
+    t.edge:SetColorTexture(er, eg, eb, 0.95)
     t.fill:SetColorTexture(fill[1], fill[2], fill[3], a)
+end
+
+----------------------------------------------------------------------
+-- What a slot shows about its item: quality, quest, equipment set,
+-- can't use, junk coin, upgrade arrow, new-loot flash (Options > Bags Forever)
+----------------------------------------------------------------------
+
+local function slotOpt(key)
+    return O()[key] ~= false
+end
+
+-- How bright the glows are: Options' 1-100%, 50% to start.
+local function glowAlpha()
+    local pct = min(100, max(1, tonumber(O().bagGlow) or 50))
+    return 0.2 + 0.8 * pct / 100
+end
+
+local CLASS_QUEST = 12
+local CAN_BE_UNUSABLE = { [0] = true, [2] = true, [4] = true, [9] = true } -- consumables, weapons, armour, recipes
+local unusable = {}
+BU.ResetUnusable = function() unusable = {} end
+
+local function isRed(c)
+    return type(c) == "table" and (c.r or 0) > 0.99 and (c.g or 1) < 0.2 and (c.b or 1) < 0.2
+end
+
+-- Whether you can't use an item: the game writes what stops you in red on
+-- its tooltip (level, class, skill), so that's what's read.
+function BU.Unusable(cell)
+    if not (cell and cell.id and C_TooltipInfo) then
+        return false
+    end
+    local it = ns.Item(cell.id)
+    if it and it.c ~= nil and not CAN_BE_UNUSABLE[it.c] then
+        return false
+    end
+    local key = tostring(cell.link or cell.id)
+    if unusable[key] ~= nil then
+        return unusable[key]
+    end
+    local data
+    if cell.live and C_TooltipInfo.GetBagItem then
+        data = ns.try(C_TooltipInfo.GetBagItem, cell.bag, cell.slot)
+    elseif cell.link and C_TooltipInfo.GetHyperlink then
+        data = ns.try(C_TooltipInfo.GetHyperlink, cell.link)
+    elseif C_TooltipInfo.GetItemByID then
+        data = ns.try(C_TooltipInfo.GetItemByID, cell.id)
+    end
+    local v = false
+    if type(data) == "table" and type(data.lines) == "table" then
+        for i = 2, #data.lines do
+            local l = data.lines[i]
+            if type(l) == "table" and (isRed(l.leftColor) or isRed(l.rightColor)) then
+                v = true
+                break
+            end
+        end
+    end
+    unusable[key] = v
+    return v
+end
+
+local function questItem(cell)
+    if cell.live and C_Container.GetContainerItemQuestInfo then
+        local q = ns.try(C_Container.GetContainerItemQuestInfo, cell.bag, cell.slot)
+        if type(q) == "table" and (q.isQuestItem or q.questID ~= nil) then
+            return true
+        end
+    end
+    local it = ns.Item(cell.id)
+    return it ~= nil and it.c == CLASS_QUEST
+end
+
+local function inGearSet(cell)
+    if cell.live and C_Container.GetContainerItemEquipmentSetInfo then
+        return ns.try(C_Container.GetContainerItemEquipmentSetInfo, cell.bag, cell.slot) and true or false
+    end
+    return false
+end
+
+local function upgrade(cell)
+    if cell.live and type(PawnIsContainerItemAnUpgrade) == "function" then
+        local ok, up = pcall(PawnIsContainerItemAnUpgrade, cell.bag, cell.slot)
+        return ok and up and true or false
+    end
+    return false
+end
+
+-- The glow colour for a cell, or nil: can't use, then quest, then set, then quality.
+function BU.SlotColor(cell, V)
+    if not (cell and cell.id) then
+        return nil
+    end
+    local mine = V == nil or V.char == nil or V.char == ns.charKey
+    if mine and slotOpt("bagUnusable") and BU.Unusable(cell) then
+        return 1, 0.12, 0.1, "unusable"
+    end
+    if slotOpt("bagQuest") and questItem(cell) then
+        return 1, 0.82, 0.1, "quest"
+    end
+    if slotOpt("bagSets") and inGearSet(cell) then
+        return 0.25, 0.75, 1, "set"
+    end
+    if slotOpt("bagQuality") and (cell.q or 0) >= 2 then
+        local c = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[cell.q]
+        if c then
+            return c.r, c.g, c.b, "quality"
+        end
+    end
+    return nil
+end
+
+local function paintMarks(V, b, cell)
+    local r, g, bl, why = BU.SlotColor(cell, V)
+    if r then
+        b.fgColor:SetColor(r, g, bl, glowAlpha())
+        b.fgColor:Show()
+    else
+        b.fgColor:Hide()
+    end
+    b.fgWhy = why
+    -- can't use it: darkened red, as the game shows it
+    local r2, g2, b2 = 1, 1, 1
+    if why == "unusable" then
+        r2, g2, b2 = 0.75, 0.3, 0.3
+    end
+    local tex = rawget(b, "icon")
+    if type(tex) == "table" and tex.SetVertexColor then
+        tex:SetVertexColor(r2, g2, b2)
+    elseif SetItemButtonTextureVertexColor then
+        pcall(SetItemButtonTextureVertexColor, b, r2, g2, b2)
+    end
+    b.fgCoin:SetShown(cell.id ~= nil and slotOpt("bagPoorCoin") and BU.IsJunk(cell.id, cell.q) and true or false)
+    local up = cell.id ~= nil and slotOpt("bagUpgrade") and upgrade(cell)
+    b.fgUp:SetShown(up and not b.fgCoin:IsShown() and true or false)
+    -- new loot flashes until you hover it
+    local new = cell.new and slotOpt("bagFlash") and true or false
+    b.fgNewF:SetShown(new)
+    if b.fgNewAnim then
+        if new and not b.fgNewAnim:IsPlaying() then
+            b.fgNewAnim:Play()
+        elseif not new and b.fgNewAnim:IsPlaying() then
+            b.fgNewAnim:Stop()
+        end
+    end
+    -- the game's own new-item glow stays until the bags close: ours does the job
+    for _, k in ipairs({ "NewItemTexture", "flashAnim", "newitemglowAnim" }) do
+        local part = b[k]
+        if type(part) == "table" then
+            if part.Stop then
+                part:Stop()
+            elseif part.Hide then
+                part:Hide()
+            end
+        end
+    end
+end
+
+-- Hovering new loot: it's seen, the flash stops.
+function seen(b)
+    local c = b.fgCell
+    if c and c.new then
+        c.new = false
+        if c.live and C_NewItems and C_NewItems.RemoveNewItem then
+            ns.try(C_NewItems.RemoveNewItem, c.bag, c.slot)
+        end
+        b.fgNewF:Hide()
+        if b.fgNewAnim and b.fgNewAnim:IsPlaying() then
+            b.fgNewAnim:Stop()
+        end
+    end
 end
 
 local function heading(V)
@@ -802,13 +1097,19 @@ local function bagName(V, bag)
         return info.name
     end
     if V.where == "bank" then
+        if info and info.main then
+            return "Bank"
+        end
+        if info and info.slot then
+            return (info.size or 0) == 0 and "Empty bank bag slot" or "Bank bag " .. (info.slot - 1)
+        end
         return "Bank tab " .. tostring(bag)
     end
     if bag == 0 then
         return "Backpack"
     end
     if info and (info.size or 0) == 0 then
-        return "Empty bag slot"
+        return info.reagent and "Empty reagent bag slot" or "Empty bag slot"
     end
     return "Bag " .. bag
 end
@@ -821,19 +1122,18 @@ local function placeRow(V, list, y, q)
     for i, cell in ipairs(list) do
         local col, row = (i - 1) % n, floor((i - 1) / n)
         local x, cy = col * (SLOT + GAP), y - row * (SLOT + GAP)
-        local fam = cell.bag ~= nil and BU.Family(V._info[cell.bag]) or nil
+        local fam = cell.bag ~= nil and slotOpt("bagTypeColor") and BU.Family(V._info[cell.bag]) or nil
         cell.junk = junkDim() and BU.IsJunk(cell.id, cell.q) or nil
         local bg = slotBg(V)
         paintBg(bg, fam)
+        -- a 1px dark ring just outside every slot, so each one has the same defined edge
         bg.edge:ClearAllPoints()
-        bg.edge:SetPoint("TOPLEFT", body, "TOPLEFT", x, cy)
-        bg.edge:SetSize(SLOT, SLOT)
+        bg.edge:SetPoint("TOPLEFT", body, "TOPLEFT", x - 1, cy + 1)
+        bg.edge:SetSize(SLOT + 2, SLOT + 2)
         bg.fill:ClearAllPoints()
-        bg.fill:SetPoint("TOPLEFT", body, "TOPLEFT", x + 1, cy - 1)
-        bg.fill:SetSize(SLOT - 2, SLOT - 2)
-        bg.glow:ClearAllPoints()
-        bg.glow:SetAllPoints(bg.edge)
-        bg.glow:Hide()
+        bg.fill:SetPoint("TOPLEFT", body, "TOPLEFT", x, cy)
+        bg.fill:SetSize(SLOT, SLOT)
+        bg.glow:Hide() -- it follows the slot's fill
         bg.edge:Show()
         bg.fill:Show()
         local b
@@ -842,6 +1142,7 @@ local function placeRow(V, list, y, q)
             if b then
                 paintLive(b, cell)
                 V._live[#V._live + 1] = b
+                b.fgGen = V._gen
             end
         elseif cell.id then
             b = savedButton(V)
@@ -856,6 +1157,7 @@ local function placeRow(V, list, y, q)
             -- junk: grayed out and toned down
             b.fgJunk:SetShown(cell.junk == true and not b.fgDim:IsShown())
             b.fgGlow:Hide()
+            paintMarks(V, b, cell)
             -- an empty slot of a special bag shows its colour through the game's slot art
             if fam and cell.empty then
                 local r, g, bl = edgeOf(fam.c)
@@ -891,22 +1193,19 @@ local function sectionHead(V, y, left, right)
     local h = heading(V)
     local body = V.win.body
     h.left:ClearAllPoints()
-    h.left:SetPoint("TOPLEFT", body, "TOPLEFT", 0, y - 3)
+    h.left:SetPoint("TOPLEFT", body, "TOPLEFT", 0, y - 1)
     h.left:SetText(left)
     h.right:ClearAllPoints()
-    h.right:SetPoint("TOPRIGHT", body, "TOPLEFT", cols() * (SLOT + GAP) - GAP, y - 3)
+    h.right:SetPoint("TOPRIGHT", body, "TOPLEFT", cols() * (SLOT + GAP) - GAP, y - 1)
     h.right:SetText(right or "")
     return y - SECTION
 end
 
 local function hideAll(V)
-    for _, b in ipairs(V._live) do
-        -- only if no other view has taken it since
-        if b.fgCell and b:GetParent() and b:GetParent():GetParent() == V.win.body then
-            b:Hide()
-            b.fgCell = nil
-        end
-    end
+    -- live buttons aren't hidden here: one under the mouse while you drag
+    -- an item would lose the drop. Those not placed again are put away after.
+    V._prevLive = V._live
+    V._gen = (V._gen or 0) + 1
     for _, b in ipairs(V._saved) do
         b:Hide()
         b.fgCell = nil
@@ -932,8 +1231,30 @@ end
 -- The bag bar
 ----------------------------------------------------------------------
 
+-- Bank bag slot i's place in the game: the bag sits at (Characterbanktab, i).
+local function bankBagSpot(V, bag)
+    local info = V.where == "bank" and bag ~= nil and V._info[bag]
+    local where = Enum and Enum.BagIndex and Enum.BagIndex.Characterbanktab
+    if info and info.slot and where then
+        return where, info.slot
+    end
+    return nil
+end
+
 local function putIntoBag(V, bag)
-    if not (CursorHasItem and CursorHasItem() and V.where == "bags" and isLive(V)) then
+    if not (CursorHasItem and CursorHasItem() and isLive(V)) then
+        return false
+    end
+    if V.where == "bank" then
+        -- a bag on the cursor goes into (or swaps with) that bank bag slot
+        local where, slot = bankBagSpot(V, bag)
+        if not where then
+            return false
+        end
+        ns.try(C_Container.PickupContainerItem, where, slot)
+        return true
+    end
+    if V.where ~= "bags" then
         return false
     end
     if bag == 0 then
@@ -949,6 +1270,9 @@ end
 
 function BU.BagClick(V, bag, which, anchor)
     V = V or BU
+    if bag == nil then
+        return -- a locked bank bag slot: its own button handles buying
+    end
     if which == "RightButton" then
         return BU.BagMenu(V, bag, anchor)
     end
@@ -963,11 +1287,26 @@ function BU.BagClick(V, bag, which, anchor)
 end
 
 local function bagTip(V, b)
+    if b.locked then
+        local lines = { "Bank bag slot (locked)" }
+        if b.cost then
+            lines[#lines + 1] = "Costs " .. ns.Money(b.cost) .. " to unlock"
+        end
+        lines[#lines + 1] = GREY .. (not b.nextUp and "Unlock the ones before it first."
+            or isLive(V) and "Click to buy it." or "Buy it at a banker.") .. "|r"
+        return tip(b, lines)
+    end
     local bag = b.bag
     local info = V._info[bag] or {}
     local lines = { bagName(V, bag) }
-    if (info.size or 0) == 0 and V.where == "bags" and bag > 0 then
-        lines[#lines + 1] = "No bag here. Drop a bag on it to put one in."
+    if (info.size or 0) == 0 and ((V.where == "bags" and bag > 0) or info.slot) then
+        lines[#lines + 1] = info.reagent and "No reagent bag here. Drop a reagent bag on it to put one in."
+            or "No bag here. Drop a bag on it to put one in."
+        return tip(b, lines)
+    end
+    if info.main then
+        lines[#lines + 1] = (b.free or 0) .. " of " .. (info.size or 0) .. " slots free"
+        lines[#lines + 1] = GREY .. "Click: hide or show its slots|r"
         return tip(b, lines)
     end
     lines[#lines + 1] = (b.free or 0) .. " of " .. (info.size or 0) .. " slots free"
@@ -1014,10 +1353,26 @@ local function bagButton(V, i)
     b.off:Hide()
     b.count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     b.count:SetPoint("BOTTOMRIGHT", -2, 2)
+    -- a bank bag slot not bought yet
+    b.lock = b:CreateTexture(nil, "OVERLAY", nil, 2)
+    b.lock:SetPoint("TOPLEFT", 2, -2)
+    b.lock:SetPoint("BOTTOMRIGHT", -2, 2)
+    if hasAtlas("bankslot-icon-lock") then
+        b.lock:SetAtlas("bankslot-icon-lock")
+    else
+        b.lock:SetTexture("Interface\\PetBattles\\PetBattle-LockIcon")
+    end
+    b.lock:Hide()
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints()
     hl:SetColorTexture(1, 0.9, 0.6, 0.18)
     b:SetScript("OnClick", function(self, which)
+        if self.locked then
+            if self.nextUp then
+                BU.BuyBankSlot()
+            end
+            return
+        end
         BU.BagClick(V, self.bag, which, self)
     end)
     b:SetScript("OnEnter", function(self)
@@ -1030,7 +1385,17 @@ local function bagButton(V, i)
     end)
     -- drag a bag out of its slot, or drop one in
     b:SetScript("OnDragStart", function(self)
-        local slot = V.where == "bags" and isLive(V) and invSlot(self.bag)
+        if self.locked or not isLive(V) then
+            return
+        end
+        if V.where == "bank" then
+            local where, slot = bankBagSpot(V, self.bag)
+            if where then
+                ns.try(C_Container.PickupContainerItem, where, slot)
+            end
+            return
+        end
+        local slot = invSlot(self.bag)
         if slot then
             ns.try(PickupBagFromSlot, slot)
         end
@@ -1045,12 +1410,22 @@ end
 local function layoutBar(V, d, freeBy)
     local win = V.win
     local n = 0
+    local bars, keyring = {}, nil
+    for _, bag in ipairs(d.order) do
+        if d.info[bag] and d.info[bag].keyring then
+            keyring = bag -- it has its own button, at the right
+        else
+            bars[#bars + 1] = bag
+        end
+    end
     if barShown() then
-        for i, bag in ipairs(d.order) do
+        for i, bag in ipairs(bars) do
             n = i
             local b = bagButton(V, i)
             local info = d.info[bag] or {}
             b.bag, b.free = bag, freeBy[bag] or 0
+            b.locked, b.nextUp, b.cost = nil, nil, nil
+            b.lock:Hide()
             local empty = (info.size or 0) == 0
             local icon = info.icon
             if not icon then
@@ -1079,10 +1454,124 @@ local function layoutBar(V, d, freeBy)
             b:SetPoint("TOPLEFT", win, "TOPLEFT", PAD + (i - 1) * (BAGBTN + 4), -HEAD)
             b:Show()
         end
+        -- the bank's bag slots you haven't bought yet, locked; the next one is for sale
+        local slots = d.bank
+        if slots and (slots.max or 0) > 1 then
+            local shown = n
+            for s = (slots.bought or 0) + 1, slots.max do
+                if shown >= slots.max then
+                    break
+                end
+                n = n + 1
+                shown = shown + 1
+                local b = bagButton(V, n)
+                b.bag, b.free = nil, 0
+                b.locked = true
+                b.nextUp = s == (slots.bought or 0) + 1
+                b.cost = b.nextUp and slots.cost or nil
+                b.icon:SetTexture(EMPTY_BAG_ICON)
+                b.icon:SetTexCoord(0, 1, 0, 1)
+                if b.icon.SetDesaturated then
+                    b.icon:SetDesaturated(true)
+                end
+                b.off:Show()
+                b.lock:Show()
+                b.count:SetText("")
+                b.edge:SetColorTexture(C.goldEdge[1], C.goldEdge[2], C.goldEdge[3], 0.35)
+                b:ClearAllPoints()
+                b:SetPoint("TOPLEFT", win, "TOPLEFT", PAD + (n - 1) * (BAGBTN + 4), -HEAD)
+                b:Show()
+            end
+        end
     end
     for i = n + 1, #V._bagBtns do
         V._bagBtns[i]:Hide()
     end
+    -- wide enough for the whole bar
+    V._barW = n > 0 and PAD * 2 + n * (BAGBTN + 4) or 0
+    -- at the banker: what the next bag slot costs, and a button to buy it
+    if win.buy then
+        local slots = d.bank
+        local selling = barShown() and isLive(V) and slots and slots.canBuy and slots.cost
+        win.buy:SetShown(selling and true or false)
+        win.buyCost:SetShown(selling and true or false)
+        -- the bar runs the width of the window here: the price stands in for "AT THE BANK"
+        win.sub:SetShown(not selling)
+        if selling then
+            win.buyCost:SetText((slots.afford == false and "|cffff5050Cost:|r " or "Cost: ") .. ns.Money(slots.cost))
+            win.buyCost:ClearAllPoints()
+            win.buyCost:SetPoint("LEFT", win, "TOPLEFT", PAD + n * (BAGBTN + 4) + 6, -HEAD - BAGBTN / 2)
+            win.buy:ClearAllPoints()
+            win.buy:SetPoint("LEFT", win.buyCost, "RIGHT", 8, 0)
+            local costW = tonumber(win.buyCost:GetStringWidth() or 0) or 0
+            V._barW = V._barW + 6 + max(costW, 70) + 8 + 84
+        end
+    end
+    -- the keyring, at the right of the bar: click to show or hide its row
+    if win.keys then
+        local info = keyring and d.info[keyring]
+        local shownKeys = barShown() and info ~= nil
+        win.keys:SetShown(shownKeys)
+        if shownKeys then
+            win.keys.bag = keyring
+            local size = info.size or 0
+            win.keys.used, win.keys.size = size - (freeBy[keyring] or 0), size
+            K.setIcon(win.keys.icon, info.icon or INV.KEYRING_ICON)
+            local on = keysShown()
+            win.keys.off:SetShown(not on)
+            if win.keys.icon.SetDesaturated then
+                win.keys.icon:SetDesaturated(not on)
+            end
+            win.keys.count:SetText(tostring(win.keys.used))
+            win.keys:ClearAllPoints()
+            win.keys:SetPoint("TOPRIGHT", win, "TOPRIGHT", -PAD, -HEAD)
+            V._barW = V._barW + BAGBTN + 12
+        end
+        win.sub:ClearAllPoints()
+        if shownKeys then
+            win.sub:SetPoint("RIGHT", win.keys, "LEFT", -6, 0)
+        else
+            if barShown() then
+                win.sub:SetPoint("TOPRIGHT", win, "TOPRIGHT", -PAD, -(HEAD + 6))
+            else
+                win.sub:SetPoint("RIGHT", win.searchBtn, "LEFT", -8, 0)
+            end
+        end
+    end
+end
+
+-- Buying the next bank bag slot, at the banker: the game's own confirm, with the price.
+function BU.BuyBankSlot()
+    if not (isLive(BV) and C_Bank and C_Bank.PurchaseBankTab and Enum and Enum.BankType) then
+        return false
+    end
+    local slots = INV.BankSlots()
+    if not (slots and slots.canBuy) then
+        return false
+    end
+    local data = { bankType = Enum.BankType.Character }
+    if not (StaticPopupDialogs and StaticPopupDialogs.CONFIRM_BUY_BANK_TAB) then
+        StaticPopupDialogs = StaticPopupDialogs or {}
+        StaticPopupDialogs.CONFIRM_BUY_BANK_TAB = {
+            text = "Buy a bank bag slot?",
+            button1 = YES or "Yes",
+            button2 = NO or "No",
+            hasMoneyFrame = 1,
+            timeout = 0,
+            hideOnEscape = 1,
+            OnAccept = function(_, info)
+                C_Bank.PurchaseBankTab(info.bankType)
+            end,
+            OnShow = function(dialog, info)
+                local tab = C_Bank.FetchNextPurchasableBankTabData(info.bankType)
+                if tab and dialog.MoneyFrame and MoneyFrame_Update then
+                    MoneyFrame_Update(dialog.MoneyFrame, tab.tabCost)
+                end
+            end,
+        }
+    end
+    StaticPopup_Show("CONFIRM_BUY_BANK_TAB", nil, nil, data)
+    return true
 end
 
 ----------------------------------------------------------------------
@@ -1103,17 +1592,17 @@ local function refreshView(V)
     hideAll(V)
 
     -- title
-    win.title:SetText(shortName(who.name or "?") .. "'s " .. (V.where == "bank" and "Bank" or "Inventory"))
-    win.title:SetShown(not win.searchBox:IsShown())
-    local coords = who.class and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[who.class]
-    if coords then
-        win.who.icon:SetTexture(CLASS_ICONS)
-        win.who.icon:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+    if V.where == "guild" then
+        win.title:SetText((d.guild or (who.guild and who.guild:match("^(.-)%-")) or "Guild") .. " Bank")
     else
+        win.title:SetText(shortName(who.name or "?") .. "'s " .. (V.where == "bank" and "Bank" or "Inventory"))
+    end
+    win.title:SetShown(not win.searchBox:IsShown())
+    if not INV.SetFace(win.who.icon, who) then
         K.setIcon(win.who.icon, V.where == "bank" and BANK_ICON or BAG_ICON)
     end
     if live then
-        win.sub:SetText(V.where == "bank" and "AT THE BANK" or "FOREVER BAGS")
+        win.sub:SetText("")
     elseif d.at then
         win.sub:SetText("SAVED " .. (ns.Ago and ns.Ago(d.at) or ""))
     else
@@ -1121,7 +1610,9 @@ local function refreshView(V)
     end
     if win.tabBags then
         win.tabBags:SetOn(true)
-        win.tabBank:SetOn(BV.win ~= nil and BV.win:IsShown())
+        win.tabBank:SetOn(BV.win ~= nil and BV.win:IsShown() and BV.where == "bank")
+        win.tabGuild:SetShown(guildShown() and (who.guild ~= nil))
+        win.tabGuild:SetOn(BV.win ~= nil and BV.win:IsShown() and BV.where == "guild")
     end
     win.sort:SetShown(live)
     win.bg:SetAlpha(bgAlpha())
@@ -1131,8 +1622,18 @@ local function refreshView(V)
     local main, fresh = {}, {}
     local special, specialOrder = {}, {} -- quivers, reagent and profession bags: rows of their own
     local freeBy = {}
+    local keyCells, keySize = {}, 0 -- the keyring: its own row, from its button; not in the slot count
     for _, c in ipairs(cells) do
-        if c.id then
+        local key = c.bag ~= nil and d.info[c.bag] and d.info[c.bag].keyring
+        if key then
+            keySize = keySize + 1
+            if not c.id then
+                freeBy[c.bag] = (freeBy[c.bag] or 0) + 1
+            end
+            if keysShown() and (c.id or showEmpty()) then
+                keyCells[#keyCells + 1] = c
+            end
+        elseif c.id then
             used = used + 1
             if BU.IsMarked(c.id) then
                 marked = marked + 1
@@ -1143,7 +1644,9 @@ local function refreshView(V)
                 freeBy[c.bag] = (freeBy[c.bag] or 0) + 1
             end
         end
-        if c.bag ~= nil and BU.IsHidden(c.bag, V) then
+        if key then
+            -- placed in its own row below
+        elseif c.bag ~= nil and BU.IsHidden(c.bag, V) then
             -- its bag is switched off in the bag bar
         elseif specialRows() and not split() and c.bag ~= nil and BU.Family(d.info[c.bag]) then
             if not special[c.bag] then
@@ -1164,12 +1667,13 @@ local function refreshView(V)
     win.body:ClearAllPoints()
     win.body:SetPoint("TOPLEFT", PAD, -top)
     win.body:SetPoint("BOTTOMRIGHT", -PAD, FOOT + 4)
-    win.sub:ClearAllPoints()
-    win.sub:SetPoint("TOPRIGHT", win, "TOPRIGHT", -PAD, barShown() and -(HEAD + 9) or -36)
 
     local y = 0
     if d.missing then
-        win.note:SetText(V.where == "bank"
+        win.note:SetText(V.where == "guild"
+            and (who.guild and "No guild bank saved yet. It's saved each time you open the guild vault."
+                or shortName(who.name) .. " isn't in a guild (or hasn't logged in since this was added).")
+            or V.where == "bank"
             and "No bank saved for " .. shortName(who.name) .. " yet. It's saved each time they visit a banker."
             or "No bags saved for " .. shortName(who.name) .. " yet. Log in on them once.")
         win.note:Show()
@@ -1203,7 +1707,7 @@ local function refreshView(V)
             y = sectionHead(V, y, bagName(V, bag) .. (fam and (GREY .. "  " .. fam.name .. "|r") or ""), items .. " / " .. #list)
             y = placeRow(V, list, y, q)
             if i < #order then
-                y = y - 6
+                y = y - SECTION_GAP
             end
         end
     else
@@ -1222,21 +1726,41 @@ local function refreshView(V)
             local fam = BU.Family(V._info[bag])
             local r, g, b = edgeOf(fam.c)
             local hex = string.format("|cff%02x%02x%02x", floor(min(1, r * 1.6) * 255), floor(min(1, g * 1.6) * 255), floor(min(1, b * 1.6) * 255))
-            y = y - (#main > 0 and 8 or 0)
+            y = y - (#main > 0 and SECTION_GAP or 0)
             y = sectionHead(V, y, hex .. bagName(V, bag) .. "|r", items .. " / " .. ((V._info[bag] or {}).size or #list))
             y = placeRow(V, list, y, q)
         end
     end
+    if #keyCells > 0 then
+        local items = 0
+        for _, c in ipairs(keyCells) do
+            if c.id then
+                items = items + 1
+            end
+        end
+        y = y - SECTION_GAP
+        y = sectionHead(V, y, "|cffd8c070Keyring|r", items .. " / " .. keySize)
+        y = placeRow(V, keyCells, y, q)
+    end
     if #fresh > 0 then
-        y = y - 8
+        y = y - SECTION_GAP
         y = sectionHead(V, y, "New loot", plural(#fresh, "item"))
         y = placeRow(V, fresh, y, q)
     end
     if V.hot then
         BU.HighlightBag(V, V.hot)
     end
+    for _, b in ipairs(V._prevLive or {}) do
+        -- only if no other view has taken it since
+        if b.fgGen ~= V._gen and b.fgCell and b:GetParent() and b:GetParent():GetParent() == V.win.body then
+            b:Hide()
+            b.fgCell = nil
+        end
+    end
+    V._prevLive = nil
 
     -- footer
+    size = size - keySize
     win.slots:SetText(used .. " / " .. size .. "  " .. GREY .. empty .. " free|r")
     win.markCount:SetText(tostring(marked))
     win.money:SetText(ns.Money(who.money or 0))
@@ -1255,10 +1779,14 @@ local function refreshView(V)
     win.worthText:SetText(GREY .. "worth|r " .. ns.Money(ah))
 
     -- size
+    -- fitted to the grid, but never cutting off the title or the bag bar
     local n = cols()
     local w = PAD * 2 + n * (SLOT + GAP) - GAP
+    local titleW = win.title:IsShown() and (tonumber(win.title:GetStringWidth() or 0) or 0) or 140
+    local headW = PAD + 24 + 6 + titleW + 12 + (16 + 5 + 20 + 5 + 16 + 5 + 22 + 5)
     local h = top - y + FOOT + PAD
-    win:SetSize(max(w, 380), max(h, 160))
+    win:SetScale(bagScale())
+    win:SetSize(floor(max(w, headW, V._barW or 0, 290) + 0.5), floor(max(h, 120) + 0.5))
 end
 
 -- Everything the window(s) show, worked out again.
@@ -1316,13 +1844,18 @@ local function openPopup(anchor, rows, width)
         r:ClearAllPoints()
         r:SetPoint("TOPLEFT", popup, "TOPLEFT", 8, y)
         r:SetLabel(row.header and ("|cffffd100" .. row.text .. "|r") or row.text)
+        if r.icon.SetDesaturated then
+            r.icon:SetDesaturated(false)
+        end
         r.onClick = row.onClick and function()
             closePopup()
             row.onClick()
         end or nil
         r:SetDisabled(row.header or row.disabled)
         r:SetOn(row.on)
-        if row.icon then
+        if row.face and INV.SetFace(r.icon, row.face) then
+            r.icon:Show()
+        elseif row.icon then
             K.setIcon(r.icon, row.icon)
             r.icon:Show()
         elseif row.coords then
@@ -1356,7 +1889,9 @@ end
 -- asking it for a bank opens the bank window beside it.
 function BU.Pick(key, where, V)
     V = V or BU
-    if where == "bank" and V == BU then
+    if where == "guild" then
+        return BU.OpenGuild(key)
+    elseif where == "bank" and (V == BU or BV.where == "guild") then
         return BU.OpenBank(key)
     elseif where == "bags" and V == BV then
         return BU.OpenInventory(key)
@@ -1375,11 +1910,17 @@ function BU.PickerRows(V)
     rows[#rows + 1] = { text = V == BU and "Bank  " .. GREY .. "(opens beside)|r" or "Bank", icon = BANK_ICON,
         on = V.where == "bank" or (BV.win ~= nil and BV.win:IsShown()),
         onClick = function() BU.Pick(V.char, "bank", V) end }
+    local me = ns.db.chars[V.char or ns.charKey]
+    if guildShown() and me and me.guild then
+        rows[#rows + 1] = { text = "Guild bank", icon = GUILD_ICON,
+            on = BV.win ~= nil and BV.win:IsShown() and BV.where == "guild",
+            onClick = function() BU.Pick(V.char, "guild", V) end }
+    end
     rows[#rows + 1] = { text = "Characters", header = true }
     for _, c in ipairs(INV.Characters()) do
         local coords = c.class and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[c.class]
         rows[#rows + 1] = { text = INV.ClassHex(c.class) .. shortName(c.name) .. "|r" .. (c.self and (GREY .. "  (you)|r") or ""),
-            coords = coords, on = (V.char or ns.charKey) == c.key, key = c.key,
+            coords = coords, face = c, on = (V.char or ns.charKey) == c.key, key = c.key,
             onClick = function() BU.Pick(c.key, V.where, V) end }
     end
     return rows
@@ -1396,7 +1937,7 @@ local function settingRow(text, key, default)
     end }
 end
 
-local ALPHAS = { 1, 0.85, 0.7, 0.55, 0.4, 0.25 }
+local ALPHAS = { 1, 0.85, 0.7, 0.5, 0.4, 0.25 }
 
 function BU.SettingsRows()
     return {
@@ -1404,7 +1945,7 @@ function BU.SettingsRows()
         settingRow("Show empty slots", "bagEmpty", true),
         settingRow("Split by bag (off: one big inventory)", "bagSplit", false),
         settingRow("Quivers and special bags on their own rows", "bagSpecialRows", true),
-        settingRow("New loot in its own row", "bagNew", true),
+        settingRow("New loot in its own row", "bagNew", false),
         settingRow("Show the bag bar", "bagBar", true),
         settingRow("Tone down junk (gray items and ones you mark)", "bagJunkDim", true),
         { text = "Columns: " .. cols() .. "  (click for more)", onClick = function()
@@ -1498,7 +2039,8 @@ function BU.BagRows(V, bag)
     local info = V._info[bag] or {}
     local rows = { { text = bagName(V, bag), header = true } }
     if (info.size or 0) == 0 then
-        rows[#rows + 1] = { text = GREY .. "No bag here. Drop a bag on it.|r", disabled = true }
+        rows[#rows + 1] = { text = GREY .. (info.reagent and "No reagent bag here. Drop one on it.|r"
+            or "No bag here. Drop a bag on it.|r"), disabled = true }
         return rows
     end
     local hidden = BU.IsHidden(bag, V)
@@ -1558,6 +2100,49 @@ local function savePos(V)
     O()[posKey(V)] = { point or "BOTTOMRIGHT", rel or "BOTTOMRIGHT", x or -80, y or 120 }
 end
 
+-- A bare icon you click (search, sort, settings): just the icon, lit on hover.
+local function bareButton(parent, w, h, tipText, onClick)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(w, h)
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetAllPoints()
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 0.9, 0.6, 0.18)
+    if hl.SetBlendMode then
+        hl:SetBlendMode("ADD")
+    end
+    b:SetScript("OnClick", onClick)
+    b:SetScript("OnEnter", function(self) tip(self, { tipText }) end)
+    b:SetScript("OnLeave", untip)
+    return b
+end
+
+-- A defined edge around a frame: a dark outer line, then a gold one.
+local function frameBorder(f)
+    local function line(r, g, b, a, inset, size)
+        local t = {}
+        for i = 1, 4 do
+            t[i] = f:CreateTexture(nil, "BORDER", nil, 7)
+            t[i]:SetColorTexture(r, g, b, a)
+        end
+        t[1]:SetPoint("TOPLEFT", inset, -inset)
+        t[1]:SetPoint("TOPRIGHT", -inset, -inset)
+        t[1]:SetHeight(size)
+        t[2]:SetPoint("BOTTOMLEFT", inset, inset)
+        t[2]:SetPoint("BOTTOMRIGHT", -inset, inset)
+        t[2]:SetHeight(size)
+        t[3]:SetPoint("TOPLEFT", inset, -inset)
+        t[3]:SetPoint("BOTTOMLEFT", inset, inset)
+        t[3]:SetWidth(size)
+        t[4]:SetPoint("TOPRIGHT", -inset, -inset)
+        t[4]:SetPoint("BOTTOMRIGHT", -inset, inset)
+        t[4]:SetWidth(size)
+        return t
+    end
+    f.fgBorder = { line(0, 0, 0, 0.95, 0, 1), line(C.goldEdge[1], C.goldEdge[2], C.goldEdge[3], 1, 1, 2) }
+end
+
 local function iconButton(parent, icon, tipText, onClick)
     local b = K.button(parent, "", 26, 26, onClick)
     b.icon = b:CreateTexture(nil, "ARTWORK")
@@ -1598,14 +2183,16 @@ local function build(V, name)
         savePos(V)
     end)
     K.skin(win)
-    win:SetSize(440, 300)
+    frameBorder(win)
+    win:SetSize(340, 300)
+    win:SetScale(bagScale())
     win:Hide()
 
     -- Title: the character. Click to pick another; right-click opens the
     -- other window (bank beside the bags, or the bags beside the bank).
     win.who = CreateFrame("Button", nil, win)
-    win.who:SetSize(28, 28)
-    win.who:SetPoint("TOPLEFT", PAD, -10)
+    win.who:SetSize(24, 24)
+    win.who:SetPoint("TOPLEFT", PAD, -6)
     win.who:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     K.skin(win.who, C.btn[1], C.btn[2], C.btn[3], 1, C.goldEdge[1], C.goldEdge[2], C.goldEdge[3], 1)
     win.who.icon = win.who:CreateTexture(nil, "ARTWORK")
@@ -1629,30 +2216,86 @@ local function build(V, name)
             V == BU and "Right-click: their bank, in its own window." or "Right-click: their bags." })
     end)
     win.who:SetScript("OnLeave", untip)
-    win.title = K.label(win, K.SERIF_L)
-    win.title:SetPoint("LEFT", win.who, "RIGHT", 8, 0)
+    win.title = K.label(win, K.SERIF_M or K.SERIF_L)
+    win.title:SetPoint("LEFT", win.who, "RIGHT", 6, 0)
     win.title:SetTextColor(C.goldText[1], C.goldText[2], C.goldText[3])
+    if win.title.SetWordWrap then
+        win.title:SetWordWrap(false)
+    end
 
-    win.close = K.button(win, "X", 24, 24, function() win:Hide() end)
-    win.close:SetPoint("TOPRIGHT", -PAD, -12)
-    win.settings = iconButton(win, "Interface\\Icons\\Trade_Engineering", "Settings (Options > AddOns > Bags Forever)", function(self)
+    -- the game's own close button: a gold X on red
+    local ok, close = pcall(CreateFrame, "Button", nil, win, "UIPanelCloseButton")
+    win.close = ok and close or CreateFrame("Button", nil, win)
+    win.close:SetSize(22, 22)
+    win.close:SetPoint("TOPRIGHT", -5, -5)
+    win.close:SetScript("OnClick", function() win:Hide() end)
+    if not ok then
+        win.close.text = K.label(win.close, "GameFontNormal")
+        win.close.text:SetPoint("CENTER")
+        win.close.text:SetText("X")
+    end
+    win.settings = bareButton(win, 16, 16, "Settings (Options > AddOns > Bags Forever)", function(self)
         closePopup()
         if ns.OpenOptions and ns.OpenOptions("bags") then
             return
         end
         openPopup(self, BU.SettingsRows(), 290)
     end)
-    win.settings:SetPoint("RIGHT", win.close, "LEFT", -4, 0)
-    win.sort = iconButton(win, "Interface\\Icons\\INV_Misc_Broom_01", "Sort items", function() BU.Sort(V) end)
-    win.sort:SetPoint("RIGHT", win.settings, "LEFT", -4, 0)
-    win.searchBtn = iconButton(win, "Interface\\Icons\\INV_Misc_Spyglass_03", "Search", function() toggleSearch(V) end)
-    win.searchBtn:SetPoint("RIGHT", win.sort, "LEFT", -4, 0)
+    win.settings.icon:SetTexture("Interface\\Buttons\\UI-OptionsButton")
+    win.settings:SetPoint("RIGHT", win.close, "LEFT", -5, 0)
+    win.sort = bareButton(win, 20, 19, "Sort items", function() BU.Sort(V) end)
+    -- the game's own Cleanup broom, as on its bag frame
+    if hasAtlas("bags-button-autosort-up") then
+        win.sort.icon:SetAtlas("bags-button-autosort-up")
+        win.sort:HookScript("OnMouseDown", function(self) self.icon:SetAtlas("bags-button-autosort-down") end)
+        win.sort:HookScript("OnMouseUp", function(self) self.icon:SetAtlas("bags-button-autosort-up") end)
+    else
+        K.setIcon(win.sort.icon, "Interface\\Icons\\INV_Pet_Broom")
+    end
+    win.sort:SetPoint("RIGHT", win.settings, "LEFT", -5, 0)
+    win.searchBtn = bareButton(win, 16, 16, "Search", function() toggleSearch(V) end)
+    win.searchBtn.icon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
+    win.searchBtn:SetPoint("RIGHT", win.sort, "LEFT", -5, 0)
     win.sub = K.label(win, "GameFontDisableSmall")
-    win.sub:SetPoint("TOPRIGHT", -PAD, -36)
+    win.sub:SetPoint("TOPRIGHT", -PAD, -(HEAD + 6))
+
+    -- the keyring, at the right end of the bag bar
+    local keys = CreateFrame("Button", nil, win)
+    win.keys = keys
+    keys:SetSize(BAGBTN, BAGBTN)
+    keys.edge = keys:CreateTexture(nil, "BACKGROUND")
+    keys.edge:SetAllPoints()
+    keys.edge:SetColorTexture(0.55, 0.45, 0.15, 0.9)
+    keys.icon = keys:CreateTexture(nil, "ARTWORK")
+    keys.icon:SetPoint("TOPLEFT", 2, -2)
+    keys.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+    keys.off = keys:CreateTexture(nil, "OVERLAY", nil, 1)
+    keys.off:SetPoint("TOPLEFT", 2, -2)
+    keys.off:SetPoint("BOTTOMRIGHT", -2, 2)
+    keys.off:SetColorTexture(0, 0, 0, 0.5)
+    keys.count = keys:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    keys.count:SetPoint("BOTTOMRIGHT", -1, 1)
+    local khl = keys:CreateTexture(nil, "HIGHLIGHT")
+    khl:SetAllPoints()
+    khl:SetColorTexture(1, 0.9, 0.6, 0.18)
+    keys:SetScript("OnClick", function()
+        O().bagKeys = not keysShown()
+        BU.Refresh()
+    end)
+    keys:SetScript("OnEnter", function(self)
+        BU.HighlightBag(V, self.bag)
+        tip(self, { "Keyring", (self.used or 0) .. " of " .. (self.size or 0) .. " slots used",
+            GREY .. "Click: " .. (keysShown() and "hide" or "show") .. " your keys|r" })
+    end)
+    keys:SetScript("OnLeave", function()
+        BU.HighlightBag(V, nil)
+        untip()
+    end)
+    keys:Hide()
 
     -- Search: takes the title's place
     win.searchBox = CreateFrame("EditBox", nil, win)
-    win.searchBox:SetHeight(24)
+    win.searchBox:SetHeight(20)
     win.searchBox:SetPoint("LEFT", win.who, "RIGHT", 8, 0)
     win.searchBox:SetPoint("RIGHT", win.searchBtn, "LEFT", -6, 0)
     win.searchBox:SetAutoFocus(false)
@@ -1675,11 +2318,14 @@ local function build(V, name)
     -- Bags / Bank, down the left side of the bag window
     if V == BU then
         win.tabBags = iconButton(win, BAG_ICON, "Inventory", function() BU.Pick(V.char, "bags", V) end)
-        win.tabBags:SetSize(32, 32)
-        win.tabBags:SetPoint("TOPRIGHT", win, "TOPLEFT", -4, -44)
+        win.tabBags:SetSize(28, 28)
+        win.tabBags:SetPoint("TOPRIGHT", win, "TOPLEFT", -3, -HEAD)
         win.tabBank = iconButton(win, BANK_ICON, "Bank, in its own window (saved each visit)", function() BU.ToggleBank(V.char) end)
-        win.tabBank:SetSize(32, 32)
+        win.tabBank:SetSize(28, 28)
         win.tabBank:SetPoint("TOP", win.tabBags, "BOTTOM", 0, -4)
+        win.tabGuild = iconButton(win, GUILD_ICON, "Guild bank, in the bank window (saved each visit)", function() BU.ToggleGuild(V.char) end)
+        win.tabGuild:SetSize(28, 28)
+        win.tabGuild:SetPoint("TOP", win.tabBank, "BOTTOM", 0, -4)
     end
 
     -- The grid
@@ -1696,15 +2342,15 @@ local function build(V, name)
     line:SetPoint("BOTTOMLEFT", PAD, FOOT)
     line:SetPoint("BOTTOMRIGHT", -PAD, FOOT)
     local bagIcon = win:CreateTexture(nil, "ARTWORK")
-    bagIcon:SetSize(16, 16)
-    bagIcon:SetPoint("BOTTOMLEFT", PAD, 9)
+    bagIcon:SetSize(14, 14)
+    bagIcon:SetPoint("BOTTOMLEFT", PAD, 5)
     K.setIcon(bagIcon, V == BU and BAG_ICON or BANK_ICON)
     win.slots = K.label(win, "GameFontHighlightSmall")
     win.slots:SetPoint("LEFT", bagIcon, "RIGHT", 6, 0)
     win.money = K.label(win, "GameFontHighlightSmall")
-    win.money:SetPoint("BOTTOMRIGHT", -PAD, 11)
+    win.money:SetPoint("BOTTOMRIGHT", -PAD, 7)
     win.mark = CreateFrame("Button", nil, win)
-    win.mark:SetSize(44, 20)
+    win.mark:SetSize(40, 17)
     win.mark:SetPoint("RIGHT", win.money, "LEFT", -12, 0)
     K.skin(win.mark, C.btn[1], C.btn[2], C.btn[3], 1, C.btnEdge[1], C.btnEdge[2], C.btnEdge[3], 1)
     local mi = win.mark:CreateTexture(nil, "ARTWORK")
@@ -1721,17 +2367,23 @@ local function build(V, name)
     end)
     win.mark:SetScript("OnLeave", untip)
     win.worth = CreateFrame("Frame", nil, win)
-    win.worth:SetSize(120, 20)
-    win.worth:SetPoint("BOTTOM", 0, 7)
+    win.worth:SetSize(110, 17)
+    win.worth:SetPoint("BOTTOM", 0, 4)
     win.worth:EnableMouse(true)
     win.worthText = K.label(win.worth, "GameFontHighlightSmall")
     win.worthText:SetPoint("CENTER")
     win.worth:SetScript("OnEnter", function(self)
         tip(self, { "What this is worth",
-            "At auction: " .. ns.Money(self.ah or 0) .. "  (after the 5% cut, never less than a vendor pays; bound items at vendor price)",
+            "At auction: " .. ns.Money(self.ah or 0) .. "  (after the 5% cut, never less than a vendor pays; soulbound and bind-on-pickup items left out)",
             "At a vendor: " .. ns.Money(self.vendor or 0) })
     end)
     win.worth:SetScript("OnLeave", untip)
+    if V == BV then
+        win.buyCost = K.label(win, "GameFontNormalSmall")
+        win.buyCost:Hide()
+        win.buy = K.button(win, "Purchase", 84, 22, function() BU.BuyBankSlot() end)
+        win.buy:Hide()
+    end
     if V == BU then
         win.junk = K.button(win, "Sell junk", 150, 22, function() BU.SellJunk() end)
         win.junk:SetPrimary(true)
@@ -1742,6 +2394,13 @@ local function build(V, name)
     win:SetScript("OnHide", function()
         closePopup()
         V.hot = nil
+        if V == BV and BV.atBanker then
+            -- closing it at the banker ends the visit, as the game's bank frame does
+            BV.atBanker = nil
+            if INV.bankOpen and C_Bank and C_Bank.CloseBankFrame then
+                ns.try(C_Bank.CloseBankFrame)
+            end
+        end
         if V == BU then
             if C_NewItems and C_NewItems.ClearAll then
                 ns.try(C_NewItems.ClearAll)
@@ -1818,6 +2477,7 @@ function BU.OpenBank(key)
     if not BV.win then
         build(BV, "ForeverGoldBank")
     end
+    BV.where = "bank"
     BV.char = key or ns.charKey
     BV.hot = nil
     resetSearch(BV)
@@ -1828,9 +2488,25 @@ function BU.OpenBank(key)
     BU.Refresh()
 end
 
+-- The bank window, showing a character's guild bank (saved each visit).
+function BU.OpenGuild(key)
+    BU.OpenBank(key)
+    BV.where = "guild"
+    BU.Refresh()
+end
+
+function BU.ToggleGuild(key)
+    key = key or ns.charKey
+    if BV.win and BV.win:IsShown() and BV.where == "guild" and (BV.char or ns.charKey) == key then
+        BV.win:Hide()
+    else
+        BU.OpenGuild(key)
+    end
+end
+
 function BU.ToggleBank(key)
     key = key or ns.charKey
-    if BV.win and BV.win:IsShown() and (BV.char or ns.charKey) == key then
+    if BV.win and BV.win:IsShown() and BV.where == "bank" and (BV.char or ns.charKey) == key then
         BV.win:Hide()
     else
         BU.OpenBank(key)
@@ -1889,6 +2565,106 @@ local function hideGameBags()
     end
 end
 
+-- The game's bank frame, kept out of sight while ours does the job. It's moved
+-- under a hidden frame while it's closed: hiding it at the banker would end
+-- the visit (its OnHide closes the bank).
+local function bankOn()
+    return BU.Enabled() and O().bagBank ~= false
+end
+BU.BankEnabled = bankOn
+
+local function hideGameBank()
+    local f = BankFrame
+    if not (f and bankOn()) or f:IsShown() then
+        return
+    end
+    hiddenParent = hiddenParent or CreateFrame("Frame")
+    hiddenParent:Hide()
+    if f:GetParent() ~= hiddenParent then
+        if not savedParents[f] then
+            savedParents[f] = f:GetParent() or UIParent
+            blizzFrames[#blizzFrames + 1] = f
+        end
+        pcall(f.SetParent, f, hiddenParent)
+    end
+end
+
+-- Gives the game its bank frame back (Bags Forever at the banker switched off).
+function BU.RestoreGameBank()
+    local f = BankFrame
+    if f and savedParents[f] then
+        pcall(f.SetParent, f, savedParents[f])
+        savedParents[f] = nil
+        for i, g in ipairs(blizzFrames) do
+            if g == f then
+                table.remove(blizzFrames, i)
+                break
+            end
+        end
+    end
+end
+
+local function ourBank()
+    return BankFrame == nil or BankFrame:GetParent() == hiddenParent
+end
+
+-- At the banker: our bank window and your bags, like the game's.
+local function bankOpened()
+    if not bankOn() then
+        return
+    end
+    hideGameBank()
+    if not ourBank() then
+        return -- the game's frame was up when we started: it does this visit
+    end
+    -- a new character's first bank tab is free; the game's frame takes it on show
+    local kind = Enum and Enum.BankType and Enum.BankType.Character
+    if kind and C_Bank and C_Bank.FetchNumPurchasedBankTabs and C_Bank.PurchaseBankTab
+        and (tonumber(ns.try(C_Bank.FetchNumPurchasedBankTabs, kind)) or 0) == 0 then
+        local t = C_Bank.FetchNextPurchasableBankTabData and ns.try(C_Bank.FetchNextPurchasableBankTabData, kind)
+        if type(t) == "table" and t.tabCost == 0 then
+            ns.try(C_Bank.PurchaseBankTab, kind)
+            INV.BankIDs()
+        end
+    end
+    BV.openedBags = not (BU.win and BU.win:IsShown())
+    BU.OpenBank(ns.charKey)
+    BV.atBanker = true
+    if BV.openedBags then
+        if OpenAllBags then
+            pcall(OpenAllBags)
+        end
+        if not (BU.win and BU.win:IsShown()) then
+            BU.Open()
+        end
+    end
+end
+
+local function bankClosed()
+    if BV.atBanker then
+        BV.atBanker = nil
+        if BV.win then
+            BV.win:Hide()
+        end
+        if BV.openedBags then
+            BV.openedBags = nil
+            if CloseAllBags then
+                pcall(CloseAllBags)
+            end
+            BU.Close()
+        end
+    end
+    hideGameBank()
+end
+
+ns.Listen("BANK", function(open)
+    if open then
+        bankOpened()
+    else
+        bankClosed()
+    end
+end)
+
 local function gameBagsOpen()
     for _, f in ipairs(gameBagFrames()) do
         if f:IsShown() then
@@ -1933,6 +2709,7 @@ function BU.Install()
         return
     end
     hideGameBags()
+    hideGameBank()
     if hooked then
         return
     end
@@ -1965,7 +2742,31 @@ end
 for _, msg in ipairs({ "INVENTORY", "BAGS_UPDATED", "MAIL", "PRICES_UPDATED", "BANK" }) do
     ns.Listen(msg, BU.Layout)
 end
-for _, ev in ipairs({ "ITEM_LOCK_CHANGED", "BAG_UPDATE_COOLDOWN", "QUEST_ACCEPTED", "PLAYER_MONEY", "BAG_NEW_ITEMS_UPDATED",
+-- Picking an item up or putting it down: repaint the buttons where they
+-- are (a full relayout mid-drag would lose the drop).
+function BU.Repaint()
+    for _, V in ipairs(VIEWS) do
+        if V.win and V.win:IsShown() then
+            for _, b in ipairs(V._live) do
+                local c = b.fgCell
+                if c and c.live and b:IsShown() then
+                    local info = ns.try(C_Container.GetContainerItemInfo, c.bag, c.slot)
+                    c.locked = type(info) == "table" and info.isLocked or false
+                    pcall(SetItemButtonDesaturated, b, (c.locked or c.junk) and true or false)
+                    if b.UpdateCooldown then
+                        pcall(b.UpdateCooldown, b, type(info) == "table" and info.iconFileID or nil)
+                    end
+                end
+            end
+        end
+    end
+end
+for _, ev in ipairs({ "ITEM_LOCK_CHANGED", "BAG_UPDATE_COOLDOWN" }) do
+    ns.On(ev, function()
+        BU.Repaint()
+    end)
+end
+for _, ev in ipairs({ "QUEST_ACCEPTED", "PLAYER_MONEY", "BAG_NEW_ITEMS_UPDATED",
     "BAG_SLOT_FLAGS_UPDATED", "PLAYER_EQUIPMENT_CHANGED" }) do
     ns.On(ev, function()
         BU.Layout()

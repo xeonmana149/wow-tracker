@@ -99,6 +99,7 @@ function methods:SetStartPoint(point, rel, x, y) assert(type(x) == "number" and 
 function methods:SetEndPoint(point, rel, x, y) assert(type(x) == "number" and type(y) == "number" and x == x and y == y, "bad line end") end
 function methods:SetColorTexture(r, g, b, a) assert(type(r) == "number" and type(g) == "number" and type(b) == "number", "SetColorTexture needs numbers") end
 function methods:SetTexture(t) assert(t ~= nil, "SetTexture(nil)") end
+function methods:SetAtlas(a) assert(type(a) == "string", "SetAtlas needs a name"); self._atlas = a end
 function methods:SetOwner(owner, anchor) assert(owner ~= nil and type(anchor) == "string", "SetOwner") ; self._lines = {} end
 function methods:AddLine(text) assert(type(text) == "string", "AddLine needs text, got " .. type(text)); self._lines = self._lines or {}; self._lines[#self._lines + 1] = text end
 function methods:AddDoubleLine(l, r) assert(type(l) == "string" and type(r) == "string", "AddDoubleLine needs two strings"); self._lines = self._lines or {}; self._lines[#self._lines + 1] = l .. "  ||  " .. r end
@@ -1085,3 +1086,123 @@ function Settings.OpenToCategory(id) M.settings.opened = id end
 function CreateSettingsListSectionHeaderInitializer(name) return { kind = "header", name = name } end
 function CreateSettingsButtonInitializer(name, text, click) return { kind = "button", name = name, text = text, click = click } end
 MinimalSliderWithSteppersMixin = { Label = { Right = 1 } }
+-- atlases the client ships (the bag frame's Cleanup button)
+C_Texture = C_Texture or {}
+function C_Texture.GetAtlasInfo(name) if name:match("^bags%-") or name:match("^raceicon%-") then return { width = 28, height = 26 } end end
+
+----------------------------------------------------------------------
+-- WoW Forever's bank bag slots: tab 1 is the bank, tabs 2+ hold a bag each
+-- (the bag sits at Characterbanktab, i). M.bankTabs lists the bought tabs.
+----------------------------------------------------------------------
+for _, e in ipairs({ "BANK_TABS_CHANGED", "BAG_CONTAINER_UPDATE" }) do KNOWN_EVENTS[e] = true end
+Enum.BagIndex = Enum.BagIndex or {}
+Enum.BagIndex.Characterbanktab = -2
+M.bankTabs = { { ID = 6, name = "Tab 1" } }
+M.bankMax = 8
+M.bankBag = nil -- { id, size }: the bag in bank bag slot 2 (tab ID 7)
+M.money = M.money
+function C_Bank.FetchPurchasedBankTabData(t) assert(t == Enum.BankType.Character, "bank type"); return M.bankTabs end
+function C_Bank.FetchMaxNumBankTabs(t) assert(t == Enum.BankType.Character, "bank type"); return M.bankMax end
+function C_Bank.FetchNumPurchasedBankTabs() return #M.bankTabs end
+function C_Bank.FetchNextPurchasableBankTabData()
+    if #M.bankTabs >= M.bankMax then return nil end
+    return { tabCost = #M.bankTabs == 0 and 0 or 10000 * #M.bankTabs, canAfford = M.bankBroke ~= true }
+end
+function C_Bank.CanPurchaseBankTab() return #M.bankTabs < M.bankMax end
+function C_Bank.PurchaseBankTab(t)
+    assert(t == Enum.BankType.Character, "bank type")
+    local n = #M.bankTabs + 1
+    M.bankTabs[n] = { ID = 5 + n, name = "Tab " .. n }
+    M.bankBought = (M.bankBought or 0) + 1
+end
+function C_Bank.CloseBankFrame()
+    M.bankClosedByUs = (M.bankClosedByUs or 0) + 1
+    M.bankOpen = false
+    M.fire("BANKFRAME_CLOSED")
+end
+local tabSlots, tabItem = C_Container.GetContainerNumSlots, C_Container.GetContainerItemInfo
+function C_Container.GetContainerNumSlots(bag)
+    if bag == 7 then return M.bankOpen and M.bankTabs[2] and M.bankBag and M.bankBag[2] or 0 end
+    return tabSlots(bag)
+end
+function C_Container.GetContainerItemInfo(bag, slot)
+    if bag == Enum.BagIndex.Characterbanktab then
+        if slot == 2 and M.bankOpen and M.bankTabs[2] and M.bankBag then
+            return { itemID = M.bankBag[1], stackCount = 1, iconFileID = 133600 + M.bankBag[1] % 100, quality = 1,
+                hyperlink = "|cffffffff|Hitem:" .. M.bankBag[1] .. "::::::::|h[Red Linen Bag]|h|r" }
+        end
+        return nil
+    end
+    return tabItem(bag, slot)
+end
+M.picked = {}
+local pickup = C_Container.PickupContainerItem
+function C_Container.PickupContainerItem(bag, slot)
+    M.picked[#M.picked + 1] = { bag, slot }
+    return pickup(bag, slot)
+end
+StaticPopupDialogs = StaticPopupDialogs or {}
+function StaticPopup_Show(which, a, b, data) M.popup = { which = which, data = data } end
+-- the game's bank frame (Camelot/BankFrame.xml): hiding it would end the visit
+BankFrame = CreateFrame("Frame", "BankFrame", UIParent)
+BankFrame:Hide()
+BankFrame:SetScript("OnHide", function() M.gameBankHidOnUs = true end)
+
+----------------------------------------------------------------------
+-- Bag slots: item colours, the keyring, Pawn, faces and the guild bank
+----------------------------------------------------------------------
+ITEM_QUALITY_COLORS = { [0] = { r = 0.62, g = 0.62, b = 0.62 }, [1] = { r = 1, g = 1, b = 1 },
+    [2] = { r = 0.12, g = 1, b = 0 }, [3] = { r = 0, g = 0.44, b = 0.87 }, [4] = { r = 0.64, g = 0.21, b = 0.93 } }
+M.items[5000] = { "Rot Hide Ichor", 1, 0, 12, 4 }
+M.items[5001] = { "Skeleton Key", 1, 0, 13 }
+-- the keyring: off until M.keyring = { size, items = { [slot] = { id, count } } }
+Enum.BagIndex.Keyring = -20
+M.keyring = nil
+C_ActionBar = C_ActionBar or {}
+function C_ActionBar.ShouldShowKeyring() return M.keyring ~= nil end
+function GetKeyRingSize() return M.keyring and M.keyring.size or 0 end
+local keyItem = C_Container.GetContainerItemInfo
+function C_Container.GetContainerItemInfo(bag, slot)
+    if bag == Enum.BagIndex.Keyring then
+        local k = M.keyring and M.keyring.items[slot]
+        if not k then return nil end
+        return { itemID = k[1], stackCount = k[2], quality = 1, iconFileID = 134237,
+            hyperlink = "|cffffffff|Hitem:" .. k[1] .. "::::::::|h[Skeleton Key]|h|r" }
+    end
+    return keyItem(bag, slot)
+end
+function C_NewItems.RemoveNewItem(bag, slot) M.newItems[bag .. ":" .. slot] = nil end
+-- item tooltips as data: what stops you using an item is written in red
+M.cantUse = {}
+C_TooltipInfo = {}
+function C_TooltipInfo.GetBagItem(bag, slot)
+    local info = C_Container.GetContainerItemInfo(bag, slot)
+    if not info then return nil end
+    local lines = { { leftText = "item", leftColor = { r = 1, g = 1, b = 1 } } }
+    if M.cantUse[info.itemID] then
+        lines[2] = { leftText = "Requires Level 40", leftColor = { r = 1, g = 0.125, b = 0.125 } }
+    end
+    return { lines = lines }
+end
+-- Pawn's upgrade check
+function PawnIsContainerItemAnUpgrade(bag, slot) return M.pawnUp and M.pawnUp[bag .. ":" .. slot] or false end
+-- faces
+function UnitRace() return "Orc", "Orc" end
+function UnitSex() return 2 end
+-- the guild bank: M.guild = { name, tabs = { { name, icon, items = { [slot] = { id, count } } } } }
+for _, e in ipairs({ "GUILDBANKFRAME_OPENED", "GUILDBANKFRAME_CLOSED", "GUILDBANKBAGSLOTS_CHANGED" }) do KNOWN_EVENTS[e] = true end
+M.guild = nil
+function IsInGuild() return M.guild ~= nil end
+function GetGuildInfo() return M.guild and M.guild.name or nil end
+function GetNumGuildBankTabs() return M.guild and #M.guild.tabs or 0 end
+function GetGuildBankTabInfo(t) local tab = M.guild.tabs[t]; return tab.name, tab.icon, true end
+function GetGuildBankItemInfo(t, s)
+    local e = M.guild.tabs[t].items[s]
+    if e then return 134400, e[2], false, false, 1 end
+end
+function GetGuildBankItemLink(t, s)
+    local e = M.guild.tabs[t].items[s]
+    if e then return "|cffffffff|Hitem:" .. e[1] .. "::::::::|h[x]|h|r" end
+end
+function GetCurrentGuildBankTab() return 1 end
+function QueryGuildBankTab() M.guildQueried = (M.guildQueried or 0) + 1 end

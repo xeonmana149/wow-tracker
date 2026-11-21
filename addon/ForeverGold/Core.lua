@@ -18,7 +18,7 @@ local ADDON, ns = ...
 _G.ForeverGold = ns
 
 ns.TITLE = "Forever Gold"
-ns.VERSION = "1.11.0"
+ns.VERSION = "1.12.0"
 -- The auction house keeps 5% of every sale.
 ns.AH_CUT = 0.05
 
@@ -361,6 +361,8 @@ function ns.RefreshPlayer()
         faction = faction,
         level = ns.try(UnitLevel, "player") or 1,
         class = classFile,
+        race = select(2, ns.try(UnitRace, "player")),
+        sex = ns.try(UnitSex, "player"),
     }
     local realm = realmID or ns.try(GetNormalizedRealmName) or ns.try(GetRealmName) or "realm"
     ns.realmKey = tostring(realm) .. "-" .. tostring(faction)
@@ -432,6 +434,18 @@ function ns.Item(id)
     end
     ns.RequestItem(id)
     return it
+end
+
+-- Whether an item can't go to other players, so it's never counted at an
+-- auction price: it's soulbound (bound = true), or binds on pickup or is a
+-- quest item. Vendor totals still count it.
+local BIND_ON_PICKUP, BIND_QUEST = 1, 4
+function ns.Untradeable(id, bound)
+    if bound then
+        return true
+    end
+    local it = ns.Item(id)
+    return it ~= nil and (it.b == BIND_ON_PICKUP or it.b == BIND_QUEST)
 end
 
 function ns.ItemName(id)

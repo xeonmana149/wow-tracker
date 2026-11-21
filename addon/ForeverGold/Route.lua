@@ -708,6 +708,73 @@ local CROSS = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_7"
 
 -- parent: the frame to draw on. Layers, bottom to top: the zone's own map
 -- picture (optional), the route, the spots, then you.
+-- Spot icons are item pictures, square with their own dark background:
+-- cut them round so only the ore or herb itself shows, with a thin dark
+-- rim to keep them readable on the map. Clients without masks get the
+-- picture as it is, with nothing behind it.
+local ROUND_MASK = "Interface/CharacterFrame/TempPortraitAlphaMask"
+
+local function roundOff(owner, tex)
+    if type(owner.CreateMaskTexture) ~= "function" or type(tex.AddMaskTexture) ~= "function" then
+        return false
+    end
+    local ok, mask = pcall(owner.CreateMaskTexture, owner)
+    if not ok or type(mask) ~= "table" then
+        return false
+    end
+    mask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetAllPoints(tex)
+    return pcall(tex.AddMaskTexture, tex, mask) and true or false
+end
+
+-- A spot icon: the picture, cut round, on a thin dark rim (or bare).
+local function spotIcon(owner, icon, rim)
+    local round = roundOff(owner, icon)
+    if rim then
+        if round and roundOff(owner, rim) then
+            rim:SetColorTexture(0, 0, 0, 0.8)
+        else
+            rim:Hide()
+            rim.off = true
+        end
+    end
+    icon:SetTexCoord(0.1, 0.9, 0.1, 0.9)
+    return round
+end
+ns.SpotIcon = spotIcon
+
+-- What a spot is, for a tooltip: its name, then what it is and how often
+-- you've gathered there.
+function ns.SpotTooltip(owner, n, extra)
+    if not GameTooltip or not n then
+        return
+    end
+    local kind = ns.KINDS[n.k]
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    GameTooltip:AddLine(n.n or (kind and kind.label) or "Spot", 1, 0.82, 0)
+    local times = n.c or 1
+    GameTooltip:AddLine((kind and kind.one or "spot") .. " - gathered " .. times .. (times == 1 and " time" or " times")
+        .. (n.t and ns.Ago and (", last " .. ns.Ago(n.t)) or ""), 0.8, 0.8, 0.8)
+    if n.skip then
+        GameTooltip:AddLine("Left out of routes.", 1, 0.45, 0.45)
+    end
+    if extra then
+        GameTooltip:AddLine(extra, 1, 0.85, 0.2)
+    end
+    GameTooltip:Show()
+end
+
+-- Hovering shows a tooltip, but clicks go through to the map underneath.
+local function hoverOnly(f)
+    if type(f.SetMouseClickEnabled) == "function" and type(f.SetMouseMotionEnabled) == "function" then
+        f:EnableMouse(true)
+        f:SetMouseClickEnabled(false)
+        f:SetMouseMotionEnabled(true)
+        return true
+    end
+    return false
+end
+
 function ns.NewPlotter(parent)
     local plot = { parent = parent, tiles = {}, lines = {}, marks = {}, usedLines = 0, usedMarks = 0 }
 
@@ -902,9 +969,12 @@ function ns.NewPlotter(parent)
             m.ring:SetPoint("CENTER")
             m.back = m:CreateTexture(nil, "BORDER")
             m.back:SetPoint("CENTER")
-            m.back:SetColorTexture(0, 0, 0, 0.9)
             m.icon = m:CreateTexture(nil, "ARTWORK")
             m.icon:SetPoint("CENTER")
+            m.round = spotIcon(m, m.icon, m.back)
+            if m.round then
+                roundOff(m, m.ring)
+            end
             m.cross = m:CreateTexture(nil, "OVERLAY")
             m.cross:SetPoint("CENTER")
             m.cross:SetTexture(CROSS)
@@ -921,6 +991,8 @@ function ns.NewPlotter(parent)
             m:SetScript("OnEnter", function(self)
                 if plot.onEnter and self.node then
                     plot.onEnter(self, self.node)
+                elseif self.node then
+                    ns.SpotTooltip(self, self.node, self.tagText)
                 end
             end)
             m:SetScript("OnLeave", function()
@@ -1045,7 +1117,8 @@ function ns.NewPlotter(parent)
                 m.back:SetSize(s + 2 * unit, s + 2 * unit)
                 m.icon:SetSize(s, s)
                 m.icon:SetTexture(ns.NodeIcon(n))
-                m.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                m.tagText = tag == "Next" and "Next stop on your route" or tag == "Paused" and "Next stop (route paused)"
+                    or tag == "Start" and "Where the route starts" or nil
                 if tag then
                     m.ring:SetSize(s + 8 * unit, s + 8 * unit)
                     m.ring:SetColorTexture(1, 0.85, 0.2, 1)
@@ -1063,7 +1136,14 @@ function ns.NewPlotter(parent)
                 m.icon:SetAlpha(skipped and 0.45 or 1)
                 m.cross:SetSize(s * 0.8, s * 0.8)
                 m.cross:SetShown(skipped)
-                m:EnableMouse(o.interactive and true or false)
+                if o.interactive then
+                    m:EnableMouse(true)
+                    if m.SetMouseClickEnabled then
+                        m:SetMouseClickEnabled(true)
+                    end
+                elseif not (o.hover and hoverOnly(m)) then
+                    m:EnableMouse(false)
+                end
                 m:SetFrameLevel(markFrame:GetFrameLevel() + (tag and 3 or 1))
                 m:ClearAllPoints()
                 m:SetPoint("CENTER", markFrame, "TOPLEFT", cx * w, -cy * h)
@@ -1192,7 +1272,7 @@ local function redrawWorldMap()
     drawnScale = scale
     local unit = 1 / scale
     local opts = ns.db.opts
-    mapPlot:Draw(mapID, w, h, { size = 15 * unit, unit = unit, maps = maps, project = projection(mapID),
+    mapPlot:Draw(mapID, w, h, { size = 15 * unit, unit = unit, maps = maps, project = projection(mapID), hover = true,
         kinds = ns.MapKinds(), route = opts.mapRoute ~= false and ns.route or nil })
 end
 
@@ -1683,11 +1763,21 @@ local function miniPin()
         p.back = p:CreateTexture(nil, "BORDER")
         p.back:SetPoint("CENTER")
         p.back:SetSize(14, 14)
-        p.back:SetColorTexture(0, 0, 0, 0.85)
         p.icon = p:CreateTexture(nil, "ARTWORK")
         p.icon:SetPoint("CENTER")
         p.icon:SetSize(12, 12)
-        p.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        if spotIcon(p, p.icon, p.back) then
+            roundOff(p, p.ring)
+        end
+        hoverOnly(p)
+        p:SetScript("OnEnter", function(self)
+            ns.SpotTooltip(self, self.node, self.isNext and "Next stop on your route" or nil)
+        end)
+        p:SetScript("OnLeave", function()
+            if GameTooltip then
+                GameTooltip:Hide()
+            end
+        end)
         mini.pins[mini.used] = p
     end
     p:SetFrameLevel((Minimap:GetFrameLevel() or 1) + 5)
@@ -1748,6 +1838,7 @@ local function updateMinimap()
         local p = miniPin()
         p.icon:SetTexture(ns.NodeIcon(n))
         p.icon:SetAlpha(1)
+        p.node, p.isNext = n, isNext
         p.ring:SetShown(isNext)
         p:ClearAllPoints()
         p:SetPoint("CENTER", Minimap, "CENTER", x / radius * half, y / radius * half)
@@ -2152,9 +2243,17 @@ local function placeBeam(f, region, x, y, dist, alpha, up)
     if sh <= 0 then
         sw, sh = 1024, 768
     end
-    local okS, rs = pcall(region.GetEffectiveScale, region)
-    local scale = ((okS and rs) or 1) / (world:GetEffectiveScale() or 1)
-    local sx, sy = x * scale - sw / 2, y * scale - sh / 2
+    local sx, sy
+    if x and y then
+        local okS, rs = pcall(region.GetEffectiveScale, region)
+        local scale = ((okS and rs) or 1) / (world:GetEffectiveScale() or 1)
+        sx, sy = x * scale - sw / 2, y * scale - sh / 2
+    else
+        -- The game won't say where the anchor is on screen (a restricted
+        -- region): the beam still hangs from it, and leans as if it were a
+        -- little below the middle of the screen, where what you face usually is.
+        sx, sy = 0, -sh * 0.12
+    end
     local focal = focalLength(sh)
     local zoom = tonumber(GetCameraZoom and ns.try(GetCameraZoom) or nil) or 12
     zoom = math.max(0, math.min(50, zoom))
@@ -2319,10 +2418,11 @@ local function drawBeam()
         f.anchor, f.rel, f.ox, f.oy = nav, "CENTER", 0, 0
     end
     paint(f, c)
+    -- Where the marker is on screen; some clients won't say (restricted
+    -- regions), and then the beam still stands on it, from an estimate.
     local okC, nx, ny = pcall(nav.GetCenter, nav)
     if not (okC and nx and ny) then
-        hideBeam()
-        return
+        nx, ny = nil, nil
     end
     placeBeam(f, nav, nx, ny, d, alpha, 0)
 end
@@ -2557,11 +2657,13 @@ local function drawSoft()
     -- The game only picks things out close by: a few yards when it's new.
     -- Some nameplates can't be measured at all ("Can't measure restricted
     -- regions", 2026-11-20): then there's simply no beam on the object.
+    -- Nameplates usually can't be measured ("Can't measure restricted
+    -- regions", 2026-11-20): the beam still hangs from the plate, placed
+    -- from an estimate of where it is.
     local okC, px = pcall(plate.GetCenter, plate)
     local okB, py = pcall(plate.GetBottom, plate)
     if not (okC and okB and px and py) then
-        hideSoft()
-        return
+        px, py = nil, nil
     end
     -- The nameplate sits on top of the object: the beam stands on the
     -- ground under it.

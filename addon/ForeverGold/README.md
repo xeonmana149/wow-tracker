@@ -38,7 +38,7 @@ The window answers one question first: what should I do right now?
 | To do | Opens first. Undercut auctions to relist, then every quick win numbered best first: post these from your bags, buy these and vendor them, craft this, buy this from a vendor and resell it. Each row is short (the item, then where it goes: "Vendor > auction house · The Barrens"); the full instructions are in the pane. Below: the best farm if you've got an hour, and a one-line account summary. |
 | Sell | What in your bags to auction (each row has a Sell button, see below), what to vendor, and which of your auctions were undercut. |
 | Buy | Auction items cheaper than a vendor pays (no risk), vendor items that really resell at auction (proven by sale data, or limited vendor stock), and items far below their usual price. |
-| Make | Three views, switched at the top. Craft: every recipe you know, with cost, sale price and profit after the 5% cut. Farm: gathering and grinding spots for your level and professions, your saved trips, and the Farming Session window. Routes: pick a zone you've gathered in and the map (the zone's own map picture, with a pickaxe, leaf or hook on each recorded spot) previews a suggested loop. Tick Herbs, Ore or Fishing above the map; click a spot to leave it out, right-click to start there; then Start route and follow the arrow (Pause, Skip stop, End route). Save route remembers the ticks and start for that zone. Recorded spots aren't guaranteed to be up, and the lines are straight. A loot beam stands on the next stop (gold), the nearest recorded spot when no route runs (white), and an herb, vein or chest right in front of you that isn't recorded yet (blue). On the world map (OpenMap's too) the gathering button at the top right filters herbs, ore, fishing, chests and the route line; right-click it to hide them all. |
+| Make | Three views, switched at the top. Craft: every recipe you know, with cost, sale price and profit after the 5% cut. Farm: gathering and grinding spots for your level and professions, your saved trips, and the Farming Session window. Routes: pick a zone you've gathered in and the map (the zone's own map picture, with a pickaxe, leaf or hook on each recorded spot) previews a suggested loop. Tick Herbs, Ore or Fishing above the map; click a spot to leave it out, right-click to start there; then Start route and follow the arrow (Pause, Skip stop, End route). Spot icons are round with no background, and hovering one (here, on the world map or the minimap) says what it is. Save route remembers the ticks and start for that zone. Recorded spots aren't guaranteed to be up, and the lines are straight. A loot beam stands on the next stop (gold), the nearest recorded spot when no route runs (white), and an herb, vein or chest right in front of you that isn't recorded yet (blue). On the world map (OpenMap's too) the gathering button at the top right filters herbs, ore, fishing, chests and the route line; right-click it to hide them all. |
 | Characters | A graph of your gold across all your characters over time (24 hours, 7 days, 30 days or all of it; hover for the exact amount at any point), and every character with class, level, gold and primary professions. Click one for all its professions. Gold is recorded from this version on. |
 
 Each tab is a list on the left and a details pane on the right. Click a row
@@ -264,34 +264,54 @@ instead of the game's. The game's own bags still open and close underneath,
 out of sight, and the window follows them, so every key and button that opens
 bags keeps working.
 
-- **One big inventory** - every bag in one grid. Settings (the cog) can split
-  it by bag instead, hide empty slots, change the number of columns (10 to
-  start), make the background see-through, and turn the New loot row or the
-  bag bar off.
+- **One big inventory** - every bag in one grid, in a compact window that
+  fits its columns. Settings (the cog) can split it by bag instead, hide empty
+  slots, change the number of columns (10 to start), the window's scale and
+  its background (half see-through to start), and turn the bag bar off or a
+  New loot row on.
+- **The top** - your character's face, their name, then search, settings,
+  sort and the game's gold-X close button.
 - **The bag bar** - your bags in a row under the title, each with its free
   slots. Click one to hide or show its slots, hover it to light its slots up,
   right-click it for its options: hide, show only this bag, the game's own
   "Assign to" (Equipment, Consumables...) and "Ignore this bag" (Cleanup, Sell
   junk), and one big inventory or split. Drop a bag on an empty bag slot to
-  put it in.
+  put it in. Hovering a bag lights its slots' edges in blue.
+- **The keyring** - at the right end of the bag bar (on clients that have
+  one). Click it for a Keyring row with your keys; they don't count toward
+  your bag slots.
 - **Special bags are tinted** - the empty slots of quivers, ammo pouches, soul,
   herb, mining, enchanting, engineering, gem, inscription, leatherworking and
   reagent bags each have their own faint colour, for your alts' bags too.
   Each special bag also sits on its own row(s) under the main grid, named in
   its colour (Settings, or right-click the bag, mixes them back in).
-- **Your items are the game's own buttons**: click, drag, right-click to use,
-  Shift-click to link, all as usual. Shift+right-click one to mark it for your
-  banker (again to unmark); Alt+right-click one for Forever Gold's actions.
+- **Your items are the game's own buttons**: click, drag and drop, right-click
+  to use, Shift-click to link, all as usual. Shift+right-click one to mark it
+  for your banker (again to unmark); Alt+right-click one for Forever Gold's
+  actions.
+- **Item glows** (each in Settings) - an edge glow by quality (green, blue,
+  purple...), gold for quest items, one for equipment set items, and red with
+  a faded icon for gear you can't use. Glow brightness sets how strong they
+  are; the special-bag colours can be switched off too. New loot flashes
+  where it lies until you hover it, junk gets a small gold coin in its corner,
+  and Pawn's upgrades (with Pawn installed) get a green arrow.
 - **Search** opens in place of the title and dims everything that doesn't
   match. **Sort** is the game's own sort.
-- **New loot** - what you've picked up since you last closed your bags waits in
-  a row at the bottom.
+- **New loot** - stays where it lands, flashing. Settings can give it a row of
+  its own at the bottom instead.
 - **Your other characters** - click the character icon at the top to see any
   character's bags. Bags are saved whenever they change; a bank each time you
   visit a banker.
 - **The bank window** - right-click the character icon (or click the Bank tab)
-  to open that character's bank in its own window beside your bags. While you
-  stand at your banker it's your real bank (right-click moves items, as usual).
+  to open that character's bank in its own window beside your bags. At a
+  banker it opens by itself in place of the game's bank and is your real bank
+  (right-click moves items, as usual). Its bar shows the bank bag slots: the
+  main bank, your bank bags, and locked slots with what the next one costs and
+  a Purchase button. Settings > "Use it at the banker" brings the game's bank
+  back.
+- **The guild bank** - each visit saves every guild bank tab you can see. The
+  Guild bank tab down the side (or "Guild bank" in the character list) opens
+  it in the bank window, tab by tab, whenever you like.
 - **Banker marks** - "To banker" on an item adds a mail rule that sends all of
   it to your banker (Send mail at a mailbox). Marked stacks show a letter, and
   the footer counts them. Taking the mark off also keeps the item away from
@@ -305,11 +325,13 @@ bags keeps working.
 - **Sell junk** - at a vendor, one button sells your junk (not anything on the
   never-mail list, nor anything in a bag set to "Ignore: Sell junk").
 - **Worth** - the footer says what the bags are worth at auction (after the
-  cut, never less than a vendor pays, bound items at vendor price); hover for
-  the vendor total.
+  cut, never less than a vendor pays); hover for the vendor total. Soulbound
+  and bind-on-pickup items only ever count at vendor price, here and in every
+  other money figure (farming, the session tracker, posting).
 
 Item tooltips also say which of your characters have the item and where
-("Your characters have 62: Xeon Mana 55 (35 bags, 20 bank), Alt 7 (bags)").
+("Your characters have 62: Xeon Mana 55 (35 bags, 20 bank), Alt 7 (bags)"),
+each with their face.
 
 Settings > "Forever Gold bags" switches back to the game's bags (and `/gold
 bags` turns them on again).
@@ -348,14 +370,16 @@ latest snapshot and tells you which have been undercut.
 ## Settings
 
 Settings live in the game's own Options window: **Options > AddOns > WoW
-Forever**. The Settings button in the Forever Gold window, the bag window's
+Tracker**. The Settings button in the Forever Gold window, the bag window's
 cog and `/gold settings` open it. It has a page each for:
 
 - **Auction Forever** - scanning, the smallest deal worth showing, buying
   safety, undercut, listing size and duration, and auction prices in tooltips.
 - **Bags Forever** - the bag window on or off, one big inventory or split,
   special bags on their own rows, empty slots, New loot, the bag bar, junk
-  toning, columns, background transparency, and who-has lines in tooltips.
+  toning, the guild bank, the bank at the banker, item glows and marks,
+  columns, scale, background transparency, glow brightness, and who-has lines
+  in tooltips. Hover a setting for what it does.
 - **Mail Forever** - Forever Gold's mailbox or the game's, asking or sending
   by itself, spare gold and how much to keep.
 - **Gathering Forever** - waypoints, map and minimap spots, the world map

@@ -102,6 +102,7 @@ local function makeFont(name, size, fallback)
     return name
 end
 local SERIF_L = makeFont("ForeverGoldSerifLarge", 19, "GameFontNormalLarge")
+local SERIF_M = makeFont("ForeverGoldSerifMedium", 15, "GameFontNormal")
 -- Only the window title is decorative; everything you read is the plain face.
 
 -- Quality as an icon border, so item names can stay one quiet colour.
@@ -1606,7 +1607,7 @@ end
 -- The same building blocks, for the other windows (TrackerUI.lua).
 ns.UIKit = { tex = tex, skin = skin, label = label, button = button, setIcon = setIcon,
     createList = createList, scrollBar = scrollBar, Hd = Hd, Tx = Tx, GREY = GREY, COIN = COIN, LOGO = LOGO, rowLeave = rowLeave,
-    C = C, SERIF_L = SERIF_L, edgeFor = edgeFor }
+    C = C, SERIF_L = SERIF_L, SERIF_M = SERIF_M, edgeFor = edgeFor }
 
 local SRC = { vendor = "from a vendor", ah = "auction house", craft = "you make it", old = "last price seen" }
 
@@ -4756,11 +4757,18 @@ local function addTooltipLines(tooltip, data)
     if ns.InventoryTooltip then
         ns.InventoryTooltip(tooltip, id)
     end
+    -- our bag slots: what Shift and Alt+right-click do
+    if ns.BagUI and ns.BagUI.TooltipHint then
+        ns.BagUI.TooltipHint(tooltip)
+    end
 end
 
 local function hookTooltips()
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
-        pcall(TooltipDataProcessor.AddTooltipPostCall, Enum.TooltipDataType.Item, ns.Guard("tooltip", addTooltipLines))
+        if pcall(TooltipDataProcessor.AddTooltipPostCall, Enum.TooltipDataType.Item, ns.Guard("tooltip", addTooltipLines))
+            and ns.BagUI then
+            ns.BagUI.hintHooked = true
+        end
     end
     -- Returning true from a line pre-call tells Blizzard to skip that line.
     if TooltipDataProcessor and TooltipDataProcessor.AddLinePreCall then
