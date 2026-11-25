@@ -45,6 +45,7 @@ type Event = {
   achievement_kind: string | null;
   achievement_tier: AchievementTier | null;
   user_id: string;
+  character_id: string | null;
   characters: { class: string } | null;
 };
 
@@ -103,7 +104,7 @@ const FEED_LIMIT = 30;
 // PvP, duels, dungeon clears, AH and epic items show here too. `label` is
 // renamed to `message` in the query so the rest of this file is unchanged.
 const SELECT_COLUMNS =
-  "id, kind, message:label, created_at, achievement_kind, achievement_tier, user_id, characters(class)";
+  "id, kind, message:label, created_at, achievement_kind, achievement_tier, user_id, character_id, characters(class)";
 const HIDDEN_KINDS = "(profile_updated)";
 
 // Accounts that turned off "Show my activity in the global Activity feed"
@@ -164,6 +165,36 @@ export default function ActivityFeed({
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [legacyIcons, setLegacyIcons] = useState<Map<string, number>>(new Map());
+  // Account names for account-wide rows (Legacy Challenges, account
+  // badges) - their labels have no character name, so without this you
+  // couldn't tell whose they were (2026-11-25)
+  const [accountNames, setAccountNames] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    const missing = [
+      ...new Set(events.filter((e) => !e.character_id && !accountNames.has(e.user_id)).map((e) => e.user_id)),
+    ];
+    if (missing.length === 0) return;
+    let cancelled = false;
+    supabase
+      .from("profiles")
+      .select("id, display_name")
+      .in("id", missing)
+      .then(({ data }) => {
+        if (cancelled) return;
+        setAccountNames((prev) => {
+          const next = new Map(prev);
+          for (const id of missing) next.set(id, "Unknown");
+          for (const p of (data ?? []) as { id: string; display_name: string | null }[]) {
+            if (p.display_name) next.set(p.id, p.display_name);
+          }
+          return next;
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [events, accountNames]);
 
   useEffect(() => {
     let cancelled = false;
@@ -266,7 +297,15 @@ export default function ActivityFeed({
               className="flex items-center gap-3 rounded bg-neutral-800 px-3 py-2"
             >
               <EventIcon e={e} legacyIcons={legacyIcons} />
-              <span className="min-w-0 flex-1 text-sm text-white">{e.message}</span>
+              <span className="min-w-0 flex-1 text-sm text-white">
+                {!e.character_id && accountNames.get(e.user_id) && (
+                  <>
+                    <span className="font-semibold text-amber-200">{accountNames.get(e.user_id)}</span>
+                    <span className="text-gray-500"> · </span>
+                  </>
+                )}
+                {e.message}
+              </span>
               <span className="shrink-0 text-xs text-gray-500">{timeAgo(e.created_at)}</span>
             </li>
           ))}
