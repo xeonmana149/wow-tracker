@@ -185,7 +185,7 @@ local function bagsPage(cat, layout)
             end
         end)
     check(cat, "bagBank", "Use it at the banker",
-        "Talking to a banker opens the Forever Bags bank window (with its bag slots and Purchase) instead of the game's bank.",
+        "Talking to a banker opens the Forever Bags bank window. Its Game's bank button returns to the game's window to buy a bank slot.",
         true, nil, function(on)
             O().bagBank = on
             local bu = BU()

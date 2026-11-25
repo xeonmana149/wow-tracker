@@ -636,8 +636,12 @@ local gatherCat = { ore = "Mining", herb = "Herbalism", skin = "Skinning" }
 local sent -- { target =, at = }: what the last spell was cast on ("Copper Vein")
 
 ns.On("UNIT_SPELLCAST_SENT", function(unit, target)
-    if unit == "player" and type(target) == "string" and target ~= "" then
+    if ns.Secret(unit) or unit ~= "player" then return end
+    if ns.Secret(target) then sent = nil; return end
+    if type(target) == "string" and target ~= "" then
         sent = { target = target, at = GetTime() }
+    else
+        sent = nil
     end
 end)
 

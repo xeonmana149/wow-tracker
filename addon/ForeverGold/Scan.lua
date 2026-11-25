@@ -548,6 +548,12 @@ function ns.FastScanWait()
 end
 
 -- One line describing the scanner, for the status bars.
+function ns.ScanElapsed()
+    if not scan.active or type(scan.started) ~= "number" then return nil end
+    local seconds = max(0, floor(GetTime() - scan.started))
+    return string.format("%d:%02d", floor(seconds / 60), seconds % 60)
+end
+
 function ns.ScanStatus()
     if scan.active then
         local secs = floor(GetTime() - (scan.started or GetTime()))

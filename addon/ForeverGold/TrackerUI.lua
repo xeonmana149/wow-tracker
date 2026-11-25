@@ -19,8 +19,9 @@ local floor, max, min = math.floor, math.max, math.min
 
 local W = 286
 local MAX_LIST = 440
-local SKULL = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01"
-local PICK = "Interface\\Icons\\Trade_Mining"
+local ART = "Interface\\AddOns\\ForeverGold\\Art\\"
+local SKULL = "Interface\\AddOns\\ForeverGold\\Art\\gold-skull.tga"
+local PICK = "Interface\\AddOns\\ForeverGold\\Art\\gold-gather.tga"
 
 local win
 local view = { tab = "kills", sort = "recent", open = {} }
@@ -170,7 +171,7 @@ local function buildLoot()
     rows[#rows + 1] = { icon = K.COIN, title = "Vendor it all", onClick = false,
         r2 = s.vendorPerHour and (ns.Money(s.vendorPerHour) .. K.GREY .. "/hr|r") or "", r1 = ns.Money(s.vendorTotal or 0),
         tip = { "Coin plus what shopkeepers pay for everything you looted." } }
-    rows[#rows + 1] = { icon = "Interface\\Icons\\INV_Misc_Coin_02", title = "Auction it", onClick = false,
+    rows[#rows + 1] = { icon = K.AUCTION, title = "Auction it", onClick = false,
         r2 = s.auctionPerHour and (ns.Money(s.auctionPerHour) .. K.GREY .. "/hr|r") or "", r1 = ns.Money(s.auctionTotal or 0),
         tip = { "Coin plus the lowest auction price after the 5% cut;", "items with no auction price count at vendor price." } }
     K.Hd(rows, "Looted", ns.Money(s.made))
@@ -240,7 +241,6 @@ local BUILD = { kills = buildKills, loot = buildLoot, money = buildMoney }
 ----------------------------------------------------------------------
 
 local TITLE_H, STATS_H, ROW_H = 22, 36, 24
-local STRIP_W = 236
 
 local function state()
     if ns.TrackerRunning and ns.TrackerRunning() then
@@ -320,12 +320,16 @@ local function fit(st)
     win.sort:SetShown(not folded and not idle and view.tab == "kills")
     win.startBig:SetShown(not folded and idle)
     win.title:SetShown(not folded)
+    win.titleIcon:SetShown(not folded)
+    win.headerRule:SetShown(not folded)
     win.state:SetShown(not folded)
     win.head:SetShown(folded)
+    win.compactToggle:SetShown(folded)
+    win.compactReset:SetShown(folded)
     win.list.clip:SetShown(not folded)
     win.fold:SetLabel(folded and "+" or "-")
     if folded then
-        win:SetSize(STRIP_W, TITLE_H)
+        win:SetSize(W, TITLE_H)
         return
     end
     local chrome = idle and (TITLE_H + ROW_H + 10) or (TITLE_H + STATS_H + ROW_H * 2 + 8)
@@ -356,6 +360,9 @@ function ns.RefreshTrackerWindow(keepScroll)
     win.head:SetText(headline(s))
     win.start:SetLabel(st == "recording" and "Stop" or "Start")
     win.start:SetPrimary(st == "paused")
+    win.compactToggle.play:SetShown(st ~= "recording")
+    win.compactToggle.stop:SetShown(st == "recording")
+    win.compactToggle.tip = st == "recording" and "Stop farming session" or "Start farming session"
     win.sort:SetLabel(SORT_LABEL[view.sort])
     for key, b in pairs(win.tabs) do
         b:SetOn(key == view.tab)
@@ -396,30 +403,70 @@ local function create()
     end)
     K.skin(f)
 
-    local bar = K.tex(f, "BORDER", C.panel[1], C.panel[2], C.panel[3], 1)
-    bar:SetPoint("TOPLEFT", 1, -1)
-    bar:SetPoint("TOPRIGHT", -1, -1)
-    bar:SetHeight(TITLE_H - 1)
+    -- Use the window's single translucent backing throughout; a restrained
+    -- rule separates the header when expanded without doubling the bottom
+    -- edge of the folded strip.
+    f.headerRule = K.tex(f, "BORDER", C.goldEdge[1], C.goldEdge[2], C.goldEdge[3], 0.35)
+    f.headerRule:SetPoint("TOPLEFT", 1, -(TITLE_H - 1))
+    f.headerRule:SetPoint("TOPRIGHT", -1, -(TITLE_H - 1))
+    f.headerRule:SetHeight(1)
     f.dot = K.tex(f, "ARTWORK", 0.45, 0.44, 0.42, 1)
     f.dot:SetSize(7, 7)
     f.dot:SetPoint("TOPLEFT", 8, -8)
+    f.titleIcon = f:CreateTexture(nil, "ARTWORK")
+    f.titleIcon:SetSize(14, 14)
+    f.titleIcon:SetPoint("TOPLEFT", 19, -4)
+    f.titleIcon:SetTexture(PICK)
     f.title = K.label(f, "GameFontNormal", "Farming Session")
     f.title:SetTextColor(C.head[1], C.head[2], C.head[3])
-    f.title:SetPoint("TOPLEFT", 20, -5)
-    local close = K.button(f, "X", 16, 16, function() f:Hide() end)
+    f.title:SetPoint("LEFT", f.titleIcon, "RIGHT", 4, 0)
+    f.title:SetWordWrap(false)
+    local close = K.closeButton(f, 16, 16, function() f:Hide() end)
     close:SetPoint("TOPRIGHT", -3, -3)
     f.fold = K.button(f, "-", 16, 16, function()
         ns.db.opts.trackerCollapsed = not ns.db.opts.trackerCollapsed or nil
         ns.RefreshTrackerWindow(true)
     end)
     f.fold:SetPoint("RIGHT", close, "LEFT", -2, 0)
+    f.compactReset = K.button(f, "", 16, 16, function()
+        ns.TrackerReset()
+        ns.RefreshTrackerWindow(true)
+    end)
+    f.compactReset:SetPoint("RIGHT", f.fold, "LEFT", -2, 0)
+    local resetIcon = f.compactReset:CreateTexture(nil, "OVERLAY")
+    resetIcon:SetSize(16, 16)
+    resetIcon:SetPoint("CENTER")
+    resetIcon:SetTexture(ART .. "farming-reset.tga")
+    f.compactReset.tip = "Reset farming session"
+    f.compactToggle = K.button(f, "", 16, 16, function()
+        ns.TrackerToggle()
+        ns.RefreshTrackerWindow(true)
+    end)
+    f.compactToggle:SetPoint("RIGHT", f.compactReset, "LEFT", -2, 0)
+    f.compactToggle.play = f.compactToggle:CreateTexture(nil, "OVERLAY")
+    f.compactToggle.play:SetSize(16, 16)
+    f.compactToggle.play:SetPoint("CENTER")
+    f.compactToggle.play:SetTexture(ART .. "farming-play.tga")
+    f.compactToggle.stop = f.compactToggle:CreateTexture(nil, "OVERLAY")
+    f.compactToggle.stop:SetTexture(ART .. "farming-stop.tga")
+    f.compactToggle.stop:SetSize(16, 16)
+    f.compactToggle.stop:SetPoint("CENTER")
+    for _, control in ipairs({ f.compactToggle, f.compactReset }) do
+        control:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(self.tip, 1, 0.82, 0)
+            GameTooltip:Show()
+        end)
+        control:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
     f.state = K.label(f, "GameFontHighlightSmall")
     f.state:SetPoint("RIGHT", f.fold, "LEFT", -6, 0)
     f.state:SetJustifyH("RIGHT")
+    f.title:SetPoint("RIGHT", f.state, "LEFT", -6, 0)
     -- The folded strip's one line.
     f.head = K.label(f, "GameFontHighlightSmall")
     f.head:SetPoint("LEFT", f.dot, "RIGHT", 6, 0)
-    f.head:SetPoint("RIGHT", f.fold, "LEFT", -4, 0)
+    f.head:SetPoint("RIGHT", f.compactToggle, "LEFT", -4, 0)
     f.head:SetWordWrap(false)
 
     f.sessionOnly = {}
@@ -447,7 +494,14 @@ local function create()
         local cell = session(CreateFrame("Frame", nil, f))
         cell:SetSize(cellW, STATS_H - 4)
         cell:SetPoint("TOPLEFT", 4 + (i - 1) * cellW, -(TITLE_H + 3))
+        if i > 1 then
+            cell.separator = K.tex(cell, "BORDER", C.goldEdge[1], C.goldEdge[2], C.goldEdge[3], 0.25)
+            cell.separator:SetPoint("TOPLEFT", 0, -3)
+            cell.separator:SetPoint("BOTTOMLEFT", 0, 3)
+            cell.separator:SetWidth(1)
+        end
         cell.caption = K.label(cell, "GameFontDisableSmall", cap[1])
+        cell.caption:SetTextColor(0.639, 0.584, 0.467)
         cell.caption:SetPoint("TOPLEFT", 4, -2)
         cell.caption:SetWidth(cellW - 6)
         cell.caption:SetWordWrap(false)
@@ -461,6 +515,7 @@ local function create()
         end)
         cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
         cell.value = K.label(cell, "GameFontHighlight")
+        cell.value:SetTextColor(C.text[1], C.text[2], C.text[3])
         cell.value:SetPoint("TOPLEFT", 4, -15)
         cell.value:SetWidth(cellW - 6)
         cell.value:SetWordWrap(false)
@@ -489,25 +544,38 @@ local function create()
 
     f.tabs = {}
     local x = 4
-    for _, t in ipairs({ { "kills", "Kills" }, { "loot", "Loot" }, { "money", "Money" } }) do
+    local function tabIcon(b, path)
+        b.icon = b:CreateTexture(nil, "ARTWORK")
+        b.icon:SetSize(12, 12)
+        b.icon:SetPoint("LEFT", 2, 0)
+        b.icon:SetTexture(path)
+        b.text:ClearAllPoints()
+        b.text:SetPoint("LEFT", b.icon, "RIGHT", 1, 0)
+        b.text:SetPoint("RIGHT", -1, 0)
+        b.text:SetJustifyH("CENTER")
+    end
+    for _, t in ipairs({ { "kills", "Kills", SKULL, 45 }, { "loot", "Loot", ART .. "bag-inventory.tga", 45 },
+        { "money", "Money", ART .. "gold-coin.tga", 57 } }) do
         local key = t[1]
-        local b = session(K.button(f, t[2], 46, 18, function()
+        local b = session(K.button(f, t[2], t[4], 18, function()
             view.tab = key
             ns.RefreshTrackerWindow()
         end))
+        tabIcon(b, t[3])
         b:SetPoint("TOPLEFT", x, y - ROW_H)
         f.tabs[key] = b
-        x = x + 49
+        x = x + t[4] + 3
     end
     -- The full dashboard, in the main window.
-    f.stats = session(K.button(f, "Stats", 46, 18, function()
+    f.stats = session(K.button(f, "Stats", 45, 18, function()
         if ns.ShowMain then
             ns.ShowMain()
         end
         ns.ShowTab("farming")
     end))
+    tabIcon(f.stats, ART .. "farming-stats.tga")
     f.stats:SetPoint("TOPLEFT", x, y - ROW_H)
-    f.sort = K.button(f, "Sort: Recent", 80, 18, function()
+    f.sort = K.button(f, "Sort: Recent", 74, 18, function()
         view.sort = SORT_NEXT[view.sort] or "recent"
         ns.RefreshTrackerWindow()
     end)

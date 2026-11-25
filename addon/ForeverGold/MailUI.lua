@@ -31,7 +31,16 @@ local SIDE_W = 300
 local PAD = 12
 local LIST_W = W - PAD * 3 - SIDE_W
 local CLASS_ICONS = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
+local ART = "Interface\\AddOns\\ForeverGold\\Art\\"
+local INBOX_ICON = ART .. "mail-inbox.tga"
+local SEND_ICON = ART .. "mail-send.tga"
+local RULES_ICON = ART .. "mail-rules.tga"
+local BANKER_ICON = ART .. "bag-bank.tga"
 local GREEN, RED, GOLD = "|cff8fd37a", "|cffff7070", "|cffffd100"
+
+local function isAddonIcon(icon)
+    return type(icon) == "string" and icon:sub(1, #ART) == ART
+end
 
 local U = { tab = "inbox", mode = "custom", sel = {}, form = { picks = {} } }
 ns.MailUI = U
@@ -70,7 +79,7 @@ local function classIcon(t, class)
         t:SetTexture(CLASS_ICONS)
         t:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
     else
-        setIcon(t, K.COIN)
+        setIcon(t, BANKER_ICON)
     end
 end
 
@@ -498,7 +507,7 @@ local function newRows(parent, w, h, rowH, opts)
                     end
                     edgeFor(r.iconEdge, d.id)
                     r.icon:Show()
-                    r.iconEdge:Show()
+                    r.iconEdge:SetShown(d.coords ~= nil or not isAddonIcon(d.icon))
                     if r.icon.SetDesaturated then
                         r.icon:SetDesaturated(d.dim and true or false)
                     end
@@ -657,7 +666,6 @@ local function buildBankerStrip(f)
     local p = CreateFrame("Frame", nil, f)
     p:SetPoint("TOPLEFT", s, "BOTTOMLEFT", 0, -2)
     p:SetPoint("TOPRIGHT", s, "BOTTOMRIGHT", 0, -2)
-    p:SetHeight(150)
     p:SetFrameLevel((f.GetFrameLevel and f:GetFrameLevel() or 1) + 20)
     skin(p, 0.16, 0.145, 0.11, 1, C.goldEdge[1], C.goldEdge[2], C.goldEdge[3], 1)
     p:EnableMouse(true)
@@ -675,7 +683,7 @@ local function buildBankerStrip(f)
     p.cap2 = smallCaps(p, "Quick-send also includes (only if you tick them)")
     p.cap2:SetPoint("TOPLEFT", 14, -62)
     p.cats = {}
-    local col, rowY = 0, -80
+    local col, rowY, categoryCount = 0, -80, 0
     for _, c in ipairs(MB.CATS) do
         if not c.stock then
             local key = c.key
@@ -686,12 +694,17 @@ local function buildBankerStrip(f)
             end)
             cb:SetPoint("TOPLEFT", 14 + col * 180, rowY)
             p.cats[key] = cb
+            categoryCount = categoryCount + 1
             col = col + 1
             if col >= 5 then
                 col, rowY = 0, rowY - 24
             end
         end
     end
+    -- Keep every category inside the panel and reserve a separate footer for
+    -- Done. The height grows if more quick-send categories are added later.
+    local categoryRows = math.ceil(categoryCount / 5)
+    p:SetHeight(math.max(150, 80 + categoryRows * 24 + 34))
     p.close = button(p, "Done", 70, 22, function() U.ToggleBankerPanel(false) end)
     p.close:SetPoint("BOTTOMRIGHT", -10, 10)
     p:Hide()
@@ -704,7 +717,7 @@ function U.BankerOptions()
     for _, c in ipairs(MB.Characters(true)) do
         local coords = c.class and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[c.class]
         out[#out + 1] = { text = c.name .. (c.self and (GREY .. "  (you)|r") or "") .. GREY .. "  " .. (c.level or "?") .. "|r",
-            value = c.key, coords = coords, icon = (not coords) and K.COIN or nil }
+            value = c.key, coords = coords, icon = (not coords) and BANKER_ICON or nil }
     end
     if #out == 0 then
         out[1] = { text = "No characters known yet: log in on each once.", header = true }
@@ -729,6 +742,7 @@ local function refreshBankerStrip()
     local s = win.strip
     local name, class, faction, isSelf = bankerLabel()
     classIcon(s.icon, class)
+    s.iconEdge:SetShown(class and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class] ~= nil or false)
     if name then
         s.name:SetText(name .. GREY .. "  " .. (faction or "") .. (isSelf and "  (this character)" or "") .. "|r")
     else
@@ -780,7 +794,7 @@ local function mailIcon(m)
     if m.money > 0 then
         return K.COIN, nil
     end
-    return m.stationery or "Interface\\Icons\\INV_Letter_15", nil
+    return INBOX_ICON, nil
 end
 
 local function buildInbox(f)
@@ -906,9 +920,15 @@ local function buildInbox(f)
     end
     s.note = label(s, "GameFontHighlightSmall")
     s.note:SetPoint("BOTTOMLEFT", 14, 12)
-    s.note:SetWidth(SIDE_W - 28)
+    s.note:SetWidth(SIDE_W - 160)
     s.note:SetJustifyV("BOTTOM")
     s.note:SetWordWrap(true)
+    s.collectMail = withTip(button(s, "Collect mail", 122, 24, function()
+        local ok, why = MB.CollectMail(U.SelectedMail())
+        if not ok and why then MB.SetStatus("error", why) end
+    end), { "Collect this mail", "Takes the gold and attachments from this message only. C.O.D. and pending sales are not collected." })
+    s.collectMail:SetPoint("BOTTOMRIGHT", -14, 10)
+    s.collectMail:SetPrimary(true)
     s.noMail = label(s, "GameFontDisable")
     s.noMail:SetPoint("TOP", 0, -60)
     s.noMail:SetWidth(SIDE_W - 40)
@@ -1018,12 +1038,15 @@ local function refreshInbox()
     s.noMail:SetShown(not hasMail)
     s.noMail:SetText(MB.inboxState == "loading" and "Checking your mail..." or "No mail selected.\nNew mail will appear here.")
     if not m then
-        s.moneyIcon:Hide(); s.money:Hide(); s.moneySub:Hide(); s.takeGold:Hide()
+        s.moneyIcon:Hide(); s.money:Hide(); s.moneySub:Hide(); s.takeGold:Hide(); s.collectMail:Hide()
         for _, b in ipairs(s.atts) do b:Hide() end
         s.note:SetText("")
         return
     end
     s.from:SetText("FROM " .. (m.sender or "?"):upper())
+    s.collectMail:Show()
+    s.collectMail:SetDisabled(busy or not MB.open or m.restricted == "cod" or m.restricted == "pending"
+        or (m.money <= 0 and #m.items == 0))
     s.subject:SetText(m.subject ~= "" and m.subject or "(no subject)")
     s.expires:SetText(expiryText(m.days) .. (m.returned and "  -  returned to you" or ""))
     local key = mailKey(m)
@@ -1111,6 +1134,130 @@ local SKIP_TEXT = {
     unmailable = "can't be mailed",
 }
 
+-- A compact view of the actual bag slots. These are selection buttons, not
+-- item buttons: clicking selects a stack for the existing mail preview.
+local function newSendBagGrid(parent)
+    local cols, rows, size, gap = 13, 4, 40, 4
+    local visibleSlots = cols * rows
+    local grid = CreateFrame("Frame", nil, parent)
+    grid:SetSize(LIST_W, H - TOP - FOOT - 190 - 22)
+    grid:SetPoint("TOPLEFT", PAD, -190)
+    skin(grid, 0.045, 0.043, 0.04, 1, C.panelEdge[1], C.panelEdge[2], C.panelEdge[3], 1)
+    grid.slots, grid.offset, grid.data = {}, 0, {}
+    local function scroll(delta)
+        grid.offset = grid.offset - delta
+        grid:Render()
+    end
+    grid:EnableMouseWheel(true)
+    grid:SetScript("OnMouseWheel", function(_, delta) scroll(delta) end)
+    for i = 1, visibleSlots do
+        local b = CreateFrame("Button", nil, grid)
+        b:SetSize(size, size)
+        b:EnableMouseWheel(true)
+        b:SetScript("OnMouseWheel", function(_, delta) scroll(delta) end)
+        b:SetPoint("TOPLEFT", 10 + ((i - 1) % cols) * (size + gap), -8 - floor((i - 1) / cols) * (size + gap))
+        skin(b, 0.02, 0.02, 0.02, 1, C.btnEdge[1], C.btnEdge[2], C.btnEdge[3], 0.8)
+        b.icon = b:CreateTexture(nil, "ARTWORK")
+        b.icon:SetPoint("TOPLEFT", 2, -2)
+        b.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+        b.count = label(b, "NumberFontNormal")
+        b.count:SetPoint("BOTTOMRIGHT", -3, 2)
+        b.selected = CreateFrame("Frame", nil, b)
+        b.selected:SetAllPoints(b)
+        if b.selected.EnableMouse then b.selected:EnableMouse(false) end
+        skin(b.selected, 0, 0, 0, 0, C.goldEdge[1], C.goldEdge[2], C.goldEdge[3], 1)
+        for n, edge in ipairs(b.selected.edges) do if n <= 2 then edge:SetHeight(3) else edge:SetWidth(3) end end
+        local badge = CreateFrame("Frame", nil, b.selected)
+        badge:SetSize(17, 17)
+        badge:SetPoint("TOPRIGHT", -2, -2)
+        skin(badge, 0.07, 0.06, 0.04, 0.95, C.goldEdge[1], C.goldEdge[2], C.goldEdge[3], 1)
+        local check = badge:CreateTexture(nil, "OVERLAY")
+        check:SetAllPoints()
+        check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+        check:SetVertexColor(1, 0.82, 0.25)
+        local hl = tex(b, "HIGHLIGHT", 1, 0.92, 0.7, 0.14)
+        hl:SetAllPoints()
+        b:SetScript("OnClick", function(self)
+            local st = self.stack
+            if not st or st.why or MB.Busy() or MB.Shipments() then return end
+            local key = st.bag .. ":" .. st.slot
+            local picked = U.form.picks[key]
+            if picked == true or (type(picked) == "table" and picked.id == st.id and picked.count == st.count) then
+                U.form.picks[key] = nil
+            else
+                U.form.picks[key] = { id = st.id, count = st.count }
+            end
+            U.Refresh()
+        end)
+        b:SetScript("OnEnter", function(self)
+            local st = self.stack
+            if not st or not GameTooltip then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            local shown = GameTooltip.SetBagItem and pcall(GameTooltip.SetBagItem, GameTooltip, st.bag, st.slot)
+            if not shown and GameTooltip.SetItemByID then pcall(GameTooltip.SetItemByID, GameTooltip, st.id) end
+            GameTooltip:AddLine(st.why and (SKIP_TEXT[st.why] or st.why) or "Click to select or deselect this stack.", 1, 0.82, 0)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", untip)
+        grid.slots[i] = b
+    end
+    grid.bar = K.scrollBar(grid, function(offset)
+        grid.offset = floor(offset + 0.5)
+        grid:Render()
+    end)
+    grid.bar.track:SetPoint("TOPRIGHT", grid, "TOPRIGHT", -5, -8)
+    grid.summary = label(grid, "GameFontHighlightSmall")
+    grid.summary:SetPoint("BOTTOMLEFT", 10, 10)
+    grid.clear = button(grid, "Clear selection", 110, 20, function() U.form.picks = {}; U.Refresh() end)
+    grid.clear:SetPoint("BOTTOMRIGHT", -10, 7)
+    function grid:Render()
+        local totalRows = math.ceil(#self.data / cols)
+        local maxOffset = max(0, totalRows - rows)
+        self.offset = max(0, min(self.offset, maxOffset))
+        self.bar:Update(self.offset, maxOffset, rows / max(1, totalRows), rows * (size + gap) - gap)
+        local pickedCount = 0
+        for _ in pairs(U.form.picks or {}) do pickedCount = pickedCount + 1 end
+        local limit = MB.MaxAttach()
+        local color = pickedCount > limit and RED or (pickedCount == limit and GOLD or GREY)
+        self.summary:SetText(color .. pickedCount .. " / " .. limit .. " stacks selected|r"
+            .. (maxOffset > 0 and "  |  Scroll for more" or ""))
+        for i, b in ipairs(self.slots) do
+            local data = self.data[self.offset * cols + i]
+            b:SetShown(data ~= nil)
+            b.stack = data and data.stack or nil
+            local st = b.stack
+            if ns.BagUI and ns.BagUI.PaintMailSlot then
+                ns.BagUI.PaintMailSlot(b, st, { win = self })
+            end
+            if st then
+                local key = st.bag .. ":" .. st.slot
+                local pick = U.form.picks[key]
+                local selected = pick == true or (type(pick) == "table" and pick.id == st.id and pick.count == st.count)
+                setIcon(b.icon, ns.Icon(st.id))
+                b.icon:Show()
+                b.icon:SetAlpha(st.why and 0.35 or 1)
+                if b.icon.SetDesaturated then b.icon:SetDesaturated(st.why ~= nil) end
+                b.count:SetText(st.count > 1 and tostring(st.count) or "")
+                b.selected:SetShown(selected and not st.why)
+            else
+                b.icon:Hide(); b.count:SetText(""); b.selected:Hide()
+            end
+        end
+    end
+    function grid:SetStacks(stacks)
+        local bySlot, data = {}, {}
+        for _, st in ipairs(stacks or {}) do bySlot[st.bag .. ":" .. st.slot] = st end
+        local last = (NUM_BAG_SLOTS or 4) + (NUM_REAGENTBAG_SLOTS or 0)
+        for bag = 0, last do
+            local count = ns.try(C_Container.GetContainerNumSlots, bag) or 0
+            for slot = 1, count do data[#data + 1] = { stack = bySlot[bag .. ":" .. slot] } end
+        end
+        self.data = data
+        self:Render()
+    end
+    return grid
+end
+
 local function buildSend(f)
     local p = CreateFrame("Frame", nil, f)
     p:SetPoint("TOPLEFT", 0, -TOP)
@@ -1192,7 +1339,7 @@ local function buildSend(f)
         U.Refresh()
     end), { "Cash on delivery", "The recipient pays this amount to take the attachments. Needs at least one attachment." })
     c.cod:SetPoint("LEFT", c.sendMoney, "RIGHT", 4, 0)
-    c.hint = label(c, "GameFontDisableSmall", "Tick the stacks to attach below.")
+    c.hint = label(c, "GameFontDisableSmall", "Click items below to attach them.")
     c.hint:SetPoint("TOPLEFT", 392, -84)
     p.custom = c
 
@@ -1215,6 +1362,7 @@ local function buildSend(f)
             U.Refresh()
         end
     end
+    p.bagGrid = newSendBagGrid(p)
     p.help = label(p, "GameFontDisableSmall")
     p.help:SetPoint("TOPLEFT", p.list, "BOTTOMLEFT", 2, -6)
     p.help:SetWidth(LIST_W)
@@ -1400,6 +1548,19 @@ local function sendButtonState(plan, inQueue)
         return "Done", true
     end
     if plan.problem then
+        if U.mode == "custom" then
+            local count = 0
+            for _, picked in pairs(U.form.picks or {}) do if picked then count = count + 1 end end
+            if count > MB.MaxAttach() then
+                return "Remove " .. plural(count - MB.MaxAttach(), "stack"), true
+            end
+            if plan.problem == "Who is it for?" then return "Choose a recipient", true end
+            if plan.problem == "That's you. Pick someone else." then return "Choose another recipient", true end
+            if plan.problem:find("selected stack", 1, true) then return "Check selected stacks", true end
+            if plan.problem:find("C.O.D.", 1, true) then return "Check C.O.D. details", true end
+            if plan.problem == "Add a subject, an attachment or some gold." then return "Add a message or attachment", true end
+            if plan.problem:find("postage", 1, true) then return "Not enough gold to send", true end
+        end
         return "Can't send yet", true
     end
     if #plan.ships == 0 then
@@ -1452,6 +1613,13 @@ local function refreshSend()
     p.list:SetListHeight(H - TOP - FOOT - listTop - (custom and 22 or 40))
     local plan, inQueue = currentPlan()
     local rows = rowsForPlan(plan, inQueue)
+    local showBags = custom and not inQueue
+    p.list:SetShown(not showBags)
+    p.bagGrid:SetShown(showBags)
+    if showBags then
+        local _, stacks = MB.ScanBags()
+        p.bagGrid:SetStacks(stacks)
+    end
     if custom then
         local c = p.custom
         c.sendMoney:SetOn(not U.form.cod)
@@ -1741,7 +1909,11 @@ end
 function U.MatchOptions()
     local out = { { text = "Material groups", header = true } }
     for _, c in ipairs(MB.CATS) do
-        out[#out + 1] = { text = c.name, value = c.key, icon = catIcon(c.key) or K.COIN }
+        if not c.group then out[#out + 1] = { text = c.name, value = c.key, icon = catIcon(c.key) or K.COIN } end
+    end
+    out[#out + 1] = { text = "Profession recipes", header = true }
+    for _, c in ipairs(MB.CATS) do
+        if c.group == "recipes" then out[#out + 1] = { text = c.name, value = c.key, icon = catIcon(c.key) or K.COIN } end
     end
     out[#out + 1] = { text = "Items in your bags", header = true }
     local items = MB.ScanBags()
@@ -1760,7 +1932,7 @@ end
 
 function U.TargetOptions()
     local name = MB.NameOf(MB.BankerKey())
-    local out = { { text = "Banker" .. GREY .. "  (" .. (name or "none picked") .. ", follows your banker)|r", value = "banker", icon = K.COIN } }
+    local out = { { text = "Banker" .. GREY .. "  (" .. (name or "none picked") .. ", follows your banker)|r", value = "banker", icon = BANKER_ICON } }
     for _, c in ipairs(MB.Characters(true)) do
         local coords = c.class and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[c.class]
         out[#out + 1] = { text = c.name .. (c.self and (GREY .. "  (you: items stay here)|r") or ""), value = c.key, coords = coords }
@@ -1913,6 +2085,7 @@ local function refreshRules()
     local icon, id = ruleIcon(d)
     setIcon(s.icon, icon)
     edgeFor(s.iconEdge, id)
+    s.iconEdge:SetShown(not isAddonIcon(icon))
     s.title:SetText(MB.RuleName(d))
     s.number:SetText("Rule " .. (index or "?") .. "  -  " .. (d.on and "switched on" or "switched off"))
     s.match:SetLabel(MB.RuleName(d))
@@ -2059,12 +2232,12 @@ local function createWindow()
     local icon = f:CreateTexture(nil, "ARTWORK")
     icon:SetSize(30, 30)
     icon:SetPoint("TOPLEFT", 10, -6)
-    icon:SetTexture(K.LOGO)
+    icon:SetTexture(INBOX_ICON)
     local title = label(f, K.SERIF_L, "Mailbox")
     title:SetTextColor(C.goldText[1], C.goldText[2], C.goldText[3])
     title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
 
-    local close = button(f, "X", 24, 22, function() U.Close() end)
+    local close = K.closeButton(f, 24, 24, function() U.Close() end)
     close:SetPoint("TOPRIGHT", -8, -8)
     f.blizz = withTip(button(f, "Game's mailbox", 110, 22, function() U.UseBlizzard() end),
         { "Game's mailbox", "Switch to the game's own mailbox window (needed to pay C.O.D.). A button on it switches back." })
@@ -2079,12 +2252,21 @@ local function createWindow()
     f.money:SetJustifyH("RIGHT")
 
     local x = PAD
-    for _, t in ipairs({ { "inbox", "Inbox" }, { "send", "Send mail" }, { "rules", "Auto-send rules" } }) do
+    for _, t in ipairs({ { "inbox", "Inbox", 120, INBOX_ICON }, { "send", "Send mail", 132, SEND_ICON },
+        { "rules", "Auto-send rules", 170, RULES_ICON } }) do
         local key = t[1]
-        local b = button(f, t[2], 136, 24, function() U.SetTab(key) end)
+        local b = button(f, t[2], t[3], 24, function() U.SetTab(key) end)
+        b.icon = b:CreateTexture(nil, "ARTWORK")
+        b.icon:SetSize(18, 18)
+        b.icon:SetPoint("LEFT", 6, 0)
+        b.icon:SetTexture(t[4])
+        b.text:ClearAllPoints()
+        b.text:SetPoint("LEFT", b.icon, "RIGHT", 4, 0)
+        b.text:SetPoint("RIGHT", -4, 0)
+        b.text:SetJustifyH("CENTER")
         b:SetPoint("TOPLEFT", x, -44)
         tabs[key] = b
-        x = x + 140
+        x = x + t[3] + 4
     end
     f.tabs = tabs
     local rule = tex(f, "BORDER", C.edge[1], C.edge[2], C.edge[3], 0.7)
@@ -2209,7 +2391,7 @@ local function showStrip()
         local icon = strip:CreateTexture(nil, "ARTWORK")
         icon:SetSize(20, 20)
         icon:SetPoint("LEFT", 6, 0)
-        icon:SetTexture(K.LOGO)
+        icon:SetTexture(INBOX_ICON)
         strip.ours = button(strip, "Forever Gold mailbox", 150, 22, function() U.UseOurs() end)
         strip.ours:SetPoint("LEFT", icon, "RIGHT", 6, 0)
         strip.ours:SetPrimary(true)
@@ -2485,6 +2667,19 @@ end)
 
 ns.Listen("MAIL", function()
     ns.Later("mail-ui", 0.05, function() U.Refresh() end)
+end)
+
+-- Clear only attachments confirmed sent. Failed or uncertain mail must retain
+-- its selection so the player can inspect it rather than accidentally resending.
+ns.Listen("MAIL_SENT", function(ship, status)
+    if status ~= "sent" or not ship or not ship.compose then return end
+    for _, attachment in ipairs(ship.atts or {}) do
+        local key = attachment.bag .. ":" .. attachment.slot
+        local picked = U.form.picks[key]
+        if picked == true or (type(picked) == "table" and picked.id == attachment.id and picked.count == attachment.count) then
+            U.form.picks[key] = nil
+        end
+    end
 end)
 
 for _, msg in ipairs({ "MAIL_BAGS", "ITEMS_UPDATED", "PRICES_UPDATED", "BAGS_UPDATED" }) do

@@ -104,8 +104,11 @@ end
 -- What an opened thing has to be called to count as a chest (not a quest
 -- crate, a door or a sack of grain).
 local CHEST_WORDS = { "chest", "strongbox", "coffer", "footlocker", "trunk" }
+local function temporaryChest(name)
+    return not ns.Secret(name) and type(name) == "string" and name:lower():match("^%s*rusty chest%s*$") ~= nil
+end
 local function isChest(name)
-    if type(name) ~= "string" then
+    if ns.Secret(name) or type(name) ~= "string" or temporaryChest(name) then
         return false
     end
     local l = name:lower()
@@ -165,7 +168,7 @@ end
 
 local spellKind = {}
 local function gatherKind(spellID)
-    if not spellID then
+    if ns.Secret(spellID) or not spellID then
         return nil
     end
     local known = spellKind[spellID]
@@ -199,6 +202,8 @@ end
 ns.GatherKind = gatherKind
 
 function ns.RecordNode(kind, name)
+    if ns.Secret(name) then name = nil end
+    if kind == "chest" and temporaryChest(name) then return end
     local mapID, x, y = ns.PlayerMapPos()
     if not mapID then
         return
@@ -230,19 +235,39 @@ local pendingCast
 local lastFishCast
 
 ns.On("UNIT_SPELLCAST_SENT", function(unit, target, _, spellID)
-    if unit ~= "player" then
+    if ns.Secret(unit) or unit ~= "player" then
         return
     end
     local kind = gatherKind(spellID)
     if kind == "ore" or kind == "herb" then
         pendingCast = { kind = kind, name = target, at = GetTime() }
-    elseif kind == "open" and isChest(target) then
-        pendingCast = { kind = "chest", name = target, at = GetTime() }
+    elseif kind == "open" then
+        -- A non-chest opening must not reuse the preceding chest's cast.
+        pendingCast = isChest(target) and { kind = "chest", name = target, at = GetTime() } or nil
     end
 end)
 
+-- Slime-spawned chests are not fixed gathering locations. Clear the exact
+-- previously recorded name without touching other chests or gathering nodes.
+function ns.RemoveTemporaryChestSpots()
+    local removed = 0
+    for _, list in pairs(ns.db and ns.db.nodes or {}) do
+        if type(list) == "table" then
+            for i = #list, 1, -1 do
+                local node = list[i]
+                if type(node) == "table" and node.k == "chest" and temporaryChest(node.n) then
+                    table.remove(list, i); removed = removed + 1
+                end
+            end
+        end
+    end
+    if removed > 0 then ns.Fire("NODES_UPDATED") end
+    return removed
+end
+ns.Listen("READY", ns.RemoveTemporaryChestSpots)
+
 ns.On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
-    if unit ~= "player" or not ns.ready then
+    if ns.Secret(unit) or unit ~= "player" or not ns.ready then
         return
     end
     local kind = gatherKind(spellID)
@@ -1030,7 +1055,38 @@ function ns.NewPlotter(parent)
         for i = 1, #self.lines do self.lines[i]:Hide() end
         for i = 1, #self.marks do self.marks[i]:Hide() end
         self.usedLines, self.usedMarks = 0, 0
+        self.legs = {}
         you:Hide()
+    end
+
+    -- A zoom: the spots and the route kept one size on screen, nothing
+    -- drawn again. Each spot is drawn at its size on screen and scaled by
+    -- `unit` (how big a screen pixel is on the zoomed canvas), its place
+    -- divided by it (a scaled frame's offsets are in its own scale, as the
+    -- map's own pins do). The route's legs are laid out again (their
+    -- outline, thickness and arrows are screen sizes).
+    function plot:Rescale(unit)
+        unit = unit or 1
+        if unit <= 0 or unit == self.unit then
+            return
+        end
+        self.unit = unit
+        for i = 1, self.usedMarks do
+            local m = self.marks[i]
+            m:SetScale(unit)
+            m:ClearAllPoints()
+            m:SetPoint("CENTER", markFrame, "TOPLEFT", m.px / unit, -m.py / unit)
+        end
+        local legs = self.legs
+        if legs and #legs > 0 then
+            local was = self.usedLines
+            self.usedLines = 0
+            for _, g in ipairs(legs) do
+                self:Leg(g[1], g[2], g[3], g[4], g[5] * unit, unit)
+            end
+            for i = self.usedLines + 1, was do self.lines[i]:Hide() end
+        end
+        return true
     end
 
     -- A leg of the route: a dark outline under a gold line, with a small
@@ -1091,8 +1147,13 @@ function ns.NewPlotter(parent)
         if o.art then
             info.art = self:Art(mapID, w, h)
         end
-        local size = o.size or 12
         local unit = o.unit or 1
+        if unit <= 0 then
+            unit = 1
+        end
+        self.unit = unit
+        local size = o.size or 12
+        local base = size / unit        -- (its size on screen)
         local project = o.project or function(m, x, y)
             if m == mapID then
                 return x, y
@@ -1114,7 +1175,9 @@ function ns.NewPlotter(parent)
             if ps then
                 for i = 1, r.n do
                     local a, b = ps[i], ps[(i % r.n) + 1]
-                    self:Leg(a[1], a[2], b[1], b[2], math.max(1.5 * unit, size * 0.18), unit)
+                    local thick = math.max(1.5, base * 0.18)
+                    self.legs[#self.legs + 1] = { a[1], a[2], b[1], b[2], thick }
+                    self:Leg(a[1], a[2], b[1], b[2], thick * unit, unit)
                 end
                 local pt = r.pts[r.i]
                 if pt then
@@ -1132,15 +1195,16 @@ function ns.NewPlotter(parent)
                 local m = self:Mark()
                 m.node = n
                 local tag = special[n]
-                local s = tag and math.floor(size * 1.35) or size
-                m:SetSize(s + 4 * unit, s + 4 * unit)
-                m.back:SetSize(s + 2 * unit, s + 2 * unit)
+                -- (sized on screen, scaled by unit: see plot:Rescale)
+                local s = tag and math.floor(base * 1.35) or base
+                m:SetSize(s + 4, s + 4)
+                m.back:SetSize(s + 2, s + 2)
                 m.icon:SetSize(s, s)
                 m.icon:SetTexture(ns.NodeIcon(n))
                 m.tagText = tag == "Next" and "Next stop on your route" or tag == "Paused" and "Next stop (route paused)"
                     or tag == "Start" and "Where the route starts" or nil
                 if tag then
-                    m.ring:SetSize(s + 8 * unit, s + 8 * unit)
+                    m.ring:SetSize(s + 8, s + 8)
                     m.ring:SetColorTexture(1, 0.85, 0.2, 1)
                     m.ring:Show()
                     m.tag:SetText(tag)
@@ -1165,10 +1229,12 @@ function ns.NewPlotter(parent)
                     m:EnableMouse(false)
                 end
                 m:SetFrameLevel(markFrame:GetFrameLevel() + (tag and 3 or 1))
+                m.px, m.py = cx * w, cy * h
+                m:SetScale(unit)
                 m:ClearAllPoints()
-                m:SetPoint("CENTER", markFrame, "TOPLEFT", cx * w, -cy * h)
+                m:SetPoint("CENTER", markFrame, "TOPLEFT", m.px / unit, -m.py / unit)
                 if m.tag.SetScale then
-                    m.tag:SetScale(unit)
+                    m.tag:SetScale(1)       -- (the spot's own scale carries it)
                 end
                 info.shown = info.shown + 1
             end
@@ -1282,18 +1348,24 @@ local function redrawWorldMap()
         level = math.max(level, (ns.try(api.ArtTopLevel) or 0) + 5)
     end
     mapOverlay:SetFrameLevel(level)
+    -- Only the zone you're looking at (OpenMap's stitched map follows the
+    -- zone in view as you pan): no spots on a continent or the whole world,
+    -- nor a neighbouring zone's, as other addons' map icons do. The route
+    -- the same: on its own zone only.
     local maps = {}
-    for zone, list in pairs(ns.db.nodes) do
-        if #list > 0 then
-            maps[#maps + 1] = zone
-        end
+    local list = mapID and ns.db.nodes[mapID]
+    if list and #list > 0 then
+        maps[1] = mapID
+    end
+    local route = ns.db.opts.mapRoute ~= false and ns.route or nil
+    if route and route.map ~= mapID then
+        route = nil
     end
     local scale = canvasScale()
     drawnScale = scale
     local unit = 1 / scale
-    local opts = ns.db.opts
     mapPlot:Draw(mapID, w, h, { size = 15 * unit, unit = unit, maps = maps, project = projection(mapID), hover = true,
-        kinds = ns.MapKinds(), route = opts.mapRoute ~= false and ns.route or nil })
+        kinds = ns.MapKinds(), route = route })
 end
 
 -- Which kinds of spot the world map shows (nil: all of them): the ones
@@ -1362,18 +1434,62 @@ local function setupWorldMap()
             hooksecurefunc(WorldMapFrame, "OnMapChanged", ns.RedrawWorldMap)
         end
         WorldMapFrame:HookScript("OnShow", ns.RedrawWorldMap)
-        -- Zooming changes the canvas scale: redraw so pins stay one size.
-        local since = 0
-        mapOverlay:SetScript("OnUpdate", function(_, elapsed)
-            since = since + elapsed
-            if since < 0.2 then
+        -- Zooming changes the canvas scale: the spots rescaled in step with
+        -- it, so they stay one size on screen (drawing them all again every
+        -- 0.2 s let them grow and shrink with the zoom in between, then jump).
+        -- As the map rescales its own pins, and each frame too, for a zoom
+        -- that doesn't say so (OpenMap's own view in a fight).
+        -- And while the zoom moves they fade out, and back in once it stops,
+        -- as OpenMap fades other addons' map icons (its "Fade icons while
+        -- zooming" switch turns ours off too). Hidden once faded: not laid
+        -- out again on every frame of the zoom.
+        local ZOOM_REST, ZOOM_MOST = 0.08, 1.5   -- (still this long: stopped; never hidden longer than this)
+        local FADE_OUT, FADE_IN = 0.12, 0.1
+        local zoomAt, zoomFirst, alpha = nil, nil, 1
+        local function fadeOn()
+            local om = rawget(_G, "OpenMapDB")
+            return not (type(om) == "table" and type(om.worldmap) == "table" and om.worldmap.zoomHidePins == false)
+        end
+        local function rescale()
+            if drawnScale and mapPlot and WorldMapFrame:IsShown() then
+                if mapPlot:Rescale(1 / canvasScale()) and fadeOn() then
+                    local now = GetTime()
+                    zoomAt, zoomFirst = now, zoomFirst or now
+                end
+            end
+        end
+        local function setAlpha(a)
+            if a == alpha then
                 return
             end
-            since = 0
-            if drawnScale and math.abs(canvasScale() - drawnScale) > drawnScale * 0.02 then
-                ns.RedrawWorldMap()
+            alpha = a
+            for _, layer in ipairs({ mapPlot.markFrame, mapPlot.lineFrame }) do
+                if a <= 0 then
+                    layer:Hide()
+                else
+                    layer:SetAlpha(a)
+                    layer:Show()
+                end
             end
-        end)
+        end
+        local function tick(_, elapsed)
+            rescale()
+            local now = GetTime()
+            if zoomAt and now - zoomAt < ZOOM_REST and now - zoomFirst < ZOOM_MOST then
+                setAlpha(math.max(0, alpha - (elapsed or 0) / FADE_OUT))
+            else
+                zoomAt, zoomFirst = nil, nil
+                setAlpha(math.min(1, alpha + (elapsed or 0) / FADE_IN))
+            end
+        end
+        ns.ZoomFadeAlpha = function() return alpha end
+        local guarded = ns.Guard("map-rescale", rescale)
+        if WorldMapFrame.OnCanvasScaleChanged then
+            hooksecurefunc(WorldMapFrame, "OnCanvasScaleChanged", function() guarded() end)
+        end
+        mapOverlay:SetScript("OnUpdate", ns.Guard("map-zoom-fade", tick))
+        -- (a map closed mid-zoom opens with its spots showing)
+        WorldMapFrame:HookScript("OnHide", function() zoomAt, zoomFirst = nil, nil; ns.Guard("map-zoom-fade", setAlpha)(1) end)
     end)
     if not ok then
         mapOverlay = nil
@@ -1763,8 +1879,167 @@ end)
 local MINI_OUTDOOR = { 233 + 1 / 3, 200, 166 + 2 / 3, 133 + 1 / 3, 100, 66 + 2 / 3 }
 local MINI_INDOOR = { 150, 120, 90, 60, 40, 25 }
 
+-- Native tracking blips are drawn under addon frames and the client does not
+-- expose their positions. When tracking, show remembered spots as hollow
+-- rings so the game's live blips can be seen through their centers.
+local TRACKING_SPELL = { herb = 2383, ore = 2580, fish = 43308, chest = 2481 }
+local function activeGatherTracking()
+    local active = {}
+    local api = C_Minimap
+    local getCount = api and api.GetNumTrackingTypes or GetNumTrackingTypes
+    local getInfo = api and api.GetTrackingInfo or GetTrackingInfo
+    if type(getCount) ~= "function" or type(getInfo) ~= "function" then return active end
+    local ok, count = pcall(getCount)
+    if not ok or type(count) ~= "number" then return active end
+    local names = {}
+    for kind, id in pairs(TRACKING_SPELL) do
+        if C_Spell and C_Spell.GetSpellName then
+            local found, name = pcall(C_Spell.GetSpellName, id)
+            if found and type(name) == "string" then names[kind] = name end
+        end
+        if not names[kind] and C_Spell and C_Spell.GetSpellInfo then
+            local found, info = pcall(C_Spell.GetSpellInfo, id)
+            if found and type(info) == "table" and type(info.name) == "string" then names[kind] = info.name end
+        end
+        if not names[kind] and type(GetSpellInfo) == "function" then
+            local found, name = pcall(GetSpellInfo, id)
+            if found and type(name) == "string" then names[kind] = name end
+        end
+    end
+    for i = 1, count do
+        local success, info, _, enabled = pcall(getInfo, i)
+        if success then
+            local name, spellID = info, nil
+            if type(info) == "table" then name, enabled, spellID = info.name, info.active, info.spellID end
+            if enabled == true or enabled == 1 then
+                for kind, id in pairs(TRACKING_SPELL) do
+                    if spellID == id or (names[kind] and name == names[kind]) then active[kind] = true end
+                end
+            end
+        end
+    end
+    return active
+end
+
 local mini = { pins = {}, used = 0 }
 local worldCache = setmetatable({}, { __mode = "k" })
+
+-- Minimap filters are separate from the world map's filters.
+local function miniKindOn(kind)
+    local kinds = ns.db.opts.minimapKinds
+    return type(kinds) ~= "table" or kinds[kind] ~= false
+end
+
+local function refreshMiniFilter()
+    local b = mini.button
+    if not b then return end
+    local on = ns.db.opts.minimapSpots ~= false
+    b.icon:SetAlpha(on and 1 or 0.4)
+    b.off:SetShown(not on)
+    if b.menu and b.menu:IsShown() then
+        for _, row in ipairs(b.menu.rows) do
+            row.mark:SetShown(row.get())
+            row.text:SetAlpha(row.kind and not on and 0.5 or 1)
+        end
+    end
+end
+
+local function setupMiniFilter()
+    if mini.button or not Minimap then return end
+    -- Anonymous so Forever UI's addon-button drawer does not collect it.
+    local b = CreateFrame("Button", nil, Minimap)
+    b:SetSize(24, 24)
+    -- The gathering filter takes the upper slot; incoming mail sits below it.
+    b:SetPoint("TOPRIGHT", Minimap, "TOPLEFT", -4, 0)
+    b:SetFrameLevel((Minimap:GetFrameLevel() or 1) + 50)
+    local K = ns.UIKit
+    if K and K.skin then K.skin(b) end
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetPoint("CENTER")
+    b.icon:SetSize(18, 18)
+    b.icon:SetTexture("Interface\\AddOns\\ForeverGold\\Art\\gold-gather")
+    b.off = b:CreateTexture(nil, "OVERLAY")
+    b.off:SetPoint("BOTTOMRIGHT", -2, 2)
+    b.off:SetSize(7, 7)
+    b.off:SetColorTexture(0.9, 0.25, 0.2, 1)
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 0.82, 0.3, 0.16)
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+
+    local menu = CreateFrame("Frame", nil, b)
+    menu:SetPoint("TOPRIGHT", b, "TOPLEFT", -4, 0)
+    menu:SetFrameStrata("DIALOG")
+    menu:EnableMouse(true)
+    if K and K.skin then K.skin(menu) end
+    menu.rows = {}
+    local title = menu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", 10, -9)
+    title:SetText("Gathering spots")
+    local y = -32
+    local function addRow(text, kind, get, set)
+        local row = CreateFrame("Button", nil, menu)
+        row:SetSize(174, 24)
+        row:SetPoint("TOPLEFT", 6, y)
+        y = y - 25
+        row.kind, row.get = kind, get
+        local hover = row:CreateTexture(nil, "HIGHLIGHT")
+        hover:SetAllPoints()
+        hover:SetColorTexture(1, 0.82, 0.3, 0.12)
+        local box = row:CreateTexture(nil, "BACKGROUND")
+        box:SetPoint("LEFT", 4, 0)
+        box:SetSize(14, 14)
+        box:SetColorTexture(0.5, 0.4, 0.22, 1)
+        local inside = row:CreateTexture(nil, "BORDER")
+        inside:SetPoint("TOPLEFT", box, "TOPLEFT", 1, -1)
+        inside:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -1, 1)
+        inside:SetColorTexture(0.06, 0.06, 0.06, 1)
+        row.mark = row:CreateTexture(nil, "ARTWORK")
+        row.mark:SetPoint("TOPLEFT", box, "TOPLEFT", 3, -3)
+        row.mark:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -3, 3)
+        row.mark:SetColorTexture(1, 0.82, 0.2, 1)
+        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.text:SetPoint("LEFT", 25, 0)
+        row.text:SetText(text)
+        row:SetScript("OnClick", function()
+            set(not get())
+            if ns.UpdateMinimapPins then ns.UpdateMinimapPins() end
+            refreshMiniFilter()
+        end)
+        menu.rows[#menu.rows + 1] = row
+    end
+    addRow("Show on minimap", nil, function() return ns.db.opts.minimapSpots ~= false end,
+        function(on) ns.db.opts.minimapSpots = on and true or false end)
+    for _, kind in ipairs(ns.KIND_ORDER) do
+        local k = kind
+        addRow(MAP_KIND_LABELS_T[k] or k, k, function() return miniKindOn(k) end, function(on)
+            if type(ns.db.opts.minimapKinds) ~= "table" then ns.db.opts.minimapKinds = {} end
+            if on then ns.db.opts.minimapKinds[k] = nil else ns.db.opts.minimapKinds[k] = false end
+        end)
+    end
+    menu:SetSize(186, -y + 6)
+    menu:Hide()
+    b.menu, mini.button = menu, b
+    b:SetScript("OnClick", function(_, which)
+        if which == "RightButton" then
+            ns.db.opts.minimapSpots = ns.db.opts.minimapSpots == false
+            if ns.UpdateMinimapPins then ns.UpdateMinimapPins() end
+        else
+            menu:SetShown(not menu:IsShown())
+        end
+        refreshMiniFilter()
+    end)
+    b:SetScript("OnEnter", function(self)
+        if not GameTooltip then return end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Gathering spots", 1, 0.82, 0)
+        GameTooltip:AddLine("Click: choose which spots to show.", 1, 1, 1)
+        GameTooltip:AddLine("Right-click: show or hide all spots.", 0.8, 0.8, 0.8)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    refreshMiniFilter()
+end
 
 local function nodeWorld(mapID, n)
     local c = worldCache[n]
@@ -1792,6 +2067,11 @@ local function miniPin()
         p.icon = p:CreateTexture(nil, "ARTWORK")
         p.icon:SetPoint("CENTER")
         p.icon:SetSize(12, 12)
+        p.trackedRing = p:CreateTexture(nil, "OVERLAY")
+        p.trackedRing:SetPoint("CENTER")
+        p.trackedRing:SetSize(18, 18)
+        p.trackedRing:SetTexture("Interface\\AddOns\\ForeverGold\\Art\\gathering-ring")
+        p.trackedRing:Hide()
         if spotIcon(p, p.icon, p.back) then
             roundOff(p, p.ring)
         end
@@ -1819,6 +2099,7 @@ end
 
 local function updateMinimap()
     mini.used = 0
+    refreshMiniFilter()
     if ns.db.opts.minimapSpots == false or not Minimap:IsVisible() then
         hideMini(1)
         return
@@ -1840,6 +2121,7 @@ local function updateMinimap()
     local facing = rotate and ns.try(GetPlayerFacing) or nil
     local cosf, sinf = facing and math.cos(facing) or 1, facing and math.sin(facing) or 0
     local square = type(GetMinimapShape) == "function" and ns.try(GetMinimapShape) == "SQUARE"
+    local tracked = activeGatherTracking()
     local r = ns.route
     local next = r and not r.paused and r.map == mapID and r.pts[r.i] or nil
     local function place(n, isNext)
@@ -1863,18 +2145,26 @@ local function updateMinimap()
         end
         local p = miniPin()
         p.icon:SetTexture(ns.NodeIcon(n))
-        p.icon:SetAlpha(1)
+        p.icon:SetAlpha(1); p.back:SetAlpha(1); p.ring:SetAlpha(1)
         p.node, p.isNext = n, isNext
-        p.ring:SetShown(isNext)
+        local hollow = tracked[n.k] and true or false
+        p.icon:SetShown(not hollow)
+        p.back:SetShown(not hollow and not p.back.off)
+        p.ring:SetShown(isNext and not hollow)
+        p.trackedRing:SetShown(hollow)
+        if hollow then
+            local color = isNext and { 1, 0.85, 0.2 } or (ns.KINDS[n.k] and ns.KINDS[n.k].color) or { 1, 1, 1 }
+            p.trackedRing:SetVertexColor(color[1], color[2], color[3], 1)
+        end
         p:ClearAllPoints()
         p:SetPoint("CENTER", Minimap, "CENTER", x / radius * half, y / radius * half)
     end
     for _, n in ipairs(ns.db.nodes[mapID] or {}) do
-        if not n.skip and n ~= next and shownKind(n.k) then
+        if not n.skip and n ~= next and shownKind(n.k) and miniKindOn(n.k) then
             place(n, false)
         end
     end
-    if next then
+    if next and miniKindOn(next.k) then
         place(next, true)
     end
     hideMini(mini.used + 1)
@@ -1884,6 +2174,7 @@ ns.Listen("READY", function()
     if not Minimap then
         return
     end
+    setupMiniFilter()
     local f = CreateFrame("Frame", nil, Minimap)
     local since = 0
     f:SetScript("OnUpdate", function(_, elapsed)
@@ -2616,7 +2907,7 @@ local seenObjects, seenCount = {}, 0
 -- { kind =, name = }.
 local function softObject()
     local guid = UnitGUID and ns.try(UnitGUID, "softinteract")
-    if type(guid) ~= "string" or not guid:find("^GameObject") then
+    if ns.Secret(guid) or type(guid) ~= "string" or not guid:find("^GameObject") then
         return nil
     end
     local o = seenObjects[guid]

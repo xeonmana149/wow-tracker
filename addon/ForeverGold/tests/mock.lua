@@ -23,16 +23,18 @@ tinsert = table.insert
 -- Widgets
 ----------------------------------------------------------------------
 local KNOWN_EVENTS = {}
-for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_LEVEL_UP", "GET_ITEM_INFO_RECEIVED", "MERCHANT_SHOW",
+for _, e in ipairs({ "ADDON_LOADED", "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN", "PLAYER_LOGIN", "PLAYER_LEVEL_UP", "GET_ITEM_INFO_RECEIVED", "MERCHANT_SHOW",
     "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", "AUCTION_HOUSE_BROWSE_RESULTS_ADDED", "AUCTION_HOUSE_THROTTLED_SYSTEM_READY",
     "AUCTION_HOUSE_BROWSE_FAILURE", "REPLICATE_ITEM_LIST_UPDATE", "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED",
     "OWNED_AUCTIONS_UPDATED", "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED",
-    "BAG_UPDATE_DELAYED", "PLAYER_MONEY", "SKILL_LINES_CHANGED", "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_SUCCEEDED",
+    "BAG_UPDATE_DELAYED", "PLAYER_REGEN_ENABLED", "CURSOR_CHANGED", "TRADE_CLOSED", "PLAYER_MONEY", "SKILL_LINES_CHANGED", "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_SUCCEEDED",
     "LOOT_READY", "LOOT_OPENED", "NEW_RECIPE_LEARNED", "UNIT_HEALTH", "LOOT_SLOT_CLEARED", "LOOT_CLOSED",
     "MAIL_SHOW", "MAIL_CLOSED", "MERCHANT_CLOSED", "PLAYER_LOGOUT", "AUCTION_HOUSE_AUCTION_CREATED", "PLAYER_DEAD",
     "QUEST_COMPLETE", "QUEST_FINISHED", "QUEST_TURNED_IN", "MAP_EXPLORATION_UPDATED" }) do
     KNOWN_EVENTS[e] = true
 end
+
+M.knownEvents = KNOWN_EVENTS -- other addons' tests (Forever UI) add their own
 
 local methods = {}
 local widgetMT
@@ -47,6 +49,8 @@ M.newWidget = newWidget
 
 function methods:SetScript(k, fn) self._scripts[k] = fn end
 function methods:GetScript(k) return self._scripts[k] end
+function methods:SetAttribute(k, v) self._attributes = self._attributes or {}; self._attributes[k] = v end
+function methods:GetAttribute(k) return self._attributes and self._attributes[k] end
 function methods:HookScript(k, fn)
     local old = self._scripts[k]
     self._scripts[k] = function(...) if old then old(...) end fn(...) end
@@ -61,6 +65,9 @@ function methods:SetShown(s) if s then self:Show() else self:Hide() end end
 function methods:IsShown() return self._shown end
 function methods:IsVisible() return self._shown end
 function methods:CreateTexture() return newWidget("Texture", nil, self) end
+function methods:CreateMaskTexture() return newWidget("MaskTexture", nil, self) end
+function methods:AddMaskTexture(mask) self._masks = self._masks or {}; self._masks[mask] = true end
+function methods:RemoveMaskTexture(mask) if self._masks then self._masks[mask] = nil end end
 function methods:CreateFontString() return newWidget("FontString", nil, self) end
 function methods:CreateLine() return newWidget("Line", nil, self) end
 function methods:SetText(t) if t == nil then error("SetText(nil)") end self._text = tostring(t) end
@@ -71,6 +78,8 @@ function methods:SetHeight(h) assert(type(h) == "number", "SetHeight needs a num
 function methods:GetWidth() return self._w end
 function methods:GetHeight() return self._h end
 function methods:GetSize() return self._w, self._h end
+function methods:SetScale(s) self._scale = s end
+function methods:GetScale() return self._scale or 1 end
 function methods:GetStringHeight() return 12 * math.max(1, math.ceil(#self._text / 110)) end
 function methods:GetCenter() return 100, 100 end
 function methods:GetLeft() return 900 end
@@ -97,7 +106,7 @@ function methods:GetPoint(i)
 end
 function methods:SetStartPoint(point, rel, x, y) assert(type(x) == "number" and type(y) == "number" and x == x and y == y, "bad line start") end
 function methods:SetEndPoint(point, rel, x, y) assert(type(x) == "number" and type(y) == "number" and x == x and y == y, "bad line end") end
-function methods:SetColorTexture(r, g, b, a) assert(type(r) == "number" and type(g) == "number" and type(b) == "number", "SetColorTexture needs numbers") end
+function methods:SetColorTexture(r, g, b, a) assert(type(r) == "number" and type(g) == "number" and type(b) == "number", "SetColorTexture needs numbers"); self._color = { r, g, b, a } end
 function methods:SetTexture(t) assert(t ~= nil, "SetTexture(nil)"); self._texture = t end
 function methods:SetAtlas(a) assert(type(a) == "string", "SetAtlas needs a name"); self._atlas = a end
 function methods:SetOwner(owner, anchor) assert(owner ~= nil and type(anchor) == "string", "SetOwner") ; self._lines = {} end
@@ -337,7 +346,7 @@ M.recipes = {
     [99999] = { name = "Unlearned Thing", out = 2853, r = {}, unlearned = true },
 }
 Enum = {
-    AuctionHouseFilter = { PoorQuality = 6, CommonQuality = 7, UncommonQuality = 8, RareQuality = 9, EpicQuality = 10, LegendaryQuality = 11, ArtifactQuality = 12 },
+    AuctionHouseFilter = { UncollectedOnly = 1, UsableOnly = 2, ExactMatch = 5, PoorQuality = 6, CommonQuality = 7, UncommonQuality = 8, RareQuality = 9, EpicQuality = 10, LegendaryQuality = 11, ArtifactQuality = 12 },
     AuctionHouseSortOrder = { Price = 0, Name = 1 },
     CraftingReagentType = { Modifying = 0, Basic = 1, Finishing = 2 },
     TooltipDataType = { Item = 0 },
@@ -391,7 +400,7 @@ C_AuctionHouse = {}
 -- M.throttle = false: the auction house is busy ("you are doing that too fast").
 function C_AuctionHouse.IsThrottledMessageSystemReady() return M.throttle ~= false end
 function C_AuctionHouse.SendBrowseQuery(q)
-    assert(type(q) == "table" and type(q.searchString) == "string" and #q.filters >= 7 and #q.sorts == 2, "bad browse query")
+    assert(type(q) == "table" and type(q.searchString) == "string" and type(q.filters) == "table" and #q.sorts == 2, "bad browse query")
     M.queries = (M.queries or 0) + 1
     M.lastBrowse = q
     M.browseCount = (M.browseCount or 0) + 1
@@ -1192,8 +1201,19 @@ function C_TooltipInfo.GetBagItem(bag, slot)
     end
     return { lines = lines }
 end
--- Pawn's upgrade check
-function PawnIsContainerItemAnUpgrade(bag, slot) return M.pawnUp and M.pawnUp[bag .. ":" .. slot] or false end
+-- Pawn 2.14's public bag API: a link, level check, and a tri-state answer.
+-- Deliberately do not invent PawnIsContainerItemAnUpgrade: it is not in
+-- the installed addon, which let the old test pass while real arrows failed.
+PawnIsInitialized = true
+PawnCommon = { ShowBagUpgradeAdvisor = true }
+function PawnShouldItemLinkHaveUpgradeArrow(link, checkLevel)
+    M.pawnCalls = M.pawnCalls or {}
+    table.insert(M.pawnCalls, { link, checkLevel })
+    if M.pawnError then error("Pawn unavailable") end
+    if M.pawnPending and M.pawnPending[link] then return nil end
+    return M.pawnUp and M.pawnUp[link] == true or false
+end
+function PawnResetBags() end
 -- faces
 function UnitRace() return "Orc", "Orc" end
 function UnitSex() return 2 end

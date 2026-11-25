@@ -162,13 +162,9 @@ const updated = versionsText
 if (!dryRun) fs.writeFileSync(VERSIONS_TS, updated);
 log(`lib/versions.ts -> addon ${addonVersion}, tray ${trayVersion}, Forever Gold ${fgVersion}`);
 
-const toCommit = ["lib/versions.ts", "addon/WoWForeverTracker", "addon/ForeverGold", ...includes];
+const toCommit = ["lib/versions.ts", "scripts/release.mjs", "addon/WoWForeverTracker", "addon/ForeverGold", ...includes];
 run("git", ["add", "--", ...toCommit], SITE_DIR);
-const message = [
-  `Release tray ${trayVersion}, addon ${addonVersion}, Forever Gold ${fgVersion}`,
-  "",
-  "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
-].join("\n");
+const message = `Release tray ${trayVersion}, addon ${addonVersion}, Forever Gold ${fgVersion}`;
 run("git", ["commit", "-m", message, "--", ...toCommit], SITE_DIR);
 run("git", ["push", "origin", "main"], SITE_DIR);
 

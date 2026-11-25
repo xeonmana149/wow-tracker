@@ -205,6 +205,18 @@ end
 local function tg(sub)
     return function(it) return it.c == 7 and it.s == sub end
 end
+local function recipe(sub)
+    return function(it) return it.c == 9 and it.s == sub end
+end
+
+-- Classic raw gemstones are trade goods on Forever, not item class 3.
+-- Other trade goods share their subclass, so match these by ID instead.
+local rawGems = {
+    [774] = true, [818] = true, [1210] = true, [1206] = true,
+    [1705] = true, [1529] = true, [3864] = true, [7909] = true,
+    [7910] = true, [11754] = true, [12361] = true, [12364] = true,
+    [12799] = true, [12800] = true,
+}
 
 MB.CATS = {
     { key = "cloth", name = "Cloth & bolts", icon = 2589, test = tg(5) },
@@ -214,7 +226,7 @@ MB.CATS = {
     { key = "elemental", name = "Elemental", icon = 7067, test = tg(10) },
     { key = "enchanting", name = "Enchanting materials", icon = 10940, test = tg(12) },
     { key = "cooking", name = "Meat & fish", icon = 2672, test = tg(8) },
-    { key = "gems", name = "Gems", icon = 818, test = function(it) return it.c == 3 end },
+    { key = "gems", name = "Gems", icon = 818, test = function(it, id) return it.c == 3 or (it.c == 7 and rawGems[id]) end },
     -- Only the mage's Comprehension scrolls ("Scroll: KWYJIBO", "Scroll: UPDOG"...),
     -- never stat scrolls ("Scroll of Strength"), which sit in the same subclass.
     { key = "scrolls", name = "Comprehension scrolls", icon = 211780,
@@ -222,6 +234,17 @@ MB.CATS = {
         tip = "The mage's Comprehension scrolls (Scroll: KWYJIBO, Scroll: UPDOG...). Stat scrolls like Scroll of Strength aren't included." },
     { key = "stock", name = "Auction stock", icon = nil, stock = true,
         tip = "Only what you have ticked to sell on the auction window's Sell tab." },
+    { key = "recipe_blacksmithing", name = "Blacksmithing recipes", icon = 2881, group = "recipes", test = recipe(4) },
+    { key = "recipe_alchemy", name = "Alchemy recipes", icon = 2553, group = "recipes", test = recipe(6) },
+    { key = "recipe_enchanting", name = "Enchanting recipes", icon = 6342, group = "recipes", test = recipe(8) },
+    { key = "recipe_engineering", name = "Engineering recipes", icon = 4408, group = "recipes", test = recipe(3) },
+    { key = "recipe_leatherworking", name = "Leatherworking recipes", icon = 2406, group = "recipes", test = recipe(1) },
+    { key = "recipe_tailoring", name = "Tailoring recipes", icon = 5772, group = "recipes", test = recipe(2) },
+    { key = "recipe_cooking", name = "Cooking recipes", icon = 2697, group = "recipes", test = recipe(5) },
+    { key = "recipe_firstaid", name = "First Aid recipes", icon = 16084, group = "recipes", test = recipe(7) },
+    { key = "recipe_fishing", name = "Fishing recipes", icon = 16083, group = "recipes", test = recipe(9) },
+    { key = "recipe_jewelcrafting", name = "Jewelcrafting recipes", icon = 20854, group = "recipes", test = recipe(10) },
+    { key = "recipe_inscription", name = "Inscription recipes", icon = 39354, group = "recipes", test = recipe(11) },
 }
 MB.CAT = {}
 for _, c in ipairs(MB.CATS) do
@@ -245,7 +268,7 @@ function MB.InCategory(key, id)
     if not it or not it.c then
         return false
     end
-    return cat.test(it) and true or false
+    return cat.test(it, id) and true or false
 end
 
 ----------------------------------------------------------------------
@@ -919,7 +942,7 @@ function MB.PlanBanker()
 end
 
 -- A mail you write yourself. form = { to = name, subject, body, money,
--- cod, picks = { ["bag:slot"] = true } }
+-- cod, picks = { ["bag:slot"] = { id, count } } }
 function MB.PlanCustom(form)
     local plan = newPlan("custom")
     form = form or {}
@@ -931,11 +954,19 @@ function MB.PlanCustom(form)
     end
     local key = keyByName(to)
     local _, stacks = MB.ScanBags()
-    local atts, sums, list = {}, {}, {}
+    local atts, sums, list, seen = {}, {}, {}, {}
     for _, s in ipairs(stacks) do
-        if form.picks and form.picks[s.bag .. ":" .. s.slot] then
-            if s.why then
+        local slotKey = s.bag .. ":" .. s.slot
+        local pick = form.picks and form.picks[slotKey]
+        if pick then
+            seen[slotKey] = true
+            if type(pick) == "table" and (pick.id ~= s.id or pick.count ~= s.count) then
+                plan.problem = plan.problem or "A selected stack changed. Clear or reselect it before sending."
+            elseif s.why then
                 plan.skipped[#plan.skipped + 1] = { id = s.id, why = s.why }
+                if type(pick) == "table" then
+                    plan.problem = plan.problem or "A selected stack can't be mailed right now. Clear or reselect it."
+                end
             else
                 atts[#atts + 1] = { id = s.id, count = s.count, bag = s.bag, slot = s.slot }
                 if not sums[s.id] then
@@ -944,6 +975,11 @@ function MB.PlanCustom(form)
                 end
                 sums[s.id].qty = sums[s.id].qty + s.count
             end
+        end
+    end
+    for slotKey, pick in pairs(form.picks or {}) do
+        if pick and not seen[slotKey] then
+            plan.problem = plan.problem or "A selected stack moved or disappeared. Clear or reselect it before sending."
         end
     end
     if #atts > MB.MaxAttach() then
@@ -963,7 +999,7 @@ function MB.PlanCustom(form)
     if not plan.problem and #atts == 0 and money == 0 and (form.subject or "") == "" then
         plan.problem = "Add a subject, an attachment or some gold."
     end
-    local ship = { to = key or to, name = to, custom = not key, atts = atts, items = list, keep = {}, money = money,
+    local ship = { to = key or to, name = to, custom = not key, compose = true, atts = atts, items = list, keep = {}, money = money,
         cod = cod, subject = (form.subject and form.subject ~= "") and form.subject or nil, body = form.body or "",
         n = 1, of = 1, postage = MB.Postage(#atts), status = "planned", exact = true }
     if not ship.subject then
@@ -1182,7 +1218,7 @@ end
 local collectStep
 
 local function finishCollect(kind, text)
-    Q.mode, Q.op, Q.only = nil, nil, nil
+    Q.mode, Q.op, Q.only, Q.selectedMail = nil, nil, nil, nil
     newToken()
     setStatus(kind, text)
 end
@@ -1203,7 +1239,33 @@ local function nextTake()
     local only = Q.only
     local free = freeSlots()
     local bagsFull = false
-    for _, m in ipairs(readInbox()) do
+    local inbox = readInbox()
+    if Q.selectedMail then
+        local selected, m = Q.selectedMail, nil
+        for _, candidate in ipairs(inbox) do if candidate.index == selected.index then m = candidate; break end end
+        if not m or not sameMail(m, selected.fp) or m.restricted == "cod" or m.restricted == "pending"
+            or m.money ~= selected.money or #m.items ~= #selected.items then
+            return nil, "The selected mail changed or moved. Select it again before collecting."
+        end
+        local unmatched = {}
+        for i, item in ipairs(selected.items) do unmatched[i] = item end
+        for _, item in ipairs(m.items) do
+            local found
+            for i, expected in ipairs(unmatched) do
+                if item.id == expected.id and (item.count or 1) == expected.count then found = i; break end
+            end
+            if not found then return nil, "The selected mail changed. Select it again before collecting." end
+            table.remove(unmatched, found)
+        end
+        if m.money > 0 then return { m = m, what = "money" } end
+        if #m.items > 0 then
+            if free == 0 then return nil, "Your bags are full. Make room and collect again." end
+            local item = m.items[1]
+            return { m = m, what = "item", a = item.a, id = item.id, count = item.count }
+        end
+        return nil
+    end
+    for _, m in ipairs(inbox) do
         local key = m.fp.sender .. "|" .. m.fp.subject
         if only then
             if sameMail(m, only.fp) then
@@ -1274,6 +1336,18 @@ local function takeResolved(op, ok, note)
         local why = Q.stopWhy or "Stopped."
         Q.stopAfter, Q.stopWhy = nil, nil
         finishCollect("error", collectSummary() .. " " .. why)
+        return
+    end
+    if Q.selectedMail then
+        if not ok then finishCollect("error", collectSummary() .. " " .. (note or "The server said no.")); return end
+        if op.what == "money" then Q.selectedMail.money = 0
+        else
+            for i, item in ipairs(Q.selectedMail.items) do
+                if item.id == op.id and item.count == (op.count or 1) then table.remove(Q.selectedMail.items, i); break end
+            end
+        end
+        if Q.selectedMail.money == 0 and #Q.selectedMail.items == 0 then finishCollect("done", collectSummary()); return end
+        later(PACE, collectStep)
         return
     end
     if Q.only then
@@ -1359,7 +1433,7 @@ collectStep = function()
     end)
 end
 
-local function startCollect(goldOnly, only)
+local function startCollect(goldOnly, only, selectedMail)
     if not MB.open then
         return false, "Open a mailbox first."
     end
@@ -1367,9 +1441,10 @@ local function startCollect(goldOnly, only)
         return false, Q.mode == "send" and "Busy sending mail. Wait for it to finish." or "Already collecting."
     end
     Q.mode, Q.op, Q.only, Q.goldOnly = "collect", nil, only, goldOnly
+    Q.selectedMail = selectedMail
     Q.failed, Q.got, Q.skippedTakes, Q.lastProblem, Q.stopAfter, Q.busyTicks = {}, { money = 0, items = 0 }, 0, nil, nil, 0
     newToken()
-    setStatus("working", only and "Taking it..." or (goldOnly and "Collecting gold..." or "Collecting mail..."))
+    setStatus("working", only and "Taking it..." or (selectedMail and "Collecting selected mail..." or (goldOnly and "Collecting gold..." or "Collecting mail...")))
     collectStep()
     return true
 end
@@ -1382,6 +1457,20 @@ end
 
 function MB.CollectGold()
     return startCollect(true)
+end
+
+-- Collect just the selected message, checking its contents again before every take.
+function MB.CollectMail(m)
+    if not m then return false, "Pick a mail first." end
+    if m.restricted == "cod" then return false, "This is C.O.D. Open the game's mailbox to pay for it." end
+    if m.restricted == "pending" then return false, "This auction sale is still pending." end
+    if (m.money or 0) <= 0 and #m.items == 0 then return false, "This mail has no gold or attachments to collect." end
+    local selected = { index = m.index, fp = m.fp, money = m.money or 0, items = {} }
+    for _, item in ipairs(m.items) do
+        if not item.id then return false, "Wait for the attachment details to load and try again." end
+        selected.items[#selected.items + 1] = { id = item.id, count = item.count or 1 }
+    end
+    return startCollect(false, nil, selected)
 end
 
 -- One attachment (or the gold) of the mail you picked.

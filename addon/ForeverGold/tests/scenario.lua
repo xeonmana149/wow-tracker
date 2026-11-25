@@ -45,6 +45,21 @@ M.fire("ADDON_LOADED", "ForeverGold")
 M.fire("PLAYER_LOGIN")
 M.advance(10)
 check(ns.ready, "addon ready")
+do
+    M.fire("ADDON_ACTION_BLOCKED", "AnotherAddon", "OtherFunction")
+    check(ns.db.lastBlockedAction == nil, "blocked actions from other addons are not attributed to Forever Gold")
+    M.fire("ADDON_ACTION_BLOCKED", "ForeverGold", "UseContainerItem")
+    check(ns.db.lastBlockedAction and ns.db.lastBlockedAction.action == "UseContainerItem",
+        "blocked action diagnostics record the protected function without enabling error popups")
+    ns.db.lastBlockedAction = nil
+    local previous = issecretvalue
+    issecretvalue = function(value) return value == "restricted target" end
+    local errors = #ns.errors
+    M.fire("UNIT_SPELLCAST_SENT", "player", "restricted target", "cast", 3365)
+    check(not ns.IsChestName("restricted target") and #ns.errors == errors,
+        "restricted spell targets are not inspected by gathering or farming trackers")
+    issecretvalue = previous
+end
 check(ns.realmKey == "6801-Horde", "price book key " .. tostring(ns.realmKey))
 check(ns.Char().name == "Xeon Mana", "full name read: " .. tostring(ns.Char().name))
 check(ns.Char().profs.Mining and ns.Char().profs.Mining.skill == 98, "professions read")
@@ -67,6 +82,14 @@ for _, key in ipairs({ "today", "craft", "farm", "bags", "deals", "routes", "tip
     pokeRows()
 end
 ns.ShowTab("today")
+check(ForeverGoldMinimapButton.icon._texture == ns.UIKit.LOGO and ns.UIKit.LOGO:find("gold%-logo%.tga")
+    and ns.UIKit.COIN:find("gold%-coin%.tga"), "the minimap and shared money symbols use the matching Forever Gold art")
+local accountIcon
+for i = 1, ForeverGoldFrame.list.count do
+    local row = ForeverGoldFrame.list.rows[i]
+    if row.d and row.d.icon == ns.UIKit.LOGO then accountIcon = row end
+end
+check(accountIcon and not accountIcon.iconEdge:IsShown(), "a transparent addon icon has no item-quality square behind it")
 dumpRows("Today (no data)", 12)
 
 out("== profession window")
@@ -200,9 +223,17 @@ do
 end
 
 out("== vendor visit")
+local beforeVendorMessages = #M.printed
 M.fire("MERCHANT_SHOW")
 M.advance(2)
 check(ns.db.vendor[5772] and ns.db.vendor[5772].lim == true, "limited-stock pattern recorded")
+do
+    local announced = false
+    for i = beforeVendorMessages + 1, #M.printed do
+        if M.printed[i]:find("this vendor sells", 1, true) then announced = true end
+    end
+    check(not announced, "visiting a profitable vendor does not announce deals in chat")
+end
 local deals = ns.VendorDeals()
 check(#deals == 1 and deals[1].id == 5772, "vendor->auction deal: pattern 5s at vendor / 40s at auction (flux's 1s85c is under the 5s minimum)")
 check(select(1, ns.VendorBuy(2880)) == 100, "weak flux vendor price learned")
@@ -526,9 +557,12 @@ ns.OpenSell(3576); M.advance(1)
 job = ns.SellJob()
 check(job.state == "ready" and not job.decision.ok and job.decision.why == "floor" and job.floor == 233, "below the floor (233c): refuses")
 out("    " .. strip(ForeverGoldSellFrame.body:GetText()):gsub("\n\n", "\n    "))
-ForeverGoldSellFrame.post._scripts.OnClick(ForeverGoldSellFrame.post)
+check(strip(ForeverGoldSellFrame.post.text:GetText()) == "Post anyway", "below-floor sale offers an explicit override")
 ns.SellPost()
-check(#M.posted == 1, "Post is dead when the price is under the floor")
+check(#M.posted == 1, "normal post remains blocked under the floor")
+ForeverGoldSellFrame.post:Click(); M.advance(1)
+check(#M.posted == 2 and M.posted[2].id == 3576 and M.posted[2].price == 199,
+    "the single-item Post anyway button explicitly posts the below-floor price")
 ns.CloseSell()
 
 -- Stale prices are re-checked instead of posted
@@ -538,10 +572,10 @@ check(ns.SellJob().decision.price == 11, "Rough Stone priced at 11c")
 M.advance(120)
 local before = M.searches
 ns.SellPost()
-check(#M.posted == 1 and M.searches == before + 1 and ns.SellJob().state == "checking", "prices over 90s old are checked again, not posted")
+check(#M.posted == 2 and M.searches == before + 1 and ns.SellJob().state == "checking", "prices over 90s old are checked again, not posted")
 M.advance(1)
 ns.SellPost(); M.advance(1)
-check(#M.posted == 2 and M.posted[2].price == 11 and M.posted[2].qty == 20, "second press posts one stack (20 of 23)")
+check(#M.posted == 3 and M.posted[3].price == 11 and M.posted[3].qty == 20, "second press posts one stack (20 of 23)")
 ns.CloseSell()
 
 -- The auction house asks "are you sure?"
@@ -894,6 +928,8 @@ check(ns.route.i ~= before, "arriving advances to the next stop")
 -- loot beam: a gold column on the game's waypoint marker while on a route
 do
     local B = ns.Beam
+    check(ns.db.opts.lootBeam == false, "loot beams start off")
+    ns.db.opts.lootBeam = true -- exercise the optional beam implementation below
     M.navDistance = 60
     M.update(0.05)
     local f = B.frame
@@ -1027,7 +1063,8 @@ do
     local wp = ns.WorldMapPlot()
     check(wp and wp.usedMarks == 8 and wp.usedLines > 0, "world map: every spot and the route: " .. tostring(wp and wp.usedMarks))
     local mk = wp.marks[1]
-    check(not mk.back:IsShown() and mk._mouse, "spot icons have no dark square behind them, and notice the mouse")
+    check((not mk.back:IsShown() or mk.back._masks) and mk._mouse,
+        "spot icons have a round background or none, and notice the mouse")
     GameTooltip._lines = {}
     mk._scripts.OnEnter(mk)
     local tipHead = strip(GameTooltip._lines[1] or "")
@@ -1047,6 +1084,87 @@ do
     ns.RedrawWorldMap()
     check(toggles.spots and toggles.minimap and events.OpenMap_StitchedChanged, "OpenMap gets our switches and tells us when it changes")
     check(wp.usedMarks == 8, "spots drawn on OpenMap's stitched map too")
+    do
+        -- zooming: every spot keeps its size on screen and its place, nothing drawn again
+        local zoom = 2
+        local oldScale = WorldMapFrame.GetCanvasScale
+        WorldMapFrame.GetCanvasScale = function() return zoom end
+        ns.RedrawWorldMap()
+        local mk, lines = wp.marks[1], wp.usedLines
+        local function placed(m)
+            local p = m._points[1]
+            return p[4] * m:GetScale(), -p[5] * m:GetScale()
+        end
+        local x0, y0 = placed(mk)
+        check(math.abs(mk:GetScale() - 0.5) < 1e-9 and math.abs(x0 - mk.px) < 1e-6 and math.abs(y0 - mk.py) < 1e-6,
+            "a spot on a zoomed map is scaled down by the zoom and stays where it belongs")
+        local draws, realDraw = 0, wp.Draw
+        wp.Draw = function(...) draws = draws + 1; return realDraw(...) end
+        zoom = 5
+        M.update(0.016)
+        local x1, y1 = placed(mk)
+        check(draws == 0 and wp.marks[1] == mk and math.abs(mk:GetScale() - 0.2) < 1e-9
+            and math.abs(x1 - x0) < 1e-6 and math.abs(y1 - y0) < 1e-6 and wp.usedLines >= lines,
+            "zooming on rescales the same spots the very next frame, in place, without drawing them again")
+        check(wp.usedLines > lines, "and the route's legs, longer on screen now, get their direction arrows")
+        wp.Draw = realDraw
+        WorldMapFrame.GetCanvasScale = oldScale
+        ns.RedrawWorldMap()
+        check(mk:GetScale() == 1, "back at no zoom: full size")
+    end
+    do
+        -- zooming fades the spots and the route out, and back in once it stops
+        local zoom = 1
+        local oldScale = WorldMapFrame.GetCanvasScale
+        WorldMapFrame.GetCanvasScale = function() return zoom end
+        ns.RedrawWorldMap()
+        local function frames(n, zooming)
+            for _ = 1, n do
+                if zooming then zoom = zoom * 1.02 end
+                M.clock = M.clock + 1 / 60
+                M.update(1 / 60)
+            end
+        end
+        frames(40)      -- (the zoom checks above left a fade under way)
+        check(ns.ZoomFadeAlpha() == 1 and wp.markFrame:IsShown(), "still: the spots show")
+        frames(12, true)
+        check(ns.ZoomFadeAlpha() == 0 and not wp.markFrame:IsShown() and not wp.lineFrame:IsShown(),
+            "zooming: the spots and the route fade out and are hidden")
+        frames(3)
+        check(ns.ZoomFadeAlpha() == 0, "a moment's pause in the zoom keeps them away")
+        frames(12)      -- (stopped after 0.08 s, back in over 0.1 s)
+        check(ns.ZoomFadeAlpha() == 1 and wp.markFrame:IsShown() and wp.lineFrame:IsShown(),
+            "the zoom stopped: they fade back in")
+        OpenMapDB = { worldmap = { zoomHidePins = false } }
+        frames(12, true)
+        check(ns.ZoomFadeAlpha() == 1 and wp.markFrame:IsShown(), "OpenMap's fade-icons switch off: ours stay too")
+        OpenMapDB = nil
+        frames(12, true)
+        WorldMapFrame:Hide(); WorldMapFrame:Show()
+        check(ns.ZoomFadeAlpha() == 1 and wp.markFrame:IsShown(), "a map closed mid-zoom opens with them showing")
+        WorldMapFrame.GetCanvasScale = oldScale
+        ns.RedrawWorldMap()
+    end
+    do
+        -- only the zone you're looking at: not a neighbour's spots, not on another map
+        local all, lines = wp.usedMarks, wp.usedLines
+        ns.db.nodes[1411] = { { x = 0.5, y = 0.5, k = "herb", n = "Peacebloom" } }
+        ns.RedrawWorldMap()
+        check(wp.usedMarks == all, "a neighbouring zone's spots aren't drawn on this one")
+        local oldID, oldFrom = WorldMapFrame.GetMapID, OpenMapAPI.WorldFromMap
+        OpenMapAPI.WorldFromMap = function(m, x, y) return 0.4 + x * 0.1, 0.3 + y * 0.1 end
+        WorldMapFrame.GetMapID = function() return 1411 end
+        ns.RedrawWorldMap()
+        check(wp.usedMarks == 1 and wp.usedLines == 0, "looking at that zone: only its spot, and no route from elsewhere")
+        OpenMapAPI.WorldFromMap = oldFrom
+        WorldMapFrame.GetMapID = function() return 1414 end
+        ns.RedrawWorldMap()
+        check(wp.usedMarks == 0 and wp.usedLines == 0, "on the continent: no spots at all")
+        WorldMapFrame.GetMapID = oldID
+        ns.db.nodes[1411] = nil
+        ns.RedrawWorldMap()
+        check(wp.usedMarks == all and wp.usedLines == lines, "back on the zone: its spots and route again")
+    end
     toggles.spots.set(false)
     check(wp.usedMarks == 0 and toggles.spots.get() == false and ns.db.opts.worldMapSpots == false, "its switch hides them")
     toggles.spots.set(true)
@@ -1131,6 +1249,71 @@ do
     ns.UpdateMinimapPins()
     local near = ns.MinimapPins.used
     check(near >= 2, "minimap shows the spots around you and the next stop: " .. near)
+    local pin = ns.MinimapPins.pins[1]
+    local kind = pin.node.k
+    local filterButton = ns.MinimapPins.button
+    local buttonPoint, buttonOwner, buttonAnchor, buttonX, buttonY = filterButton:GetPoint()
+    check(buttonPoint == "TOPRIGHT" and buttonOwner == Minimap and buttonAnchor == "TOPLEFT"
+        and buttonX < 0 and buttonY == 0, "gathering filter occupies the upper slot outside the minimap")
+    filterButton:Click()
+    check(filterButton.menu:IsShown(), "gathering filter opens on left click")
+    local menuPoint, menuParent, menuRelativePoint, menuX = filterButton.menu:GetPoint()
+    check(menuPoint == "TOPRIGHT" and menuParent == filterButton and menuRelativePoint == "TOPLEFT" and menuX < 0,
+        "the gathering filter opens to the left of its button without covering the minimap")
+    local kindRow
+    for _, row in ipairs(filterButton.menu.rows) do if row.kind == kind then kindRow = row end end
+    check(kindRow ~= nil, "the minimap filter includes the recorded kind")
+    kindRow:Click()
+    local kindHidden = true
+    for i=1,ns.MinimapPins.used do if ns.MinimapPins.pins[i].node.k == kind then kindHidden = false end end
+    check(kindHidden and ns.db.opts.minimapKinds[kind] == false,
+        "the kind filter hides matching minimap pins, including route pins")
+    kindRow:Click()
+    check(ns.MinimapPins.used == near and ns.db.opts.minimapKinds[kind] == nil,
+        "turning the kind back on restores its pins")
+    filterButton:Click("RightButton")
+    check(ns.MinimapPins.used == 0 and ns.db.opts.minimapSpots == false and filterButton.off:IsShown(),
+        "right click hides all minimap spots and indicates they are off")
+    filterButton:Click("RightButton")
+    check(ns.MinimapPins.used == near and ns.db.opts.minimapSpots == true and not filterButton.off:IsShown(),
+        "right click restores minimap spots")
+    filterButton:Click()
+    local oldTracking = C_Minimap
+    local ids = { herb = 2383, ore = 2580, fish = 43308, chest = 2481 }
+    C_Minimap = { GetNumTrackingTypes = function() return 1 end,
+        GetTrackingInfo = function() return { spellID = ids[kind], active = true } end }
+    ns.UpdateMinimapPins()
+    local markersOK, foundTracked = true, false
+    for i=1,ns.MinimapPins.used do
+        local p = ns.MinimapPins.pins[i]
+        if p.node.k == kind then
+            foundTracked = true
+            markersOK = markersOK and p.trackedRing:IsShown() and not p.icon:IsShown() and not p.back:IsShown() and not p.ring:IsShown()
+        else
+            markersOK = markersOK and not p.trackedRing:IsShown() and p.icon:IsShown()
+        end
+    end
+    check(ids[kind] and foundTracked and markersOK and ns.MinimapPins.used == near,
+        "tracking preserves spots as hollow rings and keeps other kinds unchanged")
+    C_Minimap.GetTrackingInfo = function() return { spellID = ids[kind], active = false } end
+    ns.UpdateMinimapPins()
+    check(ns.MinimapPins.used == near and not ns.MinimapPins.pins[1].trackedRing:IsShown() and ns.MinimapPins.pins[1].icon:IsShown(),
+        "an inactive tracking option restores remembered icons")
+    C_Minimap.GetTrackingInfo = function() return { spellID = ids[kind], active = 0 } end
+    ns.UpdateMinimapPins()
+    check(ns.MinimapPins.used == near, "a numeric zero tracking flag is inactive")
+    local oldSpell, oldCount, oldInfo = C_Spell, GetNumTrackingTypes, GetTrackingInfo
+    C_Minimap = nil; C_Spell = { GetSpellName = function(id) if id == ids[kind] then return "Tracking name" end end }
+    GetNumTrackingTypes = function() return 1 end
+    GetTrackingInfo = function() return "Tracking name", 123, 1 end
+    ns.UpdateMinimapPins()
+    check(ns.MinimapPins.used == near and ns.MinimapPins.pins[1].trackedRing:IsShown(),
+        "legacy tracking APIs and localized spell names show hollow rings")
+    C_Spell, GetNumTrackingTypes, GetTrackingInfo = oldSpell, oldCount, oldInfo
+    C_Minimap = oldTracking
+    ns.UpdateMinimapPins()
+    check(ns.MinimapPins.used == near and ns.MinimapPins.pins[1].icon._alpha == 1 and ns.MinimapPins.pins[1].back._alpha == 1,
+        "disabling tracking restores the saved icons at full opacity")
     ns.db.opts.minimapSpots = false
     ns.UpdateMinimapPins()
     check(ns.MinimapPins.used == 0, "and can be switched off")
@@ -1283,6 +1466,17 @@ do
     M.fire("UNIT_SPELLCAST_SENT", "player", "Supply Crate", "Cast-2", 3365)
     M.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-2", 3365)
     check(#list == n0 + 1, "opening a quest crate isn't a chest")
+    M.fire("UNIT_SPELLCAST_SENT", "player", "Battered Chest", "Cast-3", 3365)
+    M.fire("UNIT_SPELLCAST_SENT", "player", "Rusty Chest", "Cast-4", 3365)
+    M.fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-4", 3365)
+    ns.RecordNode("chest", "rusty chest")
+    check(#list == n0 + 1 and not ns.IsChestName("Rusty Chest"),
+        "slime-spawned rusty chests are not recorded, including after an earlier chest cast")
+    list[#list + 1] = {k="chest", n="Rusty Chest", x=0.6, y=0.6}
+    list[#list + 1] = {k="herb", n="Rusty Chest", x=0.7, y=0.7}
+    check(ns.RemoveTemporaryChestSpots() == 1 and list[#list].k == "herb",
+        "cleanup removes recorded rusty chest spots without removing other nodes")
+    table.remove(list)
     local z
     for _, zz in ipairs(ns.NodeZones()) do if zz.map == 1413 then z = zz end end
     check(z and z.chest == 1 and ns.ZoneSummary(z):find("1 chest spot"), "zones count their chest spots: " .. (z and ns.ZoneSummary(z) or "?"))
@@ -1297,6 +1491,9 @@ check(not ns.TrackerWindowShown(), "Kills & Loot window starts closed")
 ns.ToggleTrackerWindow()
 local TW = ForeverGoldTracker
 check(TW and ns.TrackerWindowShown() and ns.db.opts.trackerShown, "Kills & Loot window opens on its own")
+check(TW.bg._color[4] == ns.UIKit.C.bg[4] and TW.titleIcon._texture:find("gold%-gather%.tga")
+    and TW.headerRule:IsShown() and TW.cells[2].separator and TW.cells[4].separator,
+    "the farming tracker has the themed translucent panel, header and separate stat cells")
 dumpRows("Kills (not started)", 3, TW.list)
 check(TW.startBig:IsShown() and not TW.reset:IsShown() and not TW.cells[1]:IsShown() and strip(TW.state:GetText()) == "Idle",
     "idle: just Start session, no Reset or Save")
@@ -1412,6 +1609,9 @@ check(sum.made > 137 and math.abs(sum.made - (sum.coin + sum.lootValue)) < 0.01,
 check(sum.net == 137 + 500 + 950 + 300 - 120, "real money in minus out: " .. sum.net)
 do
     local view = ns.TrackerUI.view
+    check(TW.tabs.kills.icon._texture:find("gold%-skull%.tga") and TW.tabs.loot.icon._texture:find("bag%-inventory%.tga")
+        and TW.tabs.money.icon._texture:find("gold%-coin%.tga") and TW.stats.icon._texture:find("farming%-stats%.tga"),
+        "the farming tracker tabs use matching gold icons")
     for _, tab in ipairs({ "kills", "loot", "money" }) do
         TW.tabs[tab]._scripts.OnClick(TW.tabs[tab])
         check(view.tab == tab, "window tab " .. tab)
@@ -1440,14 +1640,27 @@ do
         and strip(TW.state:GetText()) == "Recording" and TW.start.text:GetText() == "Stop", "recording: stats, Stop, Save and Reset")
     out("  stats: " .. strip(TW.cells[1].value:GetText()) .. " | " .. strip(TW.cells[2].value:GetText()) .. " | "
         .. strip(TW.cells[3].value:GetText()) .. " | " .. strip(TW.cells[4].value:GetText()))
+    local expandedWidth = TW:GetWidth()
     TW.fold._scripts.OnClick(TW.fold)
-    check(ns.db.opts.trackerCollapsed and TW:GetHeight() == 22 and TW:GetWidth() < 286 and TW.head:IsShown(),
-        "fold down to a narrow status strip")
+    check(ns.db.opts.trackerCollapsed and TW:GetHeight() == 22 and TW:GetWidth() == expandedWidth and TW.head:IsShown(),
+        "fold down to a status strip with the same width")
+    check(TW.compactToggle:IsShown() and TW.compactReset:IsShown() and TW.compactToggle.stop:IsShown(),
+        "minimized tracker exposes stop and reset controls")
+    TW.compactToggle._scripts.OnClick(TW.compactToggle)
+    check(not ns.TrackerRunning() and TW.compactToggle.play:IsShown(), "minimized stop pauses the session")
+    TW.compactToggle._scripts.OnClick(TW.compactToggle)
+    check(ns.TrackerRunning() and TW.compactToggle.stop:IsShown(), "minimized start resumes the session")
+    check(not TW.headerRule:IsShown() and not TW.titleIcon:IsShown(), "the folded strip avoids a doubled border and hides the expanded title icon")
     TW.fold._scripts.OnClick(TW.fold)
     check(not ns.db.opts.trackerCollapsed and TW:GetHeight() > 22, "and back")
     M.update(1.1)
     out("  window: " .. strip(TW.head:GetText()))
     check(strip(TW.head:GetText()):find("/hr"), "gold per hour in the window's top line")
+    TW.fold._scripts.OnClick(TW.fold)
+    TW.compactReset._scripts.OnClick(TW.compactReset)
+    check(ns.TrackerRunning() and ns.Tracker().kills == 0 and ns.Tracker().coin == 0,
+        "minimized reset clears the session and keeps it running")
+    TW.fold._scripts.OnClick(TW.fold)
 end
 -- reset keeps it running, from zero
 ns.TrackerReset()
@@ -1826,8 +2039,10 @@ M.repSilent = true
 q0 = M.queries
 M.fire("AUCTION_HOUSE_SHOW"); ns.StartScan(); M.advance(45)
 check(M.queries == q0 and ns.scan.active and ns.scan.mode == "replicate", "a slow download is waited for (45s in, still waiting)")
+check(ns.ScanElapsed() == "0:45", "the scan timer reports elapsed minutes and seconds while waiting")
 M.advance(60)
 check(M.queries == q0 + 1 and not ns.scan.active and ns.AHPrice(2841) == 420, "no download at all -> falls back to the slow scan by itself")
+check(ns.ScanElapsed() == nil, "the scan timer stops when the scan finishes")
 M.repSilent = false
 
 -- a big auction house whose download takes 30 seconds still gets the fast scan
@@ -2030,6 +2245,20 @@ do
     M.fire("AUCTION_HOUSE_CLOSED")
 end
 
+do
+    local original = CreateFrame
+    local usedTemplate, called
+    CreateFrame = function(kind, name, parent, template)
+        usedTemplate = template
+        return original(kind, name, parent, template)
+    end
+    local close = ns.UIKit.closeButton(UIParent, 24, 24, function() called = true end)
+    CreateFrame = original
+    close:Click()
+    check(usedTemplate == "UIPanelCloseButton" and called and close:GetWidth() == 24,
+        "the shared close control uses the game's red-and-gold button and preserves its action")
+end
+
 out("")
 out("== our own auction window")
 do
@@ -2038,6 +2267,19 @@ do
     M.fire("AUCTION_HOUSE_SHOW"); M.advance(60)
     local F = ForeverGoldAuctionFrame
     check(F and F:IsShown(), "talking to an auctioneer opens our window")
+    do
+        local wasActive, started = ns.scan.active, ns.scan.started
+        ns.scan.active, ns.scan.started = true, GetTime() - 65
+        A.RefreshHead()
+        check(F.scan.text:GetText() == "Scan 1:05", "the auction scan button shows a live elapsed timer")
+        ns.scan.active = false
+        A.RefreshHead()
+        check(F.scan.text:GetText() == "Scan prices", "the scan button returns to its normal label when finished")
+        ns.scan.active, ns.scan.started = wasActive, started
+    end
+    check(F.tabs.browse.icon._texture:find("bag%-search%.tga") and F.tabs.sell.icon._texture:find("gold%-auction%.tga")
+        and F.tabs.auctions.icon._texture:find("auction%-listings%.tga") and F.tabs.deals.icon._texture:find("auction%-deals%.tga"),
+        "auction navigation uses distinct matching gold icons")
     check(AuctionHouseFrame._scale == 0.001 and AuctionHouseFrame._alpha == 0 and AuctionHouseFrame._mouse == false,
         "the game's window is shrunk out of the way, not closed")
     check(not (ForeverGoldAuctionStrip and ForeverGoldAuctionStrip:IsShown()), "the strip above the game's window stays hidden")
@@ -2053,6 +2295,17 @@ do
     end
     check(#A.BUY.results == 3 and allBars and not A.BUY.searching, "searching 'bar' finds the three bars: " .. table.concat(names, ", "))
     check(M.lastBrowse.searchString == "bar", "the search text reaches the auction house")
+    check(M.lastBrowse.itemClassFilters == nil, "a name search with no category searches the whole auction house")
+    local previousBrowse = M.lastBrowse
+    A.BUY.category = { name = "Weapons", top = 1, filters = { { classID = 2 } } }
+    check(A.SearchFromBag(2770, "|cff1eff00|Hitem:2770|h[Copper Ore]|h|r") and F.browse.search:GetText() == "Copper Ore"
+        and A.BUY.category == nil and M.lastBrowse == previousBrowse, "bag item fills the auction search and clears category without submitting")
+    F.browse.go:Click(); M.advance(5)
+    check(M.lastBrowse.searchString == "Copper Ore" and not M.lastBrowse.itemClassFilters, "searching the bag item includes all categories")
+    local oldChat = ChatEdit_GetActiveWindow
+    ChatEdit_GetActiveWindow = function() return { HasFocus = function() return true end } end
+    check(not A.SearchFromBag(2770, "|Hitem:2770|h[Copper Ore]|h") , "focused chat keeps shift-click for chat links")
+    ChatEdit_GetActiveWindow = oldChat
     A.Refresh()
     check(F.browse.results.view[1] ~= nil and F.browse.results.rows[1]:IsShown(), "results are listed")
 
@@ -2068,6 +2321,15 @@ do
     end
     local boots = dealText("Cheap Mail Boots")
     check(boots and boots:find("^Vendor pays"), "a real buyout under vendor price is called a deal: " .. tostring(boots))
+    do
+        local row = F.browse.results.data[1]
+        F.browse.results.onClick(row, "RightButton")
+        check(A.BUY.mode == "list" and A.IsManuallyFlagged(row.r.id)
+            and strip(F.browse.results.data[1].cells.vs) == "Flagged by you",
+            "right-click flags an item and visibly labels it in search results")
+        F.browse.results.onClick(F.browse.results.data[1], "RightButton")
+        check(not A.IsManuallyFlagged(row.r.id), "right-click again clears the flag")
+    end
     local sword, swordHint = dealText("Worn Junk Sword")
     check(sword == "Maybe - check buyouts" and swordHint:find("bid"),
         "a lowest price that's only a bid isn't called a deal: " .. tostring(sword))
@@ -2104,6 +2366,27 @@ do
     M.ctrl = false
 
     -- A category
+    F.browse.minLevel:SetText("10")
+    F.browse.maxLevel:SetText("25")
+    F.browse.flagButtons.UsableOnly:Click()
+    F.browse.flagButtons.ExactMatch:Click()
+    F.browse.qualityButtons.PoorQuality:Click()
+    F.browse.go:Click(); M.advance(5)
+    local sent = {}
+    for _, value in ipairs(M.lastBrowse.filters) do sent[value] = true end
+    check(M.lastBrowse.minLevel == 10 and M.lastBrowse.maxLevel == 25
+        and sent[Enum.AuctionHouseFilter.UsableOnly] and sent[Enum.AuctionHouseFilter.ExactMatch]
+        and not sent[Enum.AuctionHouseFilter.PoorQuality] and sent[Enum.AuctionHouseFilter.RareQuality],
+        "level, usable, exact and selected qualities are sent to the auction house")
+    local previousQuery = M.queries
+    F.browse.minLevel:SetText("30")
+    F.browse.go:Click()
+    check(M.queries == previousQuery and A.BUY.message:find("valid level range"),
+        "an inverted level range is rejected before sending a query")
+    F.browse.clearFilters:Click()
+    F.browse.go:Click(); M.advance(5)
+    check(M.lastBrowse.minLevel == 0 and M.lastBrowse.maxLevel == 0 and #M.lastBrowse.filters == 7,
+        "clearing filters restores the unrestricted query")
     A.openCategory = nil
     F.browse.cats.onClick({ name = "Trade Goods", top = 2, filters = { { classID = 7 } } }); M.advance(5)
     check(M.lastBrowse.itemClassFilters and M.lastBrowse.itemClassFilters[1].classID == 7 and A.openCategory == 2,
@@ -2133,6 +2416,28 @@ do
     local flips = #ns.VendorFlips() + #ns.Bargains()
     check(A.BUY.deals and flips > 0 and #A.BUY.results == flips, "Deals lists the bargains from the last scan: " .. #A.BUY.results)
     A.Refresh()
+    check(F.browse.dealFilters:IsShown() and not F.browse.filters:IsShown(), "Deals has its own visible filters")
+    do
+        local oldFlips, oldBargains, oldPrice, oldSpeed = ns.VendorFlips, ns.Bargains, ns.AHPrice, ns.SaleSpeed
+        ns.VendorFlips = function() return { { id = 2840, price = 100, vendor = 200, profit = 100 } } end
+        ns.Bargains = function() return { { id = 2770, price = 250, profit = 50 } } end
+        ns.AHPrice = function() return 250, 1 end
+        ns.SaleSpeed = function(id) if id == 2840 then return "fast", { through = 75, perDay = 30 } end end
+        F.browse.dealKind:Click()
+        check(#A.BUY.results == 1 and A.BUY.results[1].id == 2840, "deal type filter selects below-vendor buyouts")
+        F.browse.dealKind:Click()
+        check(#A.BUY.results == 1 and A.BUY.results[1].id == 2770, "deal type filter selects below-usual bargains")
+        F.browse.dealKind:Click(); F.browse.dealSpeed:Click()
+        check(#A.BUY.results == 1 and A.BUY.results[1].id == 2840, "speed filter excludes deals without a matching estimate")
+        F.browse.dealMax:SetText("50c"); F.browse.go:Click()
+        check(#A.BUY.results == 0, "maximum price filters per-item prices")
+        F.browse.dealMax:SetText("not money"); F.browse.go:Click()
+        check(A.BUY.message and A.BUY.message:find("valid maximum"), "invalid maximum price is explained")
+        F.browse.dealClear:Click()
+        check(#A.BUY.results == 2 and A.dealFilters.kind == "all" and A.dealFilters.speed == "all", "clearing deal filters restores all deals")
+        ns.VendorFlips, ns.Bargains, ns.AHPrice, ns.SaleSpeed = oldFlips, oldBargains, oldPrice, oldSpeed
+        A.ShowDeals()
+    end
     check(F.browse.results.rows[1]:IsShown() and strip(F.browse.results.rows[1].cells[5]:GetText()) ~= "", "each deal says why")
     -- the Deals tab, searching inside Deals, and clicking Deals again
     A.SetTab("sell")
@@ -2397,13 +2702,90 @@ do
     M.market[12345] = swordBefore
     M.market[12346] = { { 300, 1, true } }
 
+    do
+        -- Manual flags are item-wide personal notes, independent of scans.
+        A.OpenItem({ id = 12346 }); M.advance(2)
+        F.browse.box.flag:Click()
+        check(A.IsManuallyFlagged(12346) and factsText():find("Flagged by you", 1, true),
+            "flagging an item displays the personal warning")
+        A.OpenItem({ id = 2589 }); M.advance(2)
+        check(not A.IsManuallyFlagged(2589), "the flag does not mark unrelated items")
+        A.OpenItem({ id = 12346 }); M.advance(2)
+        check(A.IsManuallyFlagged(12346) and strip(F.browse.box.flag.text:GetText()) == "Remove suspicious flag",
+            "the item remains flagged when reopened and offers removal")
+        local realmKey = ns.realmKey
+        ns.realmKey = "manual-flag-test-other-realm"
+        check(not A.IsManuallyFlagged(12346), "flags do not leak to another realm or faction")
+        ns.realmKey = realmKey
+        F.browse.box.flag:Click()
+        check(not A.IsManuallyFlagged(12346), "the personal flag can be removed")
+    end
+
     -- Elsewhere in the addon, "search the auction house" lands here
     ns.SearchAH("Tin Bar"); M.advance(3)
     check(A.tab == "browse" and A.BUY.query == "Tin Bar" and F.browse.search:GetText() == "Tin Bar", "other search buttons use our Browse tab")
 
     -- Sell: the proposed listings, then Post, Post, Post
+    A.SetTab("single")
+    check(F.single:IsShown() and not F.sell:IsShown() and #F.single.bagList.data > 0,
+        "single-item selling has its own page and a bag picker")
+    local source = F.single.bagList.data[1].e
+    local savedPick = source.picked
+    F.single.bagList.onClick({ e = source }); M.advance(5)
+    A.Refresh()
+    local selected = A.singleSel
+    check(selected and selected.id == source.id and selected ~= source and source.picked == savedPick and selected.checkedAt,
+        "single-item price check leaves the sell-list selection untouched")
+    check(#F.single.list.data == #(selected.listings or {}) + #(selected.listings and selected.listings.bids or {}),
+        "single-item page displays current buyouts and bid-only auctions")
+    F.single.side.gold:SetText("1"); F.single.side.silver:SetText("23"); F.single.side.copper:SetText("45")
+    F.single.side.copper:GetScript("OnEnterPressed")(F.single.side.copper)
+    check(selected.price == math.floor(12345 / (selected.step or 1)) * (selected.step or 1),
+        "the separate coin fields set the price per item")
+    F.single.side.max:Click()
+    check(selected.per == selected.have, "Max sets the listing quantity to the available amount")
+    local savedEntries = P.entries
+    P.entries = {}; P.state = "idle"
+    P.CheckOne(selected); M.advance(5)
+    P.SetPrice(selected, math.max(selected.floor or 0, selected.step or 1, 100)); A.Refresh()
+    check(P.state == "ready" and P.Postable(selected), "a single item becomes ready even when the sell queue is empty")
+    P.entries = savedEntries
+    local oldPost = P.PostNext
+    local sentTarget, sentOverride
+    P.PostNext = function(target, override) sentTarget, sentOverride = target, override end
+    selected.floor = 1; P.SetPrice(selected, math.max(selected.step or 1, 100)); A.Refresh()
+    check(P.Postable(selected) and P.state == "ready" and not F.single.side.post.disabled,
+        "a checked single item with an acceptable price is ready")
+    F.single.side.post:Click()
+    check(sentTarget == selected and not sentOverride, "single-item post targets exactly the selected item")
+    sentTarget = nil; selected.status = "new"; P.state = "ready"
+    F.single.side.post:Click()
+    check(sentTarget == nil, "single-item post never falls back to a different queued item")
+    selected.status = "floor"; selected.floor = (selected.price or 0) + 1
+    A.Refresh(); F.single.side.post:Click()
+    check(sentTarget == selected and sentOverride == true, "below-floor single item requires its explicit override")
+    P.PostNext = oldPost
+    do
+        local oldCursorInfo = GetCursorInfo
+        GetCursorInfo = function() if M.cursor then return "item", M.cursor.id end end
+        M.cursor = { id = source.id }; P.state = "checking"
+        F.single.drop:GetScript("OnReceiveDrag")()
+        check(M.cursor and A.singleSel == selected, "a busy seller leaves the dragged item on the cursor")
+        P.state = "idle"; M.cursor = { id = 999999999 }
+        F.single.drop:GetScript("OnReceiveDrag")()
+        check(M.cursor and A.singleSel == selected, "an unavailable item is not removed from the cursor")
+        M.cursor = { id = source.id }
+        F.single.drop:GetScript("OnReceiveDrag")(); M.advance(5)
+        check(M.cursor == nil and A.singleSel.id == source.id and A.singleSel ~= source and A.singleSel.checkedAt
+            and source.picked == savedPick, "dropping a bag item returns it to the bag and checks only that item")
+        GetCursorInfo = oldCursorInfo; M.cursor = nil
+    end
+    P.state = "idle"; A.singleSel = nil
     A.SetTab("sell")
     check(F.sell:IsShown() and #P.entries > 0, "Sell lists what's in your bags: " .. #P.entries)
+    check(F.sell.list.data[1].cells.sells ~= nil and F.sell.list.data[1].hint:find("Sell rate")
+        or F.sell.list.data[1].cells.sells ~= nil and F.sell.list.data[1].hint:find("sells"),
+        "sell list includes an estimated rate or explains that it is unknown")
     local picked = 0
     for _, e in ipairs(P.entries) do if e.picked then picked = picked + 1 end end
     A.Refresh()
@@ -2443,6 +2825,39 @@ do
 
     check((M.ownedQueries or 0) - queriesBefore == 1,
         "your auctions are read once after the posting, not after every post: " .. ((M.ownedQueries or 0) - queriesBefore))
+
+    -- Recheck means every item, even when none is selected, without selecting
+    -- those items for a later bulk post.
+    local picks = {}
+    for _, e in ipairs(P.entries) do picks[e.id] = e.picked; P.SetPicked(e.id, false) end
+    A.Refresh()
+    local searches = M.searches
+    check(not F.sell.side.check.disabled, "recheck is available with no items ticked")
+    F.sell.side.check:Click(); M.advance(30)
+    local nonePicked = true
+    for _, e in ipairs(P.entries) do if e.picked then nonePicked = false end end
+    check(M.searches > searches and nonePicked, "recheck reads all prices without ticking items")
+    for id, selected in pairs(picks) do P.SetPicked(id, selected) end
+    P.CheckAll(true); M.advance(30)
+
+    -- Override is an explicit click for the selected below-floor item only.
+    local below = P.NextEntry()
+    if below then
+        below.floor = (below.step or 1) * 10
+        P.SetPrice(below, below.step or 1)
+        A.sellSel = below
+        A.Refresh()
+        local postedBefore = #M.posted
+        check(below.status == "floor" and strip(F.sell.side.post.text:GetText()):find("^Post anyway")
+            and not F.sell.side.post.disabled, "below-floor item offers an explicit override")
+        F.sell.side.post:Click(); M.advance(1)
+        check(#M.posted == postedBefore + 1 and M.posted[#M.posted].id == below.id,
+            "override posts only the selected below-floor item")
+        A.sellSel = nil
+        P.CheckAll(true); M.advance(30)
+    else
+        check(false, "an item is available for the below-floor override test")
+    end
 
     -- The post queue when the auction house is busy or slow
     do
@@ -2754,9 +3169,20 @@ do
     M.fire("MAIL_SHOW"); M.advance(2)
     local W = ForeverGoldMailFrame
     check(W and W:IsShown() and MailFrame._scale == 0.001, "our mailbox opens; the game's is hidden")
+    check(W.tabs.inbox.icon._texture:find("mail%-inbox%.tga") and W.tabs.send.icon._texture:find("mail%-send%.tga")
+        and W.tabs.rules.icon._texture:find("mail%-rules%.tga"), "mailbox tabs have distinct matching gold icons")
     check(MB.inboxState == "ready", "inbox read")
     for _, t in ipairs({ "send", "rules", "inbox" }) do U.SetTab(t) end
-    U.ToggleBankerPanel(true); U.ToggleBankerPanel(false)
+    U.ToggleBankerPanel(true)
+    do
+        local panel = W.bankerPanel
+        local footerTop = panel:GetHeight() - 10 - panel.close:GetHeight()
+        for _, cb in pairs(panel.cats) do
+            local _, _, y = cb:GetPoint()
+            check(-y + cb:GetHeight() <= footerTop, "quick-send category stays above the banker panel footer")
+        end
+    end
+    U.ToggleBankerPanel(false)
     W.blizz:Click()
     check(not W:IsShown() and MailFrame._scale == 1 and ns.db.opts.mailBlizzard and ForeverGoldMailStrip:IsShown(),
         "Game's mailbox brings the game's back, with a way back")
@@ -2777,7 +3203,6 @@ do
     leatherRow:Click()
     check(not MB.exclude[LEATHER], "click again to put it back")
     U.SetTab("inbox")
-
     -- Sending: one click per mail, waiting for the server each time
     bags({ { HEARTH, 1, true }, { LINEN, 20 }, { LINEN, 15 }, { LINEN, 5 }, { LEATHER, 12 }, { LEATHER, 4 } })
     M.player.money = 100000
@@ -2941,6 +3366,60 @@ do
     M.advance(1)
     MB.ClearShipments()
     U.SetMode("banker"); U.SetMode("custom")
+    U.form.to = "Xeon Banker"; U.form.picks = {}; U.Refresh()
+    local grid = W.send.bagGrid
+    check(grid:IsShown() and not W.send.list:IsShown() and grid.slots[2].stack.id == LINEN,
+        "new mail shows live bag slots in a grid instead of the checkbox list")
+    local oldMailInfo = C_Container.GetContainerItemInfo
+    C_Container.GetContainerItemInfo = function(bag, slot)
+        local info = oldMailInfo(bag, slot)
+        if info and bag == 0 and slot == 2 then info.quality = 2 end
+        return info
+    end
+    U.Refresh()
+    check(grid.slots[2].fgColor:IsShown() and grid.slots[2].fgWhy == "quality",
+        "mail grid uses the bag quality highlight")
+    C_Container.GetContainerItemInfo = oldMailInfo
+    local savedFirst = M.bags[1]
+    M.bags[1] = { HEARTH, 1, true }; U.Refresh(); grid.slots[1]:Click()
+    check(not U.form.picks["0:1"], "soulbound items cannot be selected in the new-mail grid")
+    M.bags[1] = savedFirst; U.Refresh()
+    grid.slots[2]:Click()
+    check(U.form.picks["0:2"] and U.form.picks["0:2"].id == LINEN and #U.CurrentPlan().ships[1].atts == 1,
+        "clicking a bag icon selects that exact stack")
+    check(grid.slots[2].selected:IsShown(), "selected mail stacks show their selection indicator")
+    check((grid.summary:GetText() or ""):find("1 / " .. MB.MaxAttach() .. " stacks selected", 1, true),
+        "new mail shows selected stacks against the per-mail attachment limit")
+    ns.Fire("MAIL_SENT", { compose=true, atts={{bag=0,slot=2,id=LINEN,count=15}} }, "failed")
+    check(U.form.picks["0:2"], "failed mail preserves the selection")
+    ns.Fire("MAIL_SENT", { compose=true, atts={{bag=0,slot=2,id=LINEN,count=15}} }, "sent")
+    check(not U.form.picks["0:2"], "confirmed composed mail clears its sent selection")
+    grid.slots[2]:Click()
+    local picks = U.form.picks
+    U.form.picks = {}
+    for i=1,MB.MaxAttach()+1 do U.form.picks["0:"..i] = true end
+    U.Refresh()
+    check((grid.summary:GetText() or ""):find((MB.MaxAttach()+1).." / "..MB.MaxAttach(),1,true)
+        and (W.send.side.send.text:GetText() or ""):find("Remove 1 stack",1,true),
+        "over the attachment limit the count and disabled send button explain what to remove")
+    U.form.picks = picks; U.Refresh()
+    local savedStack = M.bags[2]
+    M.bags[2] = { LEATHER, 4 }
+    U.Refresh()
+    check(U.CurrentPlan().problem and U.CurrentPlan().problem:find("selected stack changed", 1, true),
+        "a changed selected slot blocks sending rather than selecting another item")
+    M.bags[2] = savedStack
+    grid.clear:Click()
+    check(next(U.form.picks) == nil, "clear selection removes the picked stacks")
+    local oldSlots = C_Container.GetContainerNumSlots
+    C_Container.GetContainerNumSlots = function(bag) if bag == 0 then return 80 end return oldSlots(bag) end
+    U.Refresh()
+    check(grid.bar:IsShown(), "large inventories show a scroll bar")
+    grid.slots[1]._scripts.OnMouseWheel(grid.slots[1], -1)
+    check(grid.offset == 1 and grid.slots[1].stack == nil, "scrolling over an item moves the grid by one row")
+    grid._scripts.OnMouseWheel(grid, 1)
+    check(grid.offset == 0 and grid.slots[2].stack.id == LINEN, "scrolling back restores the first row")
+    C_Container.GetContainerNumSlots = oldSlots
     U.form.to = "Xeon Banker"; U.form.picks = { ["0:2"] = true }; U.Refresh()
     local panelH = 610 - 128 - 30
     check(W.send.list:GetHeight() + 190 + 22 <= panelH and W.send.list.visible * 40 + 4 <= W.send.list:GetHeight(),
@@ -2953,6 +3432,11 @@ do
     U.form.cod = true; U.Refresh()
     plan = U.CurrentPlan()
     check(plan.ships[1].cod == 25000 and plan.ships[1].money == 0, "C.O.D. instead of sending gold")
+    U.form = {to="Xeon Banker",picks={["0:2"]={id=LINEN,count=15}}};U.Refresh()
+    W.send.side.send:Click();M.advance(0.3)
+    check(MB.Q.ships and MB.Q.ships[1].status=="ready", "custom mail to a known alt prepares successfully")
+    W.send.side.send:Click();M.advance(1)
+    check(next(U.form.picks)==nil and not MB.Shipments(), "successful custom mail to an alt returns to a fresh selection")
     U.form = { picks = {} }
     U.SetMode("banker")
     check(W.send.list:GetHeight() == panelH - 72 - 40 and W.send.list.visible == 8, "other send methods: the list is full height again")
@@ -3017,6 +3501,37 @@ do
     U.DeleteDraft()
     check(not MB.FindRule(nr.id), "the second deletes it")
 
+    -- Collect one selected message, including duplicate-looking mail.
+    do
+        local oldInbox, oldBags, oldMoney = M.inbox, M.bags, M.player.money
+        bags({})
+        M.inbox = {
+            { sender = "Auction House", subject = "Expired", money = 25, items = { { ORE, 2 } } },
+            { sender = "Auction House", subject = "Expired", money = 50, items = { { PEACE, 3 }, { SILVERLEAF, 4 } } },
+            { sender = "Seller", subject = "C.O.D.", cod = 50, items = { { BAR, 1 } } },
+        }
+        M.fire("MAIL_INBOX_UPDATE"); M.advance(1); U.SetTab("inbox")
+        W.inbox.list.rows[2]:Click()
+        check(W.inbox.side.collectMail:IsShown() and not W.inbox.side.collectMail.disabled,
+            "selected mail offers a collect-this-mail button")
+        W.inbox.side.collectMail:Click(); M.advance(10)
+        check(not MB.Busy() and M.player.money == oldMoney + 50 and MB.BagCount(PEACE) == 3
+            and MB.BagCount(SILVERLEAF) == 4 and M.inbox[1].money == 25 and M.inbox[1].items[1][1] == ORE,
+            "collect selected takes its gold and all attachments without taking another similar message")
+        check(not MB.CollectMail(MB.inbox[2]), "collect selected refuses C.O.D. mail")
+        M.inbox = { { sender = "Friend", subject = "Supplies", money = 10, items = { { BAR, 2 } } } }
+        M.fire("MAIL_INBOX_UPDATE"); M.advance(1)
+        check(MB.CollectMail(MB.inbox[1]), "collect selected begins its queued takes")
+        M.advance(0.35)
+        table.insert(M.inbox, 1, { sender = "Other", subject = "New mail", items = { { ORE, 1 } } })
+        M.fire("MAIL_INBOX_UPDATE"); M.advance(3)
+        check(not MB.Busy() and MB.status.kind == "error" and MB.status.text:find("changed or moved", 1, true)
+            and M.inbox[1].items[1][1] == ORE and M.inbox[2].items[1][1] == BAR,
+            "collect selected stops if inbox changes move the selected message")
+        M.inbox, M.bags, M.player.money = oldInbox, oldBags, oldMoney
+        M.fire("MAIL_INBOX_UPDATE"); M.advance(1)
+    end
+
     -- The inbox: collect all, never C.O.D.
     bags({ { LINEN, 5 } })
     M.player.money = 100000
@@ -3034,6 +3549,13 @@ do
     local money, items, cod = MB.InboxTotals()
     check(money == 5200 and cod == 1, "to collect: 52s (not the GM's): " .. money)
     U.SetTab("inbox")
+    local letterRow, attachmentRow
+    for _, row in ipairs(W.inbox.list.rows) do
+        if row.d and row.d.title and row.d.title:find("A letter", 1, true) then letterRow = row end
+        if row.d and row.d.id then attachmentRow = row end
+    end
+    check(letterRow and not letterRow.iconEdge:IsShown() and attachmentRow and attachmentRow.iconEdge:IsShown(),
+        "mail icons have no solid square while attachment icons retain their quality border")
     for _, r in ipairs(W.inbox.list.rows) do if r.d then r:Click() end end
     check(not MB.TakeAttachment(MB.inbox[3], 1) and not MB.TakeMoney(MB.inbox[3]), "C.O.D. can't be taken here")
     local returned, deleted = M.MailCount("ReturnInboxItem"), M.MailCount("DeleteInboxItem")
@@ -3165,6 +3687,15 @@ end
 out("== mail: scrolls")
 do
     local MB = ns.Mail
+    local originalItem = ns.Item
+    ns.Item = function(id)
+        if id == 1705 then return { c = 7, s = 11, n = "Lesser Moonstone" } end
+        if id == 12363 then return { c = 7, s = 11, n = "Arcane Crystal" } end
+        return originalItem(id)
+    end
+    check(MB.InCategory("gems", 1705) and MB.InCategory("gems", 818)
+        and not MB.InCategory("gems", 12363), "gems include raw trade goods without capturing unrelated materials")
+    ns.Item = originalItem
     check(MB.CAT.scrolls and MB.InCategory("scrolls", 211780) and not MB.InCategory("scrolls", 954)
         and not MB.InCategory("scrolls", 858) and not MB.InCategory("scrolls", 2447),
         "the Comprehension scrolls group takes the mage's scrolls only, not stat scrolls, potions or herbs")
@@ -3175,12 +3706,124 @@ do
     local r = MB.AddRule({ cat = "scrolls", to = "banker", on = true, keep = 0, scope = "account" })
     check(r and r.cat == "scrolls" and MB.SaveRule(r.id, { cat = "scrolls", keep = 2 }), "a Scrolls rule can be made and edited")
     MB.DeleteRule(r.id)
+    ns.Item = function(id)
+        if id == 90001 then return { c = 9, s = 4, n = "Plans: Example" } end
+        if id == 90002 then return { c = 9, s = 6, n = "Recipe: Example" } end
+        return originalItem(id)
+    end
+    check(MB.InCategory("recipe_blacksmithing", 90001) and not MB.InCategory("recipe_blacksmithing", 90002)
+        and MB.InCategory("recipe_alchemy", 90002) and not MB.InCategory("recipe_alchemy", 90001),
+        "profession recipe rules match the correct recipe subclass")
+    local option
+    for _, o in ipairs(ns.MailUI.MatchOptions()) do if o.value == "recipe_blacksmithing" then option = o end end
+    local recipeRule = MB.AddRule({ cat = "recipe_blacksmithing", to = "banker", on = true, scope = "account" })
+    check(option and option.text == "Blacksmithing recipes" and recipeRule and recipeRule.cat == "recipe_blacksmithing",
+        "blacksmithing recipe rules can be chosen and saved")
+    if recipeRule then MB.DeleteRule(recipeRule.id) end
+    ns.Item = originalItem
 end
 
 out("== bag window")
 do
+    local BU, INV = ns.BagUI, ns.Inv
+    BU.Open()
+    local oldIDs, oldInfo, oldSize = INV.BagIDs, INV.BagInfo, INV.NumSlots
+    local oldGet, oldPickup, oldCursor, oldInstant = C_Container.GetContainerItemInfo, C_Container.PickupContainerItem, CursorHasItem, C_Item.GetItemInfoInstant
+    local oldRefresh, oldRule, oldRules, oldFamily = BU.Refresh, ns.Char().clothBag, ns.Char().materialBags, C_Item.GetItemFamily
+    local oldMailOpen, oldBankOpen, oldAHOpen = ns.Mail.open, INV.bankOpen, ns.ahOpen
+    ns.Mail.open, INV.bankOpen, ns.ahOpen = false, false, false
+    local oldTradeFrame, oldMerchantFrame, oldAuctionFrame = TradeFrame, MerchantFrame, AuctionHouseFrame
+    TradeFrame, MerchantFrame, AuctionHouseFrame = nil, nil, nil
+    local bags = { [0] = { [1] = { itemID = 2589 }, [2] = { itemID = 2770 } }, [2] = { [1] = { itemID = 2771 } } }
+    local cursor
+    INV.BagIDs = function() return { 0, 2 } end
+    INV.BagInfo = function(bag) return { id = bag == 2 and 999 or nil, fam = 0 } end
+    INV.NumSlots = function() return 3 end
+    C_Container.GetContainerItemInfo = function(bag, slot) return bags[bag] and bags[bag][slot] end
+    C_Item.GetItemInfoInstant = function(id) return id, nil, nil, nil, nil, 7, id == 2589 and 5 or 7 end
+    CursorHasItem = function() return cursor ~= nil end
+    C_Container.PickupContainerItem = function(bag, slot)
+        local old = bags[bag][slot]; bags[bag][slot] = cursor; cursor = old
+    end
+    BU.Refresh = function() end
+    ns.Char().clothBag = { bag = 2, id = 999 }
+    BU.StartClothSort(); M.advance(2)
+    check(bags[2][1] and bags[2][1].itemID == 2589 and bags[0][3] and bags[0][3].itemID == 2771
+        and not cursor and not BU.clothSort, "cloth sorter moves other items out and cloth in")
+    bags[2][2] = { itemID = 2770 }; bags[0][1] = { itemID = 2770 }
+    BU.StartClothSort(); M.advance(1)
+    check(bags[2][2].itemID == 2770 and not BU.clothSort and not cursor, "cloth sorter stops safely when other bags are full")
+    bags[0][1] = nil; bags[2][2].isLocked = true
+    BU.StartClothSort(); M.advance(1)
+    check(bags[2][2].itemID == 2770 and not cursor and not BU.clothSort, "cloth sorter stops safely for locked items")
+    bags[0] = {}; bags[2] = {}
+    BU.clothAutoSnapshot, BU.clothAutoPending = nil, nil
+    BU.CheckClothLoot()
+    BU.win:Hide()
+    M.combat = true
+    bags[0][1] = { itemID = 2589, stackCount = 3 }
+    BU.CheckClothLoot(); M.advance(0.6)
+    check(BU.clothAutoPending and bags[0][1] and not bags[2][1], "new cloth waits until combat ends")
+    M.combat = false
+    M.fire("PLAYER_REGEN_ENABLED"); M.advance(2)
+    check(bags[2][1] and bags[2][1].itemID == 2589 and not BU.clothAutoPending and not BU.clothSort,
+        "new cloth sorts automatically after combat even with the bags closed")
+    INV.BagIDs = function() return { 0, 2, 3, 4, 5 } end
+    INV.BagInfo = function(bag) return { fam = bag == 3 and 32 or 0 } end
+    C_Item.GetItemFamily = function(id) return id == 765 and 32 or 0 end
+    C_Item.GetItemInfoInstant = function(id)
+        local sub = ({ [2589] = 5, [765] = 9, [2770] = 7, [2318] = 6 })[id]
+        return id, nil, nil, nil, nil, 7, sub
+    end
+    bags = { [0] = {}, [2] = { [1] = { itemID = 2589 } }, [3] = {}, [4] = {}, [5] = {} }
+    ns.Char().clothBag = { bag = 2 }
+    ns.Char().materialBags = { herbs = { bag = 3 }, ore = { bag = 4 }, leather = { bag = 5 } }
+    BU.clothAutoSnapshot, BU.clothAutoPending, BU.materialAutoIndex = nil, nil, nil
+    BU.CheckClothLoot()
+    bags[0] = { [1] = { itemID = 765 }, [2] = { itemID = 2770 }, [3] = { itemID = 2318 } }
+    BU.CheckClothLoot(); M.advance(8)
+    check(bags[2][1] and bags[2][1].itemID == 2589 and bags[3][1] and bags[3][1].itemID == 765
+        and bags[4][1] and bags[4][1].itemID == 2770 and bags[5][1] and bags[5][1].itemID == 2318,
+        "automatic sorting handles independent cloth, herb, ore and leather bags without moving another rule's items")
+    BU.CheckClothLoot(); M.advance(1)
+    check(not BU.clothAutoPending and not BU.clothSort, "sorting existing stacks does not trigger another sort")
+    BU.clothAutoSnapshot, BU.clothAutoPending = nil, nil
+    INV.BagIDs, INV.BagInfo, INV.NumSlots = oldIDs, oldInfo, oldSize
+    C_Container.GetContainerItemInfo, C_Container.PickupContainerItem, CursorHasItem, C_Item.GetItemInfoInstant = oldGet, oldPickup, oldCursor, oldInstant
+    BU.Refresh, ns.Char().clothBag, ns.Char().materialBags, C_Item.GetItemFamily = oldRefresh, oldRule, oldRules, oldFamily
+    ns.Mail.open, INV.bankOpen, ns.ahOpen = oldMailOpen, oldBankOpen, oldAHOpen
+    TradeFrame, MerchantFrame, AuctionHouseFrame = oldTradeFrame, oldMerchantFrame, oldAuctionFrame
+end
+do
+    local BU = ns.BagUI
+    local oldJunk, oldItem, oldUse, oldValue, oldIsJunk, oldIgnored = BU.Junk, C_Container.GetContainerItemInfo,
+        C_Container.UseContainerItem, ns.VendorSell, BU.IsJunk, BU.Ignored
+    local oldUI, oldMail, used = ForeverUI, ns.Mail.IsKept, {}
+    local entries = {}
+    for i = 1, 7 do entries[i] = { bag = 0, slot = i, id = 1000 + i, count = 1, link = "item:" .. (1000 + i) } end
+    BU.Junk = function() return entries end
+    BU.IsJunk, BU.Ignored, ns.Mail.IsKept = function() return true end, function() return false end, function() return false end
+    ns.VendorSell = function() return 1 end
+    C_Container.GetContainerItemInfo = function(_, slot)
+        local e = entries[slot]
+        return { itemID = slot == 7 and 9999 or e.id, stackCount = 1, hyperlink = e.link, quality = 0 }
+    end
+    C_Container.UseContainerItem = function(_, slot) used[#used + 1] = slot end
+    ForeverUI = { Opt = function(key) return key == "qolAutoJunk" end }
+    M.fire("MERCHANT_SHOW"); M.advance(0.15)
+    BU.SellJunk(true)
+    M.advance(1)
+    check(#used == 6 and used[6] == 6, "automatic junk sale rechecks changed slots and ignores duplicate requests")
+    M.fire("MERCHANT_CLOSED")
+    BU.Junk, C_Container.GetContainerItemInfo, C_Container.UseContainerItem = oldJunk, oldItem, oldUse
+    ns.VendorSell, BU.IsJunk, BU.Ignored, ForeverUI, ns.Mail.IsKept = oldValue, oldIsJunk, oldIgnored, oldUI, oldMail
+end
+do
     local BU = ns.BagUI
     local BV = BU.bank
+    check(ns.UIKit.C.bg[1] == 0.047 and ns.UIKit.C.bg[4] == 0.82
+        and ns.UIKit.C.goldEdge[1] == 0.788 and ns.UIKit.SERIF_L == "GameFontNormalLarge",
+        "the shared window palette and headings match Forever UI")
     local savedBags, savedMoney = M.bags, M.player.money
     M.bags = { { 6948, 1, true }, { 2770, 40 }, { 2835, 23 }, { 2771, 12 }, { 4865, 6 }, { 2840, 8 }, { 2589, 35 }, { 2775, 2 }, { 3576, 4 } }
     M.fire("BAG_UPDATE_DELAYED"); M.advance(1)
@@ -3196,7 +3839,7 @@ do
     check(#cells == 16 and cells[2].live and cells[2].id == 2770 and cells[2].count == 40, "your bags are read live, slot by slot")
     local function buttonFor(bag, slot)
         for _, f in ipairs(M.frames) do
-            if f._shown and f.fgCell and f.fgCell.live and f.fgCell.bag == bag and f.fgCell.slot == slot then return f end
+            if f._shown and f.fgGen and f.fgCell and f.fgCell.live and f.fgCell.bag == bag and f.fgCell.slot == slot then return f end
         end
     end
     local copper = buttonFor(0, 2)
@@ -3299,6 +3942,17 @@ do
         "the bag bar shows the backpack, each bag, and your empty bag slots")
     check(BU.Family(BU._info[1]).name == "Herb bag" and buttonFor(1, 2).fgTint:IsShown() and not buttonFor(0, 10).fgTint:IsShown(),
         "a herb bag's empty slots are tinted green; ordinary ones aren't")
+    do -- the colour stays inside the slot (2026-11-21: a coloured ring leaked past the edge)
+        local herbRings, coloured = 0, 0
+        for _, p in ipairs(BU._placed) do
+            if p.bag == 1 then
+                herbRings = herbRings + 1
+                local c = p.bg.edge._color
+                if not c or c[1] > 0.05 or c[2] > 0.05 or c[3] > 0.05 then coloured = coloured + 1 end
+            end
+        end
+        check(herbRings > 0 and coloured == 0, "a herb bag's slots keep the same dark ring as every other slot")
+    end
     do
         local _, _, _, _, herbY = buttonFor(1, 1):GetPoint()
         local lowest = 0
@@ -3342,11 +3996,24 @@ do
     local herbRows = rowTexts(BU.BagRows(BU, 1))
     check(herbRows:find("Hide its slots", 1, true) and not herbRows:find("Equipment", 1, true) and herbRows:find("Sell junk", 1, true),
         "a herb bag's menu: hide, ignore, but no 'assign to' (like the game): " .. herbRows)
+    check(herbRows:find("Use this bag for herbs", 1, true) and not herbRows:find("Use this bag for ore", 1, true),
+        "specialized bags offer compatible material rules")
     local rows2 = BU.BagRows(BU, 2)
     check(rowTexts(rows2):find("Assign to bag:|Equipment|Consumables|Profession Goods|Junk|Quest Items|Reagents", 1, true),
         "an ordinary bag can be assigned: " .. rowTexts(rows2))
     for _, r in ipairs(rows2) do if strip(r.text) == "Equipment" then r.onClick() end end
     check(M.bagFlags["2:" .. Enum.BagSlotFlags.ClassEquipment] == true, "Assign to Equipment uses the game's own bag setting")
+    for _, r in ipairs(BU.BagRows(BU, 2)) do if strip(r.text) == "Use this bag for cloth" then r.onClick() end end
+    check(ns.Char().clothBag and ns.Char().clothBag.bag == 2
+        and rowTexts(BU.BagRows(BU, 2)):find("Sort cloth now", 1, true), "a bag can be assigned to cloth and sorted from its menu")
+    local options = rowTexts(BU.BagRows(BU, 2))
+    check(options:find("Use this bag for herbs", 1, true) and options:find("Use this bag for ore & bars", 1, true)
+        and options:find("Use this bag for leather", 1, true), "ordinary bags offer all material rules")
+    for _, r in ipairs(BU.BagRows(BU, 2)) do if strip(r.text) == "Use this bag for herbs" then r.onClick() end end
+    check(ns.Char().clothBag == nil and ns.Char().materialBags.herbs.bag == 2,
+        "assigning a different material replaces the old rule for that bag")
+    for _, r in ipairs(BU.BagRows(BU, 2)) do if strip(r.text) == "Use this bag for herbs" then r.onClick() end end
+    check(ns.Char().materialBags.herbs == nil, "the new material assignment can be removed")
     check(rowTexts(BU.BagRows(BU, 3)):find("No bag here", 1, true), "an empty bag slot says so")
     NUM_REAGENTBAG_SLOTS = 1
     BU.Refresh()
@@ -3386,7 +4053,7 @@ do
     for _, b in ipairs(BV._bagBtns) do if b:IsShown() and b.locked then locked[#locked + 1] = b end end
     check(#locked == 7 and locked[1].nextUp and not locked[2].nextUp and locked[1].lock:IsShown(),
         "7 bank bag slots locked; the first is the next to buy")
-    check(BV.win.buy:IsShown() and strip(BV.win.buyCost:GetText()) == "Cost: 1g", "Cost: 1g and a Purchase button, as the game's bank shows")
+    check(BV.win.buy:IsShown() and strip(BV.win.buyCost:GetText()) == "Cost: 1g", "Cost: 1g and a game's bank button")
     do
         local n = BV._cols
         local gridW = 8 * 2 + n * 39 - 2
@@ -3395,9 +4062,15 @@ do
             .. n .. " columns, " .. BV.win:GetWidth() .. " wide)")
     end
     BV.win.buy:Click()
-    check(M.popup and M.popup.which == "CONFIRM_BUY_BANK_TAB" and M.popup.data.bankType == Enum.BankType.Character,
-        "Purchase asks with the game's own confirm")
-    StaticPopupDialogs.CONFIRM_BUY_BANK_TAB.OnAccept(nil, M.popup.data)
+    check(BankFrame:GetParent() == UIParent and not BV.win:IsShown() and M.bankOpen and not M.bankBought,
+        "the game bank opens for a slot purchase without an addon purchase call or closing the visit")
+    C_Bank.PurchaseBankTab(Enum.BankType.Character) -- simulate a purchase made through the game's secure UI
+    M.fire("BANKFRAME_CLOSED"); M.bankOpen = false
+    BankFrame:Hide()
+    BU.Install()
+    M.bankOpen = true
+    BankFrame:Show()
+    M.fire("BANKFRAME_OPENED"); M.advance(1)
     M.bankBag = { 4500, 10 }
     M.fire("BANK_TABS_CHANGED", Enum.BankType.Character); M.advance(1)
     local bagBtn = barButton(BV, 7)
@@ -3464,8 +4137,21 @@ do
     for i = 1, BU._usedBg do if BU._bgs[i].art:IsShown() then altArt = altArt + 1 end end
     check(altArt == 2 and strip(win.sub:GetText()) == "",
         "their empty slots show the same slot picture as your own, and no SAVED note (" .. altArt .. " empty)")
+    do
+        local snap = ns.db.chars["Alt-PvP"].inv.bags
+        snap.size, snap.sizes[0] = 80, 80
+        BU.Refresh()
+        local last = BU._usedBg
+        check(BU._bgs[last].art:IsShown(), "a larger saved inventory displays its empty slots")
+        BU.Pick(nil, "bags")
+        check(last > BU._usedBg and not BU._bgs[last].art:IsShown(),
+            "switching from a larger saved inventory hides the unused empty-slot artwork")
+        snap.size, snap.sizes[0] = 4, 4
+        BU.Pick("Alt-PvP", "bags")
+    end
     win.who:Click("RightButton")
     check(BV.win:IsShown() and BV.char == "Alt-PvP" and BV.win.note:IsShown(), "their bank isn't saved yet: its window says so")
+    check(BV.win.note:GetWidth() <= BV.win:GetWidth(), "the missing bank message wraps within the window")
     BV.win:Hide()
     -- tooltips: who has it
     GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
@@ -3487,10 +4173,10 @@ do
     -- the cog opens Options > Bags Forever
     win.settings:Click()
     check(M.settings.opened == ns.Options.cats.bags:GetID(), "the bag window's cog opens Options at Bags Forever")
-    check(win.sort.icon._atlas == "bags-button-autosort-up", "the sort button wears the game's Cleanup broom")
-    win.sort._scripts.OnMouseDown(win.sort)
-    check(win.sort.icon._atlas == "bags-button-autosort-down", "and presses in")
-    win.sort._scripts.OnMouseUp(win.sort)
+    check(win.sort.icon._texture:find("bag%-sort%.tga") and win.searchBtn.icon._texture:find("bag%-search%.tga")
+        and win.settings.icon._texture:find("settings%.tga"), "bag utilities use the matching gold icons")
+    check(win.tabBags.icon._texture:find("bag%-inventory%.tga") and win.tabBank.icon._texture:find("bag%-bank%.tga")
+        and win.tabGuild.icon._texture:find("bag%-guild%.tga"), "bag navigation uses the matching inventory, bank and guild icons")
     -- see-through background
     local alphaRow
     for _, r in ipairs(BU.SettingsRows()) do if strip(r.text):find("^Background: 50%%") then alphaRow = r end end
@@ -3534,7 +4220,7 @@ do
     BU.Open(); BU.Refresh()
     local function btn(bag, slot)
         for _, f in ipairs(M.frames) do
-            if f._shown and f.fgCell and f.fgCell.live and f.fgCell.bag == bag and f.fgCell.slot == slot then return f end
+            if f._shown and f.fgGen and f.fgCell and f.fgCell.live and f.fgCell.bag == bag and f.fgCell.slot == slot then return f end
         end
     end
     local mal = btn(0, 1)
@@ -3546,14 +4232,136 @@ do
     BU.ResetUnusable(); BU.Refresh()
     local axe = btn(0, 3)
     check(axe.fgWhy == "unusable" and axe.fgColor.r == 1 and axe.fgColor.g < 0.2, "gear you can't use glows red")
+    do
+        -- Native lock-state updates may reset the icon vertex colour while
+        -- moving an item; the red tint must be restored without a relayout.
+        local oldDesaturate = SetItemButtonDesaturated
+        axe.icon = axe:CreateTexture()
+        axe.icon.SetVertexColor = function(self,r,g,b) self.testColor={r,g,b} end
+        SetItemButtonDesaturated = function(button, value)
+            oldDesaturate(button, value)
+            if button.icon and button.icon.SetVertexColor then button.icon:SetVertexColor(1,1,1) end
+        end
+        BU.Repaint()
+        check(axe.icon.testColor and axe.icon.testColor[1]==0.75 and axe.icon.testColor[2]==0.3,
+            "repainting a locked or unlocked slot restores the unusable red tint")
+        SetItemButtonDesaturated=oldDesaturate
+        M.bags[1],M.bags[3]=M.bags[3],M.bags[1]
+        M.fire("BAG_UPDATE_DELAYED");M.advance(0.2)
+        check(btn(0,1) and btn(0,1).fgWhy=="unusable" and btn(0,3).fgWhy~="unusable",
+            "moving an unusable item moves its highlight to the new slot")
+        M.bags[1],M.bags[3]=M.bags[3],M.bags[1]
+        M.fire("BAG_UPDATE_DELAYED");M.advance(1)
+        axe=btn(0,3)
+    end
+    M.items[12348][2] = 2
+    axe.IconBorder = axe:CreateTexture()
+    BU.Refresh()
+    axe = btn(0, 3)
+    check(axe.fgWhy == "unusable" and axe.fgColor.g == 1 and axe.fgColor.r < 0.2,
+        "unusable uncommon gear keeps its quality-coloured glow and unusable status")
+    check(axe.IconBorder:GetAlpha() == 0, "native rarity border does not overlap the addon glow")
+    M.items[12348][2] = 1
+    BU.Refresh()
     M.cantUse[774] = true -- red text on a gem's tooltip (like "Locked" on a lockbox)
     BU.ResetUnusable(); BU.Refresh()
     check(btn(0, 1).fgWhy ~= "unusable", "but only gear and recipes: red text on anything else doesn't count")
     M.cantUse[774] = nil
     BU.ResetUnusable(); BU.Refresh()
-    M.pawnUp = { ["0:3"] = true }
+    do
+        local savedTooltip=C_TooltipInfo.GetBagItem
+        local recipe={id=5772,live=true,bag=0,slot=1}
+        local white={r=1,g=1,b=1};local red={r=1,g=0.125,b=0.125}
+        local lines={{leftText="Pattern: Red Woolen Bag",leftColor=white},
+            {leftText="Requires Level 40",leftColor=red},
+            {leftText="Use: Teaches you how to make a bag.",leftColor=white},
+            {leftText="Requires Tailoring (30)",leftColor=white}}
+        C_TooltipInfo.GetBagItem=function() return {lines=lines} end
+        BU.ResetUnusable()
+        check(not BU.Unusable(recipe), "recipe is not red because its finished item preview has a red requirement")
+        lines[4].leftColor=red;BU.ResetUnusable()
+        C_TooltipInfo.GetBagItem=function() return nil end
+        check(not BU.Unusable(recipe), "unavailable tooltip data does not invent a red highlight")
+        C_TooltipInfo.GetBagItem=function() return {lines=lines} end
+        check(BU.Unusable(recipe), "unusable status is retried after tooltip data becomes available")
+        BU.ResetUnusable()
+        check(BU.Unusable(recipe), "recipe with an unmet profession requirement is red")
+        lines[4].leftColor=white
+        ns.Fire("RECIPES_UPDATED")
+        check(not BU.Unusable(recipe), "recipe usability cache updates after recipe changes")
+        lines[2]={leftText="Already Known",leftColor=red};BU.ResetUnusable()
+        check(BU.Unusable(recipe), "already known recipe remains marked unusable")
+        C_TooltipInfo.GetBagItem=savedTooltip;BU.ResetUnusable()
+    end
+    local upgradeLink = C_Container.GetContainerItemInfo(0, 3).hyperlink
+    M.pawnUp = { [upgradeLink] = true }
     BU.Refresh()
     check(btn(0, 3).fgUp:IsShown() and not mal.fgUp:IsShown(), "Pawn's upgrades get a green arrow")
+    do
+        local found
+        for _, call in ipairs(M.pawnCalls or {}) do
+            if call[1] == upgradeLink and call[2] == true then found = true end
+        end
+        check(found and PawnIsContainerItemAnUpgrade == nil, "upgrade arrows use installed Pawn's item-link API with the level check")
+        M.pawnPending = { [upgradeLink] = true }
+        BU.Refresh()
+        local generation = BU._gen
+        check(not btn(0, 3).fgUp:IsShown(), "an undecided Pawn answer does not invent an upgrade")
+        M.pawnPending = nil
+        M.advance(0.31)
+        check(btn(0, 3).fgUp:IsShown() and BU._gen == generation, "a budgeted Pawn answer retries without rebuilding the bag layout")
+        local getInfo = C_Container.GetContainerItemInfo
+        C_Container.GetContainerItemInfo = function(bag, slot)
+            local info = getInfo(bag, slot)
+            if info and bag == 0 and slot == 3 then info.hyperlink = nil end
+            return info
+        end
+        BU.Refresh()
+        check(not btn(0, 3).fgUp:IsShown(), "an item whose link is still loading waits for its real link")
+        C_Container.GetContainerItemInfo = getInfo
+        M.advance(0.31)
+        check(btn(0, 3).fgUp:IsShown(), "the retry reads the newly available link from the live slot")
+        local upgradeButton = btn(0, 3)
+        upgradeButton.fgCell.live = false
+        BU.RefreshUpgrades()
+        check(not upgradeButton.fgUp:IsShown(), "a saved/offline item never receives the logged-in character's upgrade verdict")
+        upgradeButton.fgCell.live = true
+        M.pawnPending = { [upgradeLink] = true }
+        BU.Refresh()
+        local oldItem = M.bags[3]
+        M.bags[3] = { 2589, 1 }
+        M.pawnPending = nil
+        M.advance(0.31)
+        check(not btn(0, 3).fgUp:IsShown(), "an item moved out before a retry cannot leave its arrow on the replacement")
+        M.bags[3] = oldItem
+        BU.Refresh()
+        M.pawnUp = nil
+        PawnResetBags(); M.advance(0.01)
+        check(not btn(0, 3).fgUp:IsShown(), "Pawn's settings/equipment refresh removes an obsolete arrow")
+        M.pawnUp = { [upgradeLink] = true }
+        PawnResetBags(); M.advance(0.01)
+        check(btn(0, 3).fgUp:IsShown(), "Pawn's refresh also adds a newly discovered upgrade")
+        PawnCommon.ShowBagUpgradeAdvisor = false
+        PawnResetBags(); M.advance(0.01)
+        check(not btn(0, 3).fgUp:IsShown(), "Pawn's own bag-advisor switch is respected")
+        PawnCommon.ShowBagUpgradeAdvisor = true
+        ns.db.opts.bagUpgrade = false
+        BU.Refresh()
+        check(not btn(0, 3).fgUp:IsShown(), "Forever Gold's upgrade switch is respected too")
+        ns.db.opts.bagUpgrade = nil
+        M.pawnError = true
+        BU.Refresh()
+        check(not btn(0, 3).fgUp:IsShown(), "a Pawn error leaves the bag usable without a false arrow")
+        M.pawnError = nil
+        M.pawnPending = { [upgradeLink] = true }
+        BU.Refresh()
+        BU.Close()
+        M.pawnCalls = {}
+        M.advance(0.31)
+        check(#M.pawnCalls == 0, "closing the bags stops pending upgrade checks")
+        M.pawnPending = nil
+        BU.Open()
+    end
     M.pawnUp, M.cantUse = nil, {}
     BU.ResetUnusable()
     M.newItems["0:4"] = true
@@ -3638,9 +4446,12 @@ do
     local faceRow
     for _, r in ipairs(BU.PickerRows()) do if r.key == ns.charKey then faceRow = r end end
     check(faceRow and faceRow.face and faceRow.face.race == "Orc", "the character list shows faces too")
-    -- the window: the game's close button, bare icons, fitted width
-    check(BU.win.close:GetWidth() == 22 and BU.win.sort:GetWidth() == 20 and BU.win.searchBtn:GetWidth() == 16,
-        "the gold-X close button, and search, sort and settings at their icon size")
+    -- The themed controls share a size and the bag's transparency remains adjustable.
+    check(BU.win.close:GetWidth() == 22 and BU.win.sort:GetWidth() == 20 and BU.win.searchBtn:GetWidth() == 20
+        and BU.win.settings:GetWidth() == 20 and BU.win.settings.bg and BU.win.searchBtn.bg,
+        "the bag header has a close button and matching framed controls")
+    check(BU.win.bg._color[4] == 1 and BU.win.bg:GetAlpha() == BU.BgAlpha() and #BU.win.edges == 4,
+        "bag transparency remains adjustable and the window has one themed border")
     ns.db.opts.bagCols = 8
     BU.Refresh()
     check(BU.win:GetWidth() < 340, "8 columns: the window fits them, no wasted space (" .. BU.win:GetWidth() .. ")")
@@ -3671,6 +4482,20 @@ do
     BU.Pick(nil, "bank")
     check(BV.where == "bank", "and Bank switches it back")
     BV.win:Hide()
+    local tabsBefore = M.bankTabs
+    M.bankTabs = {}
+    BankFrame:Hide()
+    BU.RestoreGameBank()
+    BU.Install()
+    local boughtBefore = M.bankBought or 0
+    M.bankOpen = true
+    BankFrame:Show()
+    M.fire("BANKFRAME_OPENED"); M.advance(1)
+    check(BankFrame:GetParent() == UIParent and (M.bankBought or 0) == boughtBefore,
+        "a character without a first bank tab uses the secure game bank without an addon purchase")
+    M.fire("BANKFRAME_CLOSED"); M.bankOpen = false
+    BankFrame:Hide()
+    M.bankTabs = tabsBefore
     ns.db.guilds = nil
     ns.Char().guild = nil
     M.guild = nil
@@ -3690,3 +4515,6 @@ table.sort(undef)
 out("== globals read but not defined in the mock: " .. table.concat(undef, ", "))
 out("")
 out((fails == 0 and #ns.errors == 0) and "ALL CHECKS PASSED" or ("FAILED: " .. fails .. " checks, " .. #ns.errors .. " errors"))
+if fails > 0 or #ns.errors > 0 then
+    error("Forever Gold: " .. fails .. " checks failed, " .. #ns.errors .. " addon errors")
+end

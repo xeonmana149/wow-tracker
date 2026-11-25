@@ -637,7 +637,7 @@ end
 
 local watchSellPost
 
-function ns.SellPost()
+function ns.SellPost(overrideFloor)
     if not job then
         return
     end
@@ -663,7 +663,9 @@ function ns.SellPost()
         ns.Fire("SELL")
         return
     end
-    if job.state ~= "ready" or not job.decision or not job.decision.ok then
+    local belowFloor = overrideFloor and job.decision and job.decision.why == "floor"
+        and type(job.decision.price) == "number" and job.decision.price > 0
+    if job.state ~= "ready" or not job.decision or not (job.decision.ok or belowFloor) then
         return
     end
     if GetTime() - (job.checkedAt or 0) > STALE_AFTER then

@@ -481,19 +481,19 @@ end
 
 -- Price-checks every ticked item that hasn't been checked yet (or all of
 -- them again with `again`).
-function P.CheckAll(again)
+function P.CheckAll(again, all)
     if not ns.ahOpen then
         ns.Print("open the auction window at an auctioneer first.")
         return
     end
-    if P.state == "posting" or P.state == "confirm" or P.state == "verify" then
+    if P.state == "checking" or P.state == "posting" or P.state == "confirm" or P.state == "verify" then
         return
     end
     P.Rebuild()
     local todo = {}
     for _, e in ipairs(P.entries) do
-        if e.picked and (again or not e.checkedAt or e.status == "error" or e.status == "new") then
-            if again then
+        if (all or e.picked) and (again or not e.checkedAt or e.status == "error" or e.status == "new") then
+            if again and not all then
                 e.posted, e.priceSet, e.perSet = 0, nil, nil
                 e.status = "new"
             end
@@ -542,7 +542,7 @@ function P.CheckOne(e)
     P.checking = { done = 0, total = 1 }
     checkEntry(e, function()
         if P.state == "checking" then
-            P.state = P.NextEntry() and "ready" or "done"
+            P.state = (P.Postable(e) or P.NextEntry()) and "ready" or "done"
         end
         P.checking = nil
         ns.Fire("POSTER")
@@ -608,7 +608,7 @@ function P.SetPrice(e, copper)
         P.Plan(e)
     end
     if P.state == "done" or P.state == "idle" then
-        P.state = P.NextEntry() and "ready" or P.state
+        P.state = (P.Postable(e) or P.NextEntry()) and "ready" or P.state
     end
     ns.Fire("POSTER")
 end
@@ -638,11 +638,16 @@ local function postable(e)
 end
 P.Postable = postable
 
+function P.CanPostAnyway(e)
+    return e and e.picked and e.status == "floor" and type(e.price) == "number" and e.price > 0
+        and e.checkedAt and (e.posted or 0) < (e.posts or 0) and (e.have or 0) > 0
+end
+
 -- Posts one listing: `target` if it's ready (the row you picked), else the
 -- next one in the queue. Only ever called from a click.
 local watchPost
 
-function P.PostNext(target)
+function P.PostNext(target, overrideFloor)
     if P.state == "confirm" and P.pending then
         if not ns.AHReadyToPost() then
             P.message = "The auction house is busy. Confirm comes back as soon as it's ready."
@@ -666,10 +671,11 @@ function P.PostNext(target)
         ns.Fire("POSTER")
         return
     end
-    if P.state ~= "ready" then
+    local overriding = overrideFloor and P.CanPostAnyway(target)
+    if P.state ~= "ready" and not (overriding and (P.state == "idle" or P.state == "done")) then
         return
     end
-    local e = postable(target) and target or P.NextEntry()
+    local e = overriding and target or (postable(target) and target or P.NextEntry())
     if not e then
         P.state = "done"
         ns.Fire("POSTER")
@@ -679,7 +685,7 @@ function P.PostNext(target)
         P.message = "The price for " .. ns.ItemName(e.id) .. " was over 5 minutes old, so it's being checked again. Press Post once it's done."
         P.state = "checking"
         checkEntry(e, function()
-            P.state = P.NextEntry() and "ready" or "done"
+            P.state = (P.Postable(e) or P.NextEntry()) and "ready" or "done"
             ns.Fire("POSTER")
         end)
         return
@@ -754,7 +760,7 @@ local function posted(a, note)
         e.status = "done"
     end
     if P.state == "posting" or P.state == "confirm" or P.state == "verify" or P.state == "ready" or P.state == "done" then
-        P.state = P.NextEntry() and "ready" or "done"
+        P.state = (P.Postable(e) or P.NextEntry()) and "ready" or "done"
     end
     P.message = note
     ns.Fire("POSTER")

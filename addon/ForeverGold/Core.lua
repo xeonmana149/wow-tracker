@@ -18,11 +18,14 @@ local ADDON, ns = ...
 _G.ForeverGold = ns
 
 ns.TITLE = "Forever Gold"
-ns.VERSION = "1.12.3"
+ns.VERSION = "1.12.4"
 -- The auction house keeps 5% of every sale.
 ns.AH_CUT = 0.05
 
 local floor, abs = math.floor, math.abs
+function ns.Secret(value)
+    return type(issecretvalue) == "function" and issecretvalue(value) or false
+end
 
 ----------------------------------------------------------------------
 -- Printing and error capture
@@ -119,6 +122,16 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         end
     end
 end)
+
+-- The blocked-action popup names the addon but not the protected function.
+-- Keep that function for /gold debug without changing the user's Lua-error setting.
+for _, event in ipairs({ "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN" }) do
+    ns.On(event, function(addonName, functionName)
+        if not ns.db or ns.Secret(addonName) or addonName ~= ADDON then return end
+        if ns.Secret(functionName) or type(functionName) ~= "string" then functionName = "unknown" end
+        ns.db.lastBlockedAction = { event = event, action = functionName, at = time() }
+    end)
+end
 
 ----------------------------------------------------------------------
 -- Internal messages (one part of the addon telling the others "prices
@@ -305,7 +318,13 @@ function ns.InitDB()
     if opts.minimapSpots == nil then opts.minimapSpots = true end
     if opts.mapButton == nil then opts.mapButton = true end
     if opts.revealMap == nil then opts.revealMap = true end
-    if opts.lootBeam == nil then opts.lootBeam = true end
+    -- Turn off the screen-space loot beams once for existing installations;
+    -- a later deliberate change to the option is preserved.
+    if not opts.beamsDisabledV1 then
+        opts.lootBeam = false
+        opts.beamsDisabledV1 = true
+    end
+    if opts.lootBeam == nil then opts.lootBeam = false end
     if opts.nearestBeam == nil then opts.nearestBeam = true end
     if opts.onlyMyProfs == nil then opts.onlyMyProfs = true end
     if opts.beamUnrecorded == nil then opts.beamUnrecorded = true end
@@ -736,6 +755,10 @@ SlashCmdList["FOREVERGOLD"] = function(msg)
         end
     elseif msg == "debug" then
         ns.Print("version " .. ns.VERSION .. ", price book '" .. tostring(ns.realmKey) .. "'")
+        local blocked = ns.db.lastBlockedAction
+        if type(blocked) == "table" then
+            ns.Print("last blocked action: " .. tostring(blocked.action or "unknown") .. " (" .. tostring(blocked.event or "unknown") .. ")")
+        end
         local n = 0
         for _ in pairs(ns.R().prices) do n = n + 1 end
         ns.Print("items with a price: " .. n .. ", last scan: " .. ns.Ago(ns.R().lastScan))

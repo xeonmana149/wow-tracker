@@ -1,13 +1,14 @@
 -- Forever Gold - the auction window
 --
 -- Talking to an auctioneer opens this window instead of the game's own.
--- Three tabs, like the game's:
+-- Auction house pages:
 --   Browse    search or pick a category; each result shows its usual price,
 --             how it compares and how fast it sells. Click one to see every
 --             listing and buy (stackable goods: any amount; gear: the one
 --             you pick). Deals finds the bargains from your last scan.
---   Sell      the post queue (Poster.lua): tick what to sell, price-check it,
+--   Sell list the post queue (Poster.lua): tick what to sell, price-check it,
 --             then press Post once per listing.
+--   Sell item price-check and post one selected item without changing the list.
 --   Auctions  your auctions with live undercut checks, and one-click-each
 --             cancelling of the undercut ones.
 --   Deals     Browse's Deals category, a click away: the bargains from your
@@ -26,6 +27,7 @@ local K = ns.UIKit
 local C = K.C
 local tex, skin, label, button, setIcon, edgeFor = K.tex, K.skin, K.label, K.button, K.setIcon, K.edgeFor
 local GREY = K.GREY
+local ART = "Interface\\AddOns\\ForeverGold\\Art\\"
 local AH = C_AuctionHouse
 local P = ns.Poster
 local CUT = ns.AH_CUT
@@ -39,6 +41,20 @@ local SIDE_W = 280   -- the right-hand panel on Sell and Auctions
 local A = { tab = "browse" }
 ns.AuctionUI = A
 local win
+
+-- A personal item-level note, kept with this realm and faction rather than
+-- with the price scan (which can be replaced). This is not a report.
+function A.IsManuallyFlagged(id)
+    local flags = ns.R().suspiciousItems
+    return type(flags) == "table" and flags[id] == true
+end
+
+function A.SetManuallyFlagged(id, flagged)
+    if type(id) ~= "number" or id <= 0 then return end
+    local realm = ns.R()
+    if type(realm.suspiciousItems) ~= "table" then realm.suspiciousItems = {} end
+    realm.suspiciousItems[id] = flagged and true or nil
+end
 
 local function plural(n, word)
     return n .. " " .. word .. (n == 1 and "" or "s")
@@ -59,7 +75,7 @@ local function tip(self)
     elseif d.id then
         pcall(GameTooltip.SetItemByID, GameTooltip, d.id)
     elseif d.tip then
-        GameTooltip:SetText(d.tip, 1, 1, 1, 1, true)
+        GameTooltip:SetText(d.tip, 1, 1, 1, 1)
     else
         GameTooltip:Hide()
         return
@@ -433,16 +449,22 @@ end
 -- otherwise a refresh only redraws the rows already built.
 local BUY = { mode = "list", results = {}, query = "", dirty = true }
 A.BUY = BUY
+A.dealFilters = { kind = "all", speed = "all" }
+local QUALITIES = { { "PoorQuality", "Poor" }, { "CommonQuality", "Common" },
+    { "UncommonQuality", "Uncommon" }, { "RareQuality", "Rare" }, { "EpicQuality", "Epic" },
+    { "LegendaryQuality", "Legendary" }, { "ArtifactQuality", "Artifact" } }
+A.filters = { qualities = {}, flags = {} }
+for _, q in ipairs(QUALITIES) do A.filters.qualities[q[1]] = true end
 
 local function qualityFilters()
     local out = {}
     local E = Enum and Enum.AuctionHouseFilter
     if E then
-        for _, k in ipairs({ "PoorQuality", "CommonQuality", "UncommonQuality", "RareQuality", "EpicQuality",
-            "LegendaryQuality", "ArtifactQuality" }) do
-            if E[k] then
-                out[#out + 1] = E[k]
-            end
+        for _, q in ipairs(QUALITIES) do
+            if A.filters.qualities[q[1]] and E[q[1]] ~= nil then out[#out + 1] = E[q[1]] end
+        end
+        for _, key in ipairs({ "UsableOnly", "UncollectedOnly", "ExactMatch" }) do
+            if A.filters.flags[key] and E[key] ~= nil then out[#out + 1] = E[key] end
         end
     end
     return out
@@ -471,6 +493,22 @@ function A.Search(text, category)
         buyMsg("Wait for the price scan to finish, then search.")
         return
     end
+    local p = win and win.browse
+    local function readLevel(field)
+        local value = field and (field:GetText() or "") or ""
+        value = value:match("^%s*(.-)%s*$")
+        if value == "" then return 0 end
+        if not value:match("^%d+$") or tonumber(value) > 999 then return nil end
+        return tonumber(value)
+    end
+    local minLevel, maxLevel = readLevel(p and p.minLevel), readLevel(p and p.maxLevel)
+    if not minLevel or not maxLevel or (minLevel > 0 and maxLevel > 0 and minLevel > maxLevel) then
+        buyMsg("Enter a valid level range (minimum must not exceed maximum).")
+        return
+    end
+    local anyQuality = false
+    for _, q in ipairs(QUALITIES) do if A.filters.qualities[q[1]] then anyQuality = true end end
+    if not anyQuality then buyMsg("Select at least one item quality."); return end
     BUY.query = text or ""
     BUY.category = category
     BUY.mode, BUY.item, BUY.deals = "list", nil, nil
@@ -491,8 +529,8 @@ function A.Search(text, category)
     local ok = pcall(AH.SendBrowseQuery, {
         searchString = BUY.query,
         sorts = sorts,
-        minLevel = 0,
-        maxLevel = 0,
+        minLevel = minLevel,
+        maxLevel = maxLevel,
         filters = filters,
         itemClassFilters = category and category.filters or nil,
     })
@@ -578,23 +616,41 @@ function A.ShowDeals(text)
     BUY.results, BUY.oddHidden = {}, 0
     BUY.dirty = true
     BUY.message = nil
+    local filters = A.dealFilters
+    local maxText = win and win.browse and win.browse.dealMax and (win.browse.dealMax:GetText() or "") or ""
+    maxText = maxText:match("^%s*(.-)%s*$")
+    local maximum = maxText ~= "" and ns.ParseMoney(maxText) or nil
+    if maxText ~= "" and (not maximum or maximum <= 0) then
+        BUY.message = "Enter a valid maximum price, such as 50s or 2g 30s."
+        A.Refresh()
+        return
+    end
+    local function matches(id, price, kind)
+        if filters.kind ~= "all" and filters.kind ~= kind then return false end
+        if maximum and (not price or price > maximum) then return false end
+        if filters.speed ~= "all" then
+            local speed = ns.SaleSpeed and ns.SaleSpeed(id) or nil
+            if (speed or "unknown") ~= filters.speed then return false end
+        end
+        return nameHas(id, text)
+    end
     for _, f in ipairs(ns.VendorFlips()) do
-        if nameHas(f.id, text) then
+        if matches(f.id, f.price, "vendor") then
             BUY.results[#BUY.results + 1] = { id = f.id, qty = f.listed or 0, price = f.price,
                 why = "|cff40e060Vendor pays " .. ns.StripCodes(ns.Money(f.vendor)) .. "|r", profit = f.profit }
         end
     end
     if ns.Bargains then
         for _, b in ipairs(ns.Bargains()) do
-            if nameHas(b.id, text) then
-                local price, listed = ns.AHPrice(b.id)
+            local price, listed = ns.AHPrice(b.id)
+            if matches(b.id, price or b.price, "under") then
                 BUY.results[#BUY.results + 1] = { id = b.id, qty = listed or 0, price = price or b.price,
                     why = "|cff40e060Well under usual|r", profit = b.profit }
             end
         end
     end
     if #BUY.results == 0 then
-        BUY.message = text ~= "" and ("No deals match \"" .. text .. "\". Clear the search to see them all.")
+        BUY.message = (text ~= "" or filters.kind ~= "all" or filters.speed ~= "all" or maxText ~= "") and "No deals match these filters."
             or ns.R().lastScan and "No deals in your last scan. Scan again later - they come and go."
             or "Deals come from a price scan. Press Scan prices first."
     end
@@ -1143,10 +1199,17 @@ local function litTabs()
 end
 
 local function setTab(key)
+    if P.pending and (P.state == "confirm" or P.state == "posting" or P.state == "verify")
+        and ((A.tab == "single" and key ~= "single") or (A.tab == "sell" and key ~= "sell")) then
+        P.message = "Finish the current auction post before changing tabs."
+        A.Refresh()
+        return
+    end
     if key == "deals" then
         A.tab = "browse"
         win.browse:SetShown(true)
         win.sell:SetShown(false)
+        win.single:SetShown(false)
         win.mine:SetShown(false)
         A.openCategory = nil
         if win.browse.search then
@@ -1162,8 +1225,9 @@ local function setTab(key)
     end
     win.browse:SetShown(key == "browse")
     win.sell:SetShown(key == "sell")
+    win.single:SetShown(key == "single")
     win.mine:SetShown(key == "auctions")
-    if key == "sell" then
+    if key == "sell" or key == "single" then
         if P.state ~= "checking" and P.state ~= "posting" and P.state ~= "confirm" and P.state ~= "verify" then
             P.Rebuild()
         end
@@ -1173,6 +1237,24 @@ local function setTab(key)
     A.Refresh()
 end
 A.SetTab = setTab
+
+-- Shift-clicking a bag item fills the search, but never submits a query.
+function A.SearchFromBag(id, link)
+    if not (A.IsShown() and ns.ahOpen and id) then return false end
+    local edit = ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow()
+    if edit and (not edit.HasFocus or edit:HasFocus()) then return false end
+    local name = type(link) == "string" and link:match("|h%[(.-)%]|h")
+    if not name and ns.ItemName then name = ns.ItemName(id) end
+    if not name or name == "" or name:match("^Item #") then return false end
+    setTab("browse")
+    A.openCategory = nil
+    BUY.category, BUY.deals, BUY.item, BUY.mode = nil, nil, nil, "list"
+    BUY.results, BUY.seen, BUY.oddHidden = {}, {}, 0
+    BUY.query, BUY.searching, BUY.dirty = "", false, true
+    win.browse.search:SetText(name)
+    A.Refresh()
+    return true
+end
 
 local function headerButton(f, text, w, onClick, tipText)
     local b = button(f, text, w, 22, onClick)
@@ -1240,7 +1322,95 @@ local function buildBrowse(f)
     p.state:SetPoint("TOPRIGHT", -14, -TOP - 5)
     p.state:SetJustifyH("RIGHT")
 
-    local tableH = listH - 30
+    p.filters = CreateFrame("Frame", nil, p)
+    p.filters:SetPoint("TOPLEFT", x0, -TOP - 30)
+    p.filters:SetSize(rightW, 52)
+    p.dealFilters = CreateFrame("Frame", nil, p)
+    p.dealFilters:SetPoint("TOPLEFT", x0, -TOP - 30)
+    p.dealFilters:SetSize(rightW, 52)
+    local dealTypes = { { "all", "All deals" }, { "vendor", "Below vendor" }, { "under", "Below usual" } }
+    local dealSpeeds = { { "all", "Any speed" }, { "fast", "Sells fast" }, { "steady", "Sells steadily" },
+        { "slow", "Sells slowly" }, { "rarely", "Rarely sells" }, { "unknown", "Speed unknown" } }
+    local function cycleFilter(key, options, control)
+        for i, spec in ipairs(options) do
+            if A.dealFilters[key] == spec[1] then
+                local nextSpec = options[i % #options + 1]
+                A.dealFilters[key] = nextSpec[1]; control:SetLabel(nextSpec[2]); break
+            end
+        end
+        A.ShowDeals(p.search:GetText() or "")
+    end
+    p.dealKind = button(p.dealFilters, "All deals", 112, 22, function() cycleFilter("kind", dealTypes, p.dealKind) end)
+    p.dealKind:SetPoint("TOPLEFT", 0, 0)
+    p.dealSpeed = button(p.dealFilters, "Any speed", 116, 22, function() cycleFilter("speed", dealSpeeds, p.dealSpeed) end)
+    p.dealSpeed:SetPoint("LEFT", p.dealKind, "RIGHT", 5, 0)
+    local maxLabel = label(p.dealFilters, "GameFontHighlightSmall", "Max each:")
+    maxLabel:SetPoint("LEFT", p.dealSpeed, "RIGHT", 8, 0)
+    p.dealMax = newEdit(p.dealFilters, 90, function() A.ShowDeals(p.search:GetText() or "") end)
+    p.dealMax:SetPoint("LEFT", maxLabel, "RIGHT", 5, 0)
+    p.dealClear = button(p.dealFilters, "Clear filters", 90, 22, function()
+        A.dealFilters.kind, A.dealFilters.speed = "all", "all"
+        p.dealKind:SetLabel("All deals"); p.dealSpeed:SetLabel("Any speed"); p.dealMax:SetText("")
+        A.ShowDeals(p.search:GetText() or "")
+    end)
+    p.dealClear:SetPoint("LEFT", p.dealMax, "RIGHT", 8, 0)
+    local dealNote = label(p.dealFilters, "GameFontHighlightSmall", "Prices and sell speeds are estimates from the latest available data.")
+    dealNote:SetPoint("TOPLEFT", 0, -30)
+    local levelLabel = label(p.filters, "GameFontHighlightSmall", "Level")
+    levelLabel:SetPoint("TOPLEFT", 0, -5)
+    p.minLevel = newEdit(p.filters, 42, function() A.Search(p.search:GetText() or "", picked()) end)
+    p.minLevel:SetPoint("TOPLEFT", 39, 0)
+    local dash = label(p.filters, "GameFontHighlightSmall", "–")
+    dash:SetPoint("LEFT", p.minLevel, "RIGHT", 4, 0)
+    p.maxLevel = newEdit(p.filters, 42, function() A.Search(p.search:GetText() or "", picked()) end)
+    p.maxLevel:SetPoint("LEFT", p.minLevel, "RIGHT", 16, 0)
+    if p.minLevel.SetNumeric then p.minLevel:SetNumeric(true); p.maxLevel:SetNumeric(true) end
+    if p.minLevel.SetMaxLetters then p.minLevel:SetMaxLetters(3); p.maxLevel:SetMaxLetters(3) end
+    p.flagButtons = {}
+    local flagX = 150
+    for _, spec in ipairs({ { "UsableOnly", "Usable", 70 }, { "UncollectedOnly", "Uncollected", 98 },
+        { "ExactMatch", "Exact match", 96 } }) do
+        local key, title, buttonWidth = spec[1], spec[2], spec[3]
+        if Enum and Enum.AuctionHouseFilter and Enum.AuctionHouseFilter[key] ~= nil then
+            local b = button(p.filters, title, buttonWidth, 22, function()
+                A.filters.flags[key] = not A.filters.flags[key]
+                p.flagButtons[key]:SetPrimary(A.filters.flags[key])
+            end)
+            b:SetPoint("TOPLEFT", flagX, 0)
+            b:SetPrimary(A.filters.flags[key] and true or false)
+            p.flagButtons[key] = b
+            flagX = flagX + buttonWidth + 5
+        end
+    end
+    p.clearFilters = button(p.filters, "Clear filters", 90, 22, function()
+        p.minLevel:SetText(""); p.maxLevel:SetText("")
+        for key, b in pairs(p.flagButtons) do A.filters.flags[key] = false; b:SetPrimary(false) end
+        for _, q in ipairs(QUALITIES) do
+            A.filters.qualities[q[1]] = true
+            if p.qualityButtons[q[1]] then p.qualityButtons[q[1]]:SetPrimary(true) end
+        end
+    end)
+    p.clearFilters:SetPoint("TOPRIGHT", 0, 0)
+    local qualityLabel = label(p.filters, "GameFontHighlightSmall", "Quality")
+    qualityLabel:SetPoint("TOPLEFT", 0, -31)
+    p.qualityButtons = {}
+    local qualityX = 50
+    for _, q in ipairs(QUALITIES) do
+        local key, title = q[1], q[2]
+        if Enum and Enum.AuctionHouseFilter and Enum.AuctionHouseFilter[key] ~= nil then
+            local buttonWidth = 12 + #title * 7
+            local b = button(p.filters, title, buttonWidth, 22, function()
+                A.filters.qualities[key] = not A.filters.qualities[key]
+                p.qualityButtons[key]:SetPrimary(A.filters.qualities[key])
+            end)
+            b:SetPoint("TOPLEFT", qualityX, -26)
+            b:SetPrimary(A.filters.qualities[key])
+            p.qualityButtons[key] = b
+            qualityX = qualityX + buttonWidth + 4
+        end
+    end
+
+    local tableH = listH - 86
     p.results = newTable(p, rightW, tableH, {
         { key = "name", title = "Item", icon = true, sort = true },
         { key = "qty", title = "Available", w = 70, right = true, sort = true },
@@ -1249,13 +1419,21 @@ local function buildBrowse(f)
         { key = "vs", title = "Deal", w = 150, sort = true },
         { key = "sells", title = "Sells", w = 120, sort = true },
     })
-    p.results:SetPoint("TOPLEFT", x0, -TOP - 30)
-    p.results.onClick = function(d) A.OpenItem(d.r) end
+    p.results:SetPoint("TOPLEFT", x0, -TOP - 86)
+    p.results.onClick = function(d, which)
+        if which == "RightButton" then
+            A.SetManuallyFlagged(d.r.id, not A.IsManuallyFlagged(d.r.id))
+            BUY.dirty = true
+            A.Refresh()
+            return
+        end
+        A.OpenItem(d.r)
+    end
 
     -- One item's listings, with the buy box beside it.
     local listW = rightW - SIDE_W + 0
     p.item = CreateFrame("Frame", nil, p)
-    p.item:SetPoint("TOPLEFT", x0, -TOP - 30)
+    p.item:SetPoint("TOPLEFT", x0, -TOP - 86)
     p.item:SetSize(rightW, tableH)
     p.listings = newTable(p.item, rightW - 236, tableH, {
         { key = "price", title = "Buyout each", w = 84, right = true, sort = true },
@@ -1285,8 +1463,23 @@ local function buildBrowse(f)
     box.title:SetPoint("TOPLEFT", 50, -12)
     box.title:SetWidth(170)
     box.title:SetWordWrap(false)
+    box.flag = button(box, "Flag as suspicious", 208, 22, function()
+        if not BUY.item then return end
+        local id = BUY.item.id
+        A.SetManuallyFlagged(id, not A.IsManuallyFlagged(id))
+        BUY.dirty = true
+        A.Refresh()
+    end)
+    box.flag:SetPoint("TOPLEFT", 10, -48)
+    box.flag:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Personal item flag", 1, 0.82, 0, 1)
+        GameTooltip:AddLine("Mark this item as potentially involved in gold farming. Applies to the item on this realm and faction, not a particular seller or listing. Click again to remove. This does not report anyone or alter prices.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    box.flag:SetScript("OnLeave", untip)
     box.facts = label(box, "GameFontHighlightSmall")
-    box.facts:SetPoint("TOPLEFT", 10, -52)
+    box.facts:SetPoint("TOPLEFT", 10, -77)
     box.facts:SetWidth(208)
     box.facts:SetJustifyV("TOP")
     box.facts:SetWordWrap(true)
@@ -1334,7 +1527,8 @@ local function buildSell(f)
         { key = "plan", title = "Listings", w = 70, right = true },
         { key = "price", title = "Price each", w = 90, right = true, sort = true },
         { key = "lowest", title = "Lowest now", w = 90, right = true, sort = true },
-        { key = "status", title = "Status", w = 104, sort = true },
+        { key = "sells", title = "Sell rate", w = 80, sort = true },
+        { key = "status", title = "Status", w = 92, sort = true },
     })
     p.list:SetPoint("TOPLEFT", 12, -TOP)
     p.list.onCheck = function(d)
@@ -1408,8 +1602,13 @@ local function buildSell(f)
     side.totals:SetWidth(SIDE_W - 20)
     side.totals:SetWordWrap(true)
     side.post = button(side, "Post", SIDE_W - 20 - 70, 30, function()
-        if P.state == "ready" or P.state == "confirm" then
-            P.PostNext(A.SellShown())
+        local selected = A.SellShown()
+        if P.state == "confirm" then
+            P.PostNext(selected)
+        elseif P.CanPostAnyway(selected) then
+            P.PostNext(selected, true)
+        elseif P.state == "ready" then
+            P.PostNext(selected)
         elseif P.state ~= "checking" and P.state ~= "posting" and P.state ~= "verify" then
             P.CheckAll(P.state == "done")
         end
@@ -1430,8 +1629,166 @@ local function buildSell(f)
         A.sellSel = nil
     end)
     side.skip:SetPoint("LEFT", side.post, "RIGHT", 6, 0)
-    side.check = button(side, "Price check everything again", SIDE_W - 20, 22, function() P.CheckAll(true) end)
+    side.check = button(side, "Price check everything again", SIDE_W - 20, 22, function() P.CheckAll(true, true) end)
     side.check:SetPoint("BOTTOMLEFT", 10, 10)
+    return p
+end
+
+-- One selected item uses the same live pricing and protected-posting engine,
+-- but its temporary entry never changes the saved choices in the sell list.
+local function buildSingle(f)
+    local p = CreateFrame("Frame", nil, f)
+    p:SetPoint("TOPLEFT", 0, 0); p:SetSize(W, H)
+    local leftW = 376
+    p.bagList = newTable(p, leftW - 20, 200, {
+        { key = "name", title = "Choose an item", icon = true, sort = true },
+        { key = "have", title = "Have", w = 55, right = true, sort = true },
+    })
+    p.bagList:SetPoint("TOPLEFT", 22, -TOP - 94)
+    p.bagList:SetFrameLevel(p:GetFrameLevel() + 15)
+    p.bagList:Hide()
+    local function selectItem(item)
+        if P.state == "checking" or P.state == "posting" or P.state == "confirm" or P.state == "verify" then
+            P.message = "Finish or stop the current price check or post first."
+            A.Refresh(); return false
+        end
+        if not item then return false end
+        p.bagList:Hide()
+        A.singleSel = { id = item.id, have = item.have, picked = true, status = "new" }
+        P.CheckOne(A.singleSel)
+        A.Refresh()
+        return true
+    end
+    p.bagList.onClick = function(d) selectItem(d.e) end
+    local drop = CreateFrame("Button", nil, p)
+    drop:SetPoint("TOPLEFT", 12, -TOP); drop:SetSize(leftW, 64)
+    skin(drop, C.panel[1], C.panel[2], C.panel[3], 1, C.panelEdge[1], C.panelEdge[2], C.panelEdge[3], 1)
+    drop.icon = drop:CreateTexture(nil, "ARTWORK"); drop.icon:SetPoint("LEFT", 10, 0); drop.icon:SetSize(44, 44)
+    drop.icon:SetTexture(ART .. "bag-inventory.tga")
+    drop.text = label(drop, "GameFontHighlight", "Drag an item from your bags here")
+    drop.text:SetPoint("LEFT", 64, 0); drop.text:SetWidth(leftW - 76); drop.text:SetWordWrap(true)
+    local hover = tex(drop, "HIGHLIGHT", 1, 0.82, 0.3, 0.1); hover:SetAllPoints()
+    local function receiveItem()
+        if type(GetCursorInfo) ~= "function" then return end
+        local kind, id = ns.try(GetCursorInfo)
+        if kind ~= "item" or type(id) ~= "number" then
+            P.message = "Pick up an item from your bags first."
+            A.Refresh(); return
+        end
+        if P.state == "checking" or P.state == "posting" or P.state == "confirm" or P.state == "verify" then
+            P.message = "Finish or stop the current price check or post first."
+            A.Refresh(); return
+        end
+        local item
+        for _, entry in ipairs(P.entries) do if entry.id == id then item = entry; break end end
+        if not item then
+            P.message = "That item isn't available to sell from your bags."
+            A.Refresh(); return
+        end
+        -- Return the item to its bag before the price-check engine locates it.
+        -- Never pick up, move, or consume the stack ourselves.
+        if type(ClearCursor) ~= "function" then
+            P.message = "Couldn't return the item to your bags."
+            A.Refresh(); return
+        end
+        local cleared = pcall(ClearCursor)
+        if not cleared or (CursorHasItem and ns.try(CursorHasItem)) then
+            P.message = "Couldn't return the item to your bags."
+            A.Refresh(); return
+        end
+        selectItem(item)
+    end
+    drop:SetScript("OnReceiveDrag", receiveItem)
+    drop:SetScript("OnClick", function() if CursorHasItem and ns.try(CursorHasItem) then receiveItem() end end)
+    p.drop = drop
+    local side = CreateFrame("Frame", nil, p); p.side = side
+    side:SetPoint("TOPLEFT", drop, "BOTTOMLEFT", 0, -7); side:SetSize(leftW, H - TOP - FOOT - 71)
+    skin(side, C.panel[1], C.panel[2], C.panel[3], 1, C.panelEdge[1], C.panelEdge[2], C.panelEdge[3], 1)
+    side.choose = button(side, "Choose from bags", 150, 24, function()
+        p.bagList:SetShown(not p.bagList:IsShown())
+    end)
+    side.choose:SetPoint("TOPLEFT", 10, -10)
+    side.rate = label(side, "GameFontHighlightSmall", ""); side.rate:SetPoint("LEFT", side.choose, "RIGHT", 10, 0)
+    side.rate:SetWidth(leftW - 180); side.rate:SetWordWrap(false)
+    side.perLabel = label(side, "GameFontNormal", "Quantity")
+    side.perLabel:SetPoint("TOPLEFT", 16, -55)
+    local function setQuantity(text)
+        local e, n = A.singleSel, tonumber(text)
+        if e and e.listings and n then P.SetPer(e, n) end
+        A.Refresh()
+    end
+    side.per = newEdit(side, 110, setQuantity)
+    side.per:SetScript("OnEditFocusLost", function(self) setQuantity(self:GetText() or "") end)
+    side.per:SetPoint("TOPLEFT", 145, -49)
+    side.max = button(side, "Max", 70, 22, function()
+        local e = A.singleSel; if e and e.listings then P.SetPer(e, e.have or 1) end
+    end)
+    side.max:SetPoint("LEFT", side.per, "RIGHT", 8, 0)
+    side.priceLabel = label(side, "GameFontNormal", "Buyout per item")
+    side.priceLabel:SetPoint("TOPLEFT", 16, -94)
+    local function setPrice()
+        local e = A.singleSel
+        if not e or not e.listings then return end
+        local g = tonumber(side.gold:GetText()) or 0
+        local s = tonumber(side.silver:GetText()) or 0
+        local c = tonumber(side.copper:GetText()) or 0
+        P.SetPrice(e, max(0, floor(g)) * 10000 + max(0, floor(s)) * 100 + max(0, floor(c)))
+        A.Refresh()
+    end
+    side.gold = newEdit(side, 55, setPrice); side.gold:SetPoint("TOPLEFT", 145, -88)
+    side.silver = newEdit(side, 50, setPrice); side.silver:SetPoint("LEFT", side.gold, "RIGHT", 5, 0)
+    side.copper = newEdit(side, 50, setPrice); side.copper:SetPoint("LEFT", side.silver, "RIGHT", 5, 0)
+    for _, field in ipairs({ side.gold, side.silver, side.copper }) do
+        field:SetScript("OnEditFocusLost", setPrice)
+    end
+    for _, field in ipairs({ side.per, side.gold, side.silver, side.copper }) do
+        if field.SetNumeric then field:SetNumeric(true) end
+    end
+    local coinLabels = { { side.gold, "Gold" }, { side.silver, "Silver" }, { side.copper, "Copper" } }
+    for _, c in ipairs(coinLabels) do
+        local t = label(side, "GameFontDisableSmall", c[2]); t:SetPoint("TOP", c[1], "BOTTOM", 0, -2)
+    end
+    side.reset = button(side, "Auto price", 90, 22, function() if A.singleSel and A.singleSel.listings then P.SetPrice(A.singleSel, nil) end end)
+    side.reset:SetPoint("TOPLEFT", 145, -130)
+    side.durationLabel = label(side, "GameFontNormal", "Duration"); side.durationLabel:SetPoint("TOPLEFT", 16, -169)
+    side.duration = button(side, "", 130, 22, function() P.CycleSetting("duration") end)
+    side.duration:SetPoint("TOPLEFT", 145, -164)
+    side.depositLabel = label(side, "GameFontNormal", "Deposit"); side.depositLabel:SetPoint("TOPLEFT", 16, -207)
+    side.deposit = label(side, "GameFontHighlight", "—"); side.deposit:SetPoint("TOPLEFT", 145, -207)
+    side.totalLabel = label(side, "GameFontNormal", "Total buyout"); side.totalLabel:SetPoint("TOPLEFT", 16, -236)
+    side.total = label(side, "GameFontHighlight", "—"); side.total:SetPoint("TOPLEFT", 145, -236)
+    side.after = label(side, "GameFontHighlightSmall", ""); side.after:SetPoint("TOPLEFT", 145, -257)
+    side.body = label(side, "GameFontHighlightSmall", ""); side.body:SetPoint("TOPLEFT", 16, -282)
+    side.body:SetWidth(leftW - 32); side.body:SetHeight(40); side.body:SetWordWrap(true)
+    side.post = button(side, "Create auction", 225, 30, function()
+        local e = A.singleSel
+        if not e then return end
+        if P.state == "confirm" and P.pending and P.pending.entry == e then P.PostNext(e)
+        elseif P.CanPostAnyway(e) then P.PostNext(e, true)
+        elseif P.state == "ready" and P.Postable(e) then P.PostNext(e) end
+    end)
+    side.post:SetPoint("BOTTOMLEFT", 16, 12); side.post:SetPrimary(true)
+    side.check = button(side, "Check", 70, 28, function()
+        if P.state == "checking" then P.StopChecking()
+        elseif A.singleSel then P.CheckOne(A.singleSel) end
+    end)
+    side.check:SetPoint("LEFT", side.post, "RIGHT", 8, 0)
+    local rightW = W - leftW - 36
+    p.list = newTable(p, rightW, H - TOP - FOOT, {
+        { key = "bid", title = "Bid (stack)", w = 120, right = true, sort = true },
+        { key = "buyout", title = "Buyout (stack)", w = 135, right = true, sort = true },
+        { key = "each", title = "Each", w = 105, right = true, sort = true },
+        { key = "qty", title = "Qty", w = 45, right = true, sort = true },
+        { key = "seller", title = "Seller", sort = true },
+    })
+    p.list:SetPoint("TOPLEFT", drop, "TOPRIGHT", 12, 0)
+    p.list.sortKey, p.list.sortAsc = "each", true
+    p.list.onClick = function(d)
+        if A.singleSel and d.listing and d.listing.p and P.state ~= "checking" and P.state ~= "posting"
+            and P.state ~= "confirm" and P.state ~= "verify" then
+            P.SetPrice(A.singleSel, d.listing.p)
+        end
+    end
     return p
 end
 
@@ -1495,14 +1852,14 @@ local function createWindow()
     local icon = f:CreateTexture(nil, "ARTWORK")
     icon:SetSize(30, 30)
     icon:SetPoint("TOPLEFT", 10, -5)
-    icon:SetTexture(K.LOGO)
+    icon:SetTexture(K.AUCTION)
     local title = label(f, K.SERIF_L, "Auction House")
     title:SetTextColor(C.goldText[1], C.goldText[2], C.goldText[3])
     title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
     f.money = label(f, "GameFontHighlight")
     f.money:SetPoint("LEFT", title, "RIGHT", 18, 0)
 
-    local close = button(f, "X", 24, 22, function() A.Close() end)
+    local close = K.closeButton(f, 24, 24, function() A.Close() end)
     close:SetPoint("TOPRIGHT", -8, -8)
     f.blizz = headerButton(f, "Game's window", 104, function() A.UseBlizzard() end,
         "Switch to the game's own auction window. A button above it switches back.")
@@ -1518,12 +1875,22 @@ local function createWindow()
     rule:SetPoint("TOPLEFT", 12, -70)
     rule:SetPoint("TOPRIGHT", -12, -70)
     local x = 12
-    for _, t in ipairs({ { "browse", "Browse" }, { "sell", "Sell" }, { "auctions", "Auctions" }, { "deals", "Deals" } }) do
+    for _, t in ipairs({ { "browse", "Browse", "bag-search.tga" }, { "sell", "Sell list", "gold-auction.tga" },
+        { "single", "Sell item", "gold-auction.tga" },
+        { "auctions", "Auctions", "auction-listings.tga" }, { "deals", "Deals", "auction-deals.tga" } }) do
         local key = t[1]
-        local b = button(f, t[2], 100, 24, function() setTab(key) end)
+        local b = button(f, t[2], 110, 24, function() setTab(key) end)
+        b.icon = b:CreateTexture(nil, "ARTWORK")
+        b.icon:SetSize(18, 18)
+        b.icon:SetPoint("LEFT", 6, 0)
+        b.icon:SetTexture(ART .. t[3])
+        b.text:ClearAllPoints()
+        b.text:SetPoint("LEFT", b.icon, "RIGHT", 4, 0)
+        b.text:SetPoint("RIGHT", -4, 0)
+        b.text:SetJustifyH("CENTER")
         b:SetPoint("TOPLEFT", x, -42)
         tabs[key] = b
-        x = x + 104
+        x = x + 114
     end
     f.tabs = tabs
 
@@ -1543,6 +1910,7 @@ local function createWindow()
 
     f.browse = buildBrowse(f)
     f.sell = buildSell(f)
+    f.single = buildSingle(f)
     f.mine = buildMine(f)
     f:Hide()
     return f
@@ -1589,11 +1957,14 @@ local function refreshBrowse()
     p.cats:SetData(cats, true)
 
     local inItem = BUY.mode == "item" and BUY.item
+    p.filters:SetShown(not inItem and not BUY.deals)
+    p.dealFilters:SetShown(not inItem and BUY.deals and true or false)
     p.results:SetShown(not inItem)
     p.item:SetShown(inItem and true or false)
     p.back:SetShown(inItem and true or false)
     local where = type(BUY.category) == "table" and BUY.category.name
-        and (" in " .. ns.StripCodes(BUY.category.name):gsub("^%s+", "")) or ""
+        and (" in " .. ns.StripCodes(BUY.category.name):gsub("^%s+", ""))
+        or BUY.category == nil and " (all categories)" or ""
     -- Gray and white things listed for a fortune are gold changing hands
     -- (see ns.Suspicious): nobody should buy them, so they're left out of
     -- the list, and the count above it says how many were.
@@ -1656,6 +2027,10 @@ local function refreshBrowse()
             elseif pct then
                 vs = vs .. GREY .. (pct < 0 and " under usual" or (pct > 0 and " over usual" or " = usual")) .. "|r"
             end
+            if A.IsManuallyFlagged(r.id) then
+                vs = "|cffff9a5aFlagged by you|r"
+                hint = "You marked this item as potentially suspicious. This is your personal note."
+            end
             if not hint and usual and r.price and pct then
                 hint = "Usually sells for " .. ns.StripCodes(ns.Money(usual)) .. ". This is "
                     .. (pct < 0 and (-pct .. "% cheaper.") or pct > 0 and (pct .. "% dearer.") or "the usual price.")
@@ -1670,7 +2045,7 @@ local function refreshBrowse()
                     vs = vs, sells = sells or "" },
                 sv = { name = name, qty = r.qty or 0, price = r.price or 0, usual = usual or 0,
                     vs = pct or (r.profit and -1000 - r.profit) or 0, sells = ns.SpeedWeight and ns.SpeedWeight(r.id) or 0 },
-                hint = (hint and (hint .. "\n") or "") .. "Click to see every listing and buy.",
+                hint = (hint and (hint .. "\n") or "") .. "Click to see listings. Right-click to flag or clear your flag.",
             }
         end
         for _, r in ipairs(BUY.results) do
@@ -1777,7 +2152,12 @@ local function refreshBrowse()
     setIcon(box.icon, ns.Icon(id))
     edgeFor(box.iconEdge, id)
     box.title:SetText(ns.ItemName(id))
+    local manualFlag = A.IsManuallyFlagged(id)
+    box.flag.text:SetText(manualFlag and "Remove suspicious flag" or "Flag as suspicious")
     local facts = {}
+    if manualFlag then
+        facts[#facts + 1] = "|cffff9a5aFlagged by you.|r This is your personal note for this item."
+    end
     if oddCount > 0 then
         facts[#facts + 1] = "|cffff7070" .. plural(oddCount, "suspicious listing") .. ":|r priced like gold changing"
             .. " hands, not a real sale. Don't buy " .. (oddCount == 1 and "it" or "them") .. "."
@@ -1937,6 +2317,10 @@ local function refreshSell()
     for i, e in ipairs(P.entries) do
         local st = P.STATUS[e.status] or P.STATUS.new
         local name = ns.ItemName(e.id)
+        local speed, rate = ns.SaleSpeed(e.id)
+        local sells = speed and rate and type(rate.through) == "number" and rate.through >= 0
+            and (ns.SPEEDS[speed].color .. tostring(rate.through) .. "%|r")
+            or speed and ns.SaleText(e.id, true) or (GREY .. "Unknown|r")
         rows[i] = {
             key = "e" .. e.id, id = e.id, e = e, checked = e.picked,
             cells = { name = name .. (e.recommended and "" or (GREY .. "  (not suggested)|r")),
@@ -1944,10 +2328,13 @@ local function refreshSell()
                 plan = e.picked and e.decision and P.PlanText(e) or "",
                 price = e.price and e.picked and ns.Money(e.price) or "",
                 lowest = e.lowest and ns.Money(e.lowest) or (e.listings and GREY .. "none|r" or ""),
+                sells = sells,
                 status = e.picked and (st[2] .. st[1] .. "|r") or (GREY .. "Not posting|r") },
-            sv = { name = name, have = e.have or 0, price = e.price or 0, lowest = e.lowest or 0, status = st[1] },
+            sv = { name = name, have = e.have or 0, price = e.price or 0, lowest = e.lowest or 0,
+                sells = speed and rate and rate.through or -1, status = st[1] },
             dim = not e.picked or e.status == "done" or e.status == "skipped",
-            hint = "Tick to include it. Click to see its listing on the right.",
+            hint = (ns.SaleText(e.id) or "Sell rate unknown: not enough market data.")
+                .. "\nTick to include it. Click to see its listing on the right.",
         }
     end
     p.list.selected = shown and ("e" .. shown.id) or nil
@@ -2030,12 +2417,15 @@ local function refreshSell()
     elseif P.state == "verify" then
         post:SetLabel("Checking it went up...")
         post:SetDisabled(true)
-    elseif (P.state == "confirm" or (P.state == "ready" and P.NextEntry())) and ns.AHWaiting() then
+    elseif (P.state == "confirm" or P.CanPostAnyway(e) or (P.state == "ready" and P.NextEntry())) and ns.AHWaiting() then
         -- The auction house said busy / too fast: wait it out, don't click into another refusal.
         post:SetLabel("Busy - wait a moment...")
         post:SetDisabled(true)
     elseif P.state == "confirm" then
         post:SetLabel("Confirm post")
+        post:SetDisabled(false)
+    elseif P.CanPostAnyway(e) then
+        post:SetLabel("Post anyway: " .. ns.StripCodes(ns.Money(e.price)) .. " each")
         post:SetDisabled(false)
     elseif P.state == "ready" and P.NextEntry() then
         local n = P.Postable(e) and e or P.NextEntry()
@@ -2051,7 +2441,7 @@ local function refreshSell()
     end
     post:SetPrimary(true)
     side.check:SetDisabled(P.state == "checking" or P.state == "posting" or P.state == "confirm"
-        or P.state == "verify" or picked == 0)
+        or P.state == "verify" or #P.entries == 0)
 
     local ready, listings, worth = P.Summary()
     if P.state == "checking" or P.state == "ready" or P.state == "done" then
@@ -2060,6 +2450,101 @@ local function refreshSell()
     else
         win.statusExtra = nil
     end
+end
+
+-- Listing prices need every denomination, including copper on gold amounts.
+local function singleMoney(value)
+    if type(value) ~= "number" then return GREY .. "—|r" end
+    value = floor(value + 0.5)
+    local gold, silver, copper = floor(value / 10000), floor(value / 100) % 100, value % 100
+    local pieces = {}
+    if gold > 0 then pieces[#pieces + 1] = ns.Commas(gold) .. ns.COIN_ICONS.g end
+    if silver > 0 then pieces[#pieces + 1] = silver .. ns.COIN_ICONS.s end
+    if copper > 0 or #pieces == 0 then pieces[#pieces + 1] = copper .. ns.COIN_ICONS.c end
+    return table.concat(pieces, " ")
+end
+
+local function refreshSingle()
+    local p, e = win.single, A.singleSel
+    local rows = {}
+    for _, item in ipairs(P.entries) do
+        local speed, rate = ns.SaleSpeed(item.id)
+        local sellText = speed and rate and type(rate.through) == "number" and rate.through >= 0
+            and (ns.SPEEDS[speed].color .. rate.through .. "%|r")
+            or speed and ns.SaleText(item.id, true) or (GREY .. "Unknown|r")
+        rows[#rows + 1] = { key = "i" .. item.id, id = item.id, e = item,
+            cells = { name = ns.ItemName(item.id), have = tostring(item.have or 0), sells = sellText },
+            sv = { name = ns.ItemName(item.id), have = item.have or 0, sells = speed and rate and rate.through or -1 },
+            hint = (ns.SaleText(item.id) or "Sell rate unknown: not enough market data.") .. "\nClick to price-check this item." }
+    end
+    p.bagList.selected = e and "i" .. e.id or nil
+    p.bagList:SetEmpty("No auctionable items in your bags.")
+    p.bagList:SetData(rows, true)
+    local side = p.side
+    local busy = P.state == "checking" or P.state == "posting" or P.state == "confirm" or P.state == "verify"
+    local auctions = {}
+    if e then
+        setIcon(p.drop.icon, ns.Icon(e.id))
+        p.drop.text:SetText(ns.ItemName(e.id) .. "\n" .. GREY .. "You have " .. tostring(e.have or 0) .. "  •  Drag another item here|r")
+        local lines = P.Explain(e)
+        side.body:SetText(table.concat(lines, "\n"))
+        side.rate:SetText(ns.SaleText(e.id, "mid") or (GREY .. "Sell rate unknown|r"))
+        local editable = e.listings ~= nil and e.status ~= "done" and not busy
+        for _, field in ipairs({ side.per, side.gold, side.silver, side.copper }) do
+            field:EnableMouse(editable)
+            field:SetAlpha(editable and 1 or 0.5)
+        end
+        side.max:SetDisabled(not editable); side.reset:SetDisabled(not editable)
+        if not side.per:HasFocus() then side.per:SetText(tostring(e.per or 1)) end
+        local amount = e.price and floor(e.price) or 0
+        if not side.gold:HasFocus() then side.gold:SetText(e.price and tostring(floor(amount / 10000)) or "") end
+        if not side.silver:HasFocus() then side.silver:SetText(e.price and tostring(floor(amount / 100) % 100) or "") end
+        if not side.copper:HasFocus() then side.copper:SetText(e.price and tostring(amount % 100) or "") end
+        local receive, deposit, qty = P.Totals(e)
+        side.deposit:SetText(deposit and singleMoney(deposit) or (GREY .. "Unknown|r"))
+        side.total:SetText(receive and singleMoney(floor(e.price * qty)) or (GREY .. "—|r"))
+        side.after:SetText(receive and ("After 5% cut: " .. singleMoney(receive)) or "")
+        local function addListing(l, i, bidOnly)
+            local q = l.q or 1
+            local total = l.buyout or (l.p and floor(l.p * q + 0.5))
+            auctions[#auctions + 1] = { key = (bidOnly and "b" or "a") .. i, listing = l,
+                cells = { bid = l.bid and singleMoney(l.bid) or GREY .. "—|r",
+                    buyout = total and singleMoney(total) or GREY .. "Bid only|r",
+                    each = l.p and singleMoney(l.p) or GREY .. "—|r", qty = tostring(q),
+                    seller = l.mine and "You" or (l.owner or (l.sellers and tostring(l.sellers) .. " sellers") or "—") },
+                sv = { bid = l.bid, buyout = total, each = l.p, qty = q, seller = l.owner or "" },
+                tip = bidOnly and "Bid only" or "Current auction",
+                hint = bidOnly and "This auction has no buyout." or "Click to use this price per item." }
+        end
+        for i, l in ipairs(e.listings or {}) do addListing(l, i, false) end
+        for i, l in ipairs(e.listings and e.listings.bids or {}) do addListing(l, i, true) end
+    else
+        p.drop.icon:SetTexture(ART .. "bag-inventory.tga")
+        p.drop.text:SetText("Drag an item from your bags here")
+        side.body:SetText("Choose an item to check current auctions and prepare a listing.")
+        side.rate:SetText(""); side.deposit:SetText("—"); side.total:SetText("—"); side.after:SetText("")
+        for _, field in ipairs({ side.per, side.gold, side.silver, side.copper }) do
+            field:EnableMouse(false); field:SetAlpha(0.5); if not field:HasFocus() then field:SetText("") end
+        end
+        side.max:SetDisabled(true); side.reset:SetDisabled(true)
+    end
+    p.list:SetEmpty(not e and "Choose an item to see current auctions."
+        or P.state == "checking" and "Checking current auctions..."
+        or not e.listings and "Prices unavailable. Try checking again."
+        or "No current auctions found.")
+    p.list:SetData(auctions, true)
+    local _, duration = P.Setting("duration")
+    side.duration:SetLabel("Lasts: " .. duration); side.duration:SetDisabled(busy)
+    side.check:SetLabel(P.state == "checking" and "Stop" or "Recheck")
+    side.check:SetDisabled(not e or (busy and P.state ~= "checking"))
+    if P.state == "checking" then side.post:SetLabel("Checking..."); side.post:SetDisabled(true)
+    elseif P.state == "posting" then side.post:SetLabel("Posting..."); side.post:SetDisabled(true)
+    elseif P.state == "verify" then side.post:SetLabel("Checking post..."); side.post:SetDisabled(true)
+    elseif P.state == "confirm" and P.pending and P.pending.entry == e then
+        side.post:SetLabel("Confirm post"); side.post:SetDisabled(ns.AHWaiting())
+    elseif P.CanPostAnyway(e) then side.post:SetLabel("Post anyway"); side.post:SetDisabled(ns.AHWaiting())
+    elseif P.state == "ready" and P.Postable(e) then side.post:SetLabel("Post listing"); side.post:SetDisabled(ns.AHWaiting())
+    else side.post:SetLabel("Post listing"); side.post:SetDisabled(true) end
 end
 
 local function refreshMine()
@@ -2146,7 +2631,7 @@ local function refreshHead()
     win.money:SetText(ns.Money(GetMoney() or 0))
     local scanText, scanning = ns.ScanStatus()
     win.scan:SetDisabled(scanning)
-    win.scan:SetLabel(scanning and "Scanning..." or "Scan prices")
+    win.scan:SetLabel(scanning and ("Scan " .. (ns.ScanElapsed() or "0:00")) or "Scan prices")
     return scanText
 end
 
@@ -2170,6 +2655,8 @@ function A.Refresh()
         refreshBrowse()
     elseif A.tab == "sell" then
         refreshSell()
+    elseif A.tab == "single" then
+        refreshSingle()
     else
         refreshMine()
     end
@@ -2272,6 +2759,7 @@ end
 
 ns.Listen("AH_SHOW", function()
     BUY.mode, BUY.item, BUY.buy, BUY.message = "list", nil, nil, nil
+    BUY.category, BUY.deals, A.openCategory = nil, nil, nil
     if A.UsingOurs() then
         A.Open()
         -- The game shows its own window a moment later; hide it again then.
@@ -2302,7 +2790,7 @@ for _, msg in ipairs({ "SCAN_DONE", "PRICES_UPDATED", "ITEMS_UPDATED" }) do
 end
 
 ns.Listen("BAGS_UPDATED", function()
-    if A.IsShown() and A.tab == "sell" then
+    if A.IsShown() and (A.tab == "sell" or A.tab == "single") then
         if P.state ~= "checking" and P.state ~= "posting" and P.state ~= "confirm" and P.state ~= "verify" then
             P.Rebuild()
         end

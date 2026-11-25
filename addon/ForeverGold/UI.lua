@@ -13,27 +13,29 @@ ns.UI = UI
 local W, H = 860, 480
 local MIN_H, MAX_H = 360, 640
 local PANE_W = 330
-local COIN = "Interface\\Icons\\INV_Misc_Coin_01"
--- Forever Gold's own round badge (Icon.tga next to this file).
-local LOGO = "Interface\\AddOns\\ForeverGold\\Icon"
+local ART = "Interface\\AddOns\\ForeverGold\\Art\\"
+local COIN = ART .. "gold-coin.tga"
+local LOGO = ART .. "gold-logo.tga"
+local AUCTION = ART .. "gold-auction.tga"
+local SKULL = ART .. "gold-skull.tga"
 local GREY = "|cff9a9a9a"
 local CUT = ns.AH_CUT
 
--- The look: a merchant's ledger. Charcoal panels, aged brass edges, and
--- gold kept for the selected tab and the main action only.
+-- The same dark-and-gold palette as Forever UI. Keep this local so Forever
+-- Gold also looks right when Forever UI is not installed.
 local C = {
-    bg = { 0.071, 0.067, 0.062, 1 },
-    edge = { 0.34, 0.28, 0.16 },
-    panel = { 0.098, 0.094, 0.086, 1 },
-    panelEdge = { 0.24, 0.21, 0.16 },
-    btn = { 0.145, 0.137, 0.125 },
-    btnEdge = { 0.30, 0.27, 0.22 },
-    btnText = { 0.87, 0.85, 0.80 },
-    gold = { 0.40, 0.30, 0.10 },
-    goldEdge = { 0.82, 0.64, 0.28 },
-    goldText = { 1, 0.87, 0.50 },
-    head = { 0.86, 0.78, 0.60 },
-    text = { 0.93, 0.91, 0.87 },
+    bg = { 0.047, 0.039, 0.031, 0.82 },
+    edge = { 0.394, 0.322, 0.181 },
+    panel = { 0.075, 0.067, 0.055, 1 },
+    panelEdge = { 0.30, 0.255, 0.16 },
+    btn = { 0.105, 0.092, 0.073 },
+    btnEdge = { 0.394, 0.322, 0.181 },
+    btnText = { 0.918, 0.875, 0.769 },
+    gold = { 0.28, 0.22, 0.11 },
+    goldEdge = { 0.788, 0.643, 0.361 },
+    goldText = { 0.89, 0.753, 0.416 },
+    head = { 0.89, 0.753, 0.416 },
+    text = { 0.918, 0.875, 0.769 },
 }
 ns.THEME = C
 
@@ -83,27 +85,9 @@ local function skin(f, r, g, b, a, er, eg, eb, ea)
     f.edges = { top, bottom, left, right }
 end
 
--- Serif headings (the game's own Morpheus face), falling back to the
--- standard fonts if this client won't make one.
-local function makeFont(name, size, fallback)
-    if _G[name] then
-        return name
-    end
-    if not CreateFont then
-        return fallback
-    end
-    local ok, font = pcall(CreateFont, name)
-    if not ok or not font then
-        return fallback
-    end
-    if not pcall(font.SetFont, font, "Fonts\\MORPHEUS.TTF", size, "") then
-        return fallback
-    end
-    return name
-end
-local SERIF_L = makeFont("ForeverGoldSerifLarge", 19, "GameFontNormalLarge")
-local SERIF_M = makeFont("ForeverGoldSerifMedium", 15, "GameFontNormal")
--- Only the window title is decorative; everything you read is the plain face.
+-- Keep the shared names for callers while using Forever UI's readable face.
+local SERIF_L = "GameFontNormalLarge"
+local SERIF_M = "GameFontNormal"
 
 -- Quality as an icon border, so item names can stay one quiet colour.
 local QUALITY_RGB = { [2] = { 0.12, 1, 0 }, [3] = { 0, 0.44, 0.87 }, [4] = { 0.64, 0.21, 0.93 },
@@ -180,6 +164,22 @@ local function button(parent, text, w, h, onClick)
         self.disabled = d and true or false
         paint(self)
     end
+    return b
+end
+
+-- Use the same red-and-gold close control as the native bag and tracker UI.
+local function closeButton(parent, w, h, onClick)
+    local ok, b = pcall(CreateFrame, "Button", nil, parent, "UIPanelCloseButton")
+    if not ok or not b then return button(parent, "X", w, h, onClick) end
+    b:SetSize(w, h or w)
+    for _, state in ipairs({ { "SetNormalAtlas", "RedButton-Exit" }, { "SetPushedAtlas", "RedButton-exit-pressed" },
+        { "SetDisabledAtlas", "RedButton-Exit-Disabled" }, { "SetHighlightAtlas", "RedButton-Highlight" } }) do
+        if type(b[state[1]]) == "function" then pcall(b[state[1]], b, state[2]) end
+    end
+    b:SetScript("OnClick", function(self)
+        local success, err = pcall(onClick, self)
+        if not success then ns.Err("close button", err) end
+    end)
     return b
 end
 
@@ -1065,6 +1065,12 @@ local function renderRow(r, d, width)
             r.icon:Hide()
             return
         end
+        -- The addon's transparent symbols are not item slots; avoid putting
+        -- a solid square behind them. Real items keep their quality edge.
+        if type(d.icon) == "string" and d.icon:sub(1, #ART) == ART then
+            r.iconEdge:Hide()
+            return
+        end
         r.iconEdge:ClearAllPoints()
         r.iconEdge:SetPoint("TOPLEFT", r.icon, "TOPLEFT", -1, 1)
         r.iconEdge:SetPoint("BOTTOMRIGHT", r.icon, "BOTTOMRIGHT", 1, -1)
@@ -1605,9 +1611,9 @@ local function Tx(rows, title, text)
 end
 
 -- The same building blocks, for the other windows (TrackerUI.lua).
-ns.UIKit = { tex = tex, skin = skin, label = label, button = button, setIcon = setIcon,
+ns.UIKit = { tex = tex, skin = skin, label = label, button = button, closeButton = closeButton, setIcon = setIcon,
     createList = createList, scrollBar = scrollBar, Hd = Hd, Tx = Tx, GREY = GREY, COIN = COIN, LOGO = LOGO, rowLeave = rowLeave,
-    C = C, SERIF_L = SERIF_L, SERIF_M = SERIF_M, edgeFor = edgeFor }
+    C = C, SERIF_L = SERIF_L, SERIF_M = SERIF_M, edgeFor = edgeFor, AUCTION = AUCTION }
 
 local SRC = { vendor = "from a vendor", ah = "auction house", craft = "you make it", old = "last price seen" }
 
@@ -2345,7 +2351,7 @@ local function bestMobRows(rows, list, valueOf, extra)
     for i = 1, min(5, #list) do
         local m = list[i]
         local d = { title = m.name, key = "best:" .. m.name, onClick = false, bar = top > 0 and valueOf(m) / top or 0,
-            icon = m.drops and m.drops[1] and ns.Icon(m.drops[1].id) or "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01" }
+            icon = m.drops and m.drops[1] and ns.Icon(m.drops[1].id) or SKULL }
         extra(d, m)
         rows[#rows + 1] = d
     end
@@ -2393,7 +2399,7 @@ local function farmSession(rows)
     rows[#rows + 1] = { icon = COIN, key = "sell:vendor", onClick = false, title = "Sell it all to a vendor",
         sub = "Coin plus what shopkeepers pay for every item",
         r1 = ns.Money(s.vendorTotal), r2 = s.vendorPerHour and (ns.Money(s.vendorPerHour) .. GREY .. " an hour|r") or "" }
-    rows[#rows + 1] = { icon = "Interface\\Icons\\INV_Misc_Coin_02", key = "sell:auction", onClick = false,
+    rows[#rows + 1] = { icon = AUCTION, key = "sell:auction", onClick = false,
         title = "Auction it (vendor what has no price)",
         sub = "Coin plus the lowest auction price after the 5% cut",
         r1 = ns.Money(s.auctionTotal), r2 = s.auctionPerHour and (ns.Money(s.auctionPerHour) .. GREY .. " an hour|r") or "" }
@@ -2602,7 +2608,7 @@ local function suggestionRow(e, prefix)
         bits[#bits + 1] = levelText(e)
     end
     bits[#bits + 1] = floor(e.killsHr + 0.5) .. " kills an hour" .. (e.speedMeasured and "" or " (typical)")
-    return { icon = e.best and ns.Icon(e.best.id) or "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01",
+    return { icon = e.best and ns.Icon(e.best.id) or SKULL,
         key = (prefix or "farm:") .. e.name, title = "Kill " .. e.name,
         sub = (prefix and "Farm  ·  " or "") .. table.concat(bits, "  ·  "),
         r1 = "~" .. ns.Money(e.perHour), r2 = e.vsUsual and (e.vsUsual >= 0 and ("|cff40e060+" .. floor(e.vsUsual * 100 + 0.5) .. "%|r vs your usual")
@@ -3279,7 +3285,7 @@ local function refreshFooter()
     main.status:SetText(routes and routeFooter() or ns.ScanStatus())
     main.scanButton:SetShown(not routes)
     main.scanButton:SetDisabled(not ns.ahOpen or ns.scan.active)
-    main.scanButton:SetLabel(ns.scan.active and "Scanning..." or "Scan now")
+    main.scanButton:SetLabel(ns.scan.active and ("Scan " .. (ns.ScanElapsed() or "0:00")) or "Scan now")
     main.money:SetText(ns.Money(ns.Char().money or 0))
 end
 
@@ -3953,7 +3959,7 @@ local function createMain()
     title:SetPoint("LEFT", titleIcon, "RIGHT", 8, 0)
     f.money = label(f, "GameFontHighlight")
     f.money:SetPoint("TOPRIGHT", -44, -14)
-    local close = button(f, "X", 24, 22, function() f:Hide() end)
+    local close = closeButton(f, 24, 24, function() f:Hide() end)
     close:SetPoint("TOPRIGHT", -8, -8)
 
     -- Tabs sit on a brass rule that runs the width of the window.
@@ -4015,7 +4021,7 @@ local function createMain()
     local glass = search:CreateTexture(nil, "ARTWORK")
     glass:SetSize(14, 14)
     glass:SetPoint("LEFT", 6, 0)
-    glass:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
+    glass:SetTexture(ART .. "bag-search.tga")
     search.hint = label(search, "GameFontDisableSmall", "Search zones or continents")
     search.hint:SetPoint("LEFT", 24, 0)
     search.clear = button(search, "x", 18, 18, function()
@@ -4283,7 +4289,7 @@ local function createSellPanel()
         if job and job.state == "error" then
             ns.SellRecheck()
         else
-            ns.SellPost()
+            ns.SellPost(job and job.decision and job.decision.why == "floor")
         end
     end)
     f.post:SetPoint("BOTTOMRIGHT", -14, 14)
@@ -4335,8 +4341,9 @@ local function refreshSellPanel()
     f.body:SetText(table.concat(parts, "\n\n"))
 
     local canPost = (job.state == "ready" and d and d.ok) and true or false
-    f.controls:SetShown(canPost)
-    if canPost then
+    local canOverride = (job.state == "ready" and d and d.why == "floor" and type(d.price) == "number" and d.price > 0 and not q) and true or false
+    f.controls:SetShown(canPost or canOverride)
+    if canPost or canOverride then
         f.controls.qty:SetText(tostring(job.qty))
         f.controls.duration:SetLabel("Lasts: " .. ns.SellDurationLabel(job.duration))
         f.offer:SetText(job.qty .. " x at " .. ns.Money(d.price) .. " each")
@@ -4357,14 +4364,14 @@ local function refreshSellPanel()
     if job.state == "checking" then
         f.post:SetLabel("Checking...")
         f.post:SetDisabled(true)
-    elseif ((job.state == "ready" and canPost) or job.state == "confirm") and ns.AHWaiting() then
+    elseif ((job.state == "ready" and (canPost or canOverride)) or job.state == "confirm") and ns.AHWaiting() then
         -- The auction house said busy / too fast: no clicking into another refusal.
         f.post:SetLabel("Wait...")
         f.post:SetDisabled(true)
     elseif job.state == "ready" then
-        f.post:SetLabel(q and "Post, then next" or "Post")
-        f.post:SetDisabled(not canPost)
-        if not canPost and not q then
+        f.post:SetLabel(canOverride and "Post anyway" or (q and "Post, then next" or "Post"))
+        f.post:SetDisabled(not (canPost or canOverride))
+        if not canPost and not canOverride and not q then
             f.close:SetLabel("Close")
         end
     elseif job.state == "confirm" then
@@ -4398,7 +4405,7 @@ local function refreshAHPanel()
     local text, active = ns.ScanStatus()
     ahPanel.text:SetText(text)
     ahPanel.scan:SetDisabled(active)
-    ahPanel.scan:SetLabel(active and "Scanning..." or "Scan prices")
+    ahPanel.scan:SetLabel(active and ("Scan " .. (ns.ScanElapsed() or "0:00")) or "Scan prices")
     local n = ns.R().lastScan and #ns.BagAdvice().ah or 0
     ahPanel.postAll:SetLabel(n > 0 and ("Post all (" .. n .. ")") or "Post all")
     ahPanel.postAll:SetDisabled(active or n == 0 or (ns.PostQueue and ns.PostQueue() ~= nil))

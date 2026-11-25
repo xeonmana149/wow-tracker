@@ -1914,7 +1914,7 @@ local function buildExport()
     local tocversion = select(4, safeGet("GetBuildInfo"))
     local okDate, timestamp = safeCall(_G.date, "%Y-%m-%d %H:%M:%S")
     out.meta = {
-        addonVersion = "1.9.18",
+        addonVersion = "1.9.19",
         tocversion = tocversion,
         exportedAt = okDate and timestamp or nil,
     }
@@ -5306,8 +5306,9 @@ local function syncSettings()
     db.syncButton = type(db.syncButton) == "table" and db.syncButton or {}
     local s = db.syncButton
     if type(s.remind) ~= "number" or s.remind < 1 then
-        s.remind = 30
+        s.remind = 60
     end
+    s.remind = math.min(60, math.floor(s.remind))
     return s
 end
 
@@ -5495,20 +5496,34 @@ local function syncShowTooltip(self)
     GameTooltip:Show()
 end
 
+local function fitSyncText(button)
+    local label = button and button.label
+    if not label or not label.GetFont or not label.SetFont or not label.GetWidth then return end
+    -- Native font strings otherwise truncate with an ellipsis in the small
+    -- minimap cell. Re-measure from the original size as the number changes.
+    pcall(function()
+        if not button.syncFont then
+            local font, size, flags = label:GetFont()
+            if not font or not size then return end
+            button.syncFont = {font, size, flags}
+        end
+        local base = button.syncFont
+        label:SetFont(base[1], base[2], base[3])
+        local available = label:GetWidth()
+        local measure = label.GetUnboundedStringWidth or label.GetStringWidth
+        local width = measure and measure(label)
+        if type(available) == "number" and type(width) == "number" and available > 1 and width > available - 1 then
+            label:SetFont(base[1], math.max(1, base[2] * (available - 1) / width * 0.95), base[3])
+        end
+    end)
+end
+
 local function syncRefresh()
     if not syncBtn then
         return
     end
     local s = syncSettings()
     local mins = minutesSinceSync()
-    local r, g, b = 0.15, 0.15, 0.15
-    local due = 0
-    if mins >= s.remind * 2 then
-        r, g, b, due = 0.55, 0.08, 0.08, 2
-    elseif mins >= s.remind then
-        r, g, b, due = 0.6, 0.38, 0.05, 1
-    end
-    syncBtn.due = due
 
     -- Chat reminder (1.9.8, "add a sync reminder to the general chat too")
     -- - a line in your own chat window each time another reminder interval
@@ -5523,12 +5538,19 @@ local function syncRefresh()
                 mins, waiting and (" - waiting: " .. waiting) or ""))
         end
     end
-    syncBtn.bg:SetColorTexture(r, g, b, 0.9)
-    syncBtn.label:SetText(mins < 1 and "Sync" or ("Sync  |cffcccccc" .. mins .. "m|r"))
+    local displayMins = mins .. "m"
+    if syncBtn.fuiCompact then
+        syncBtn.label:SetText(displayMins)
+    else
+        syncBtn.label:SetText("Sync  |cffa39577" .. displayMins .. "|r")
+    end
+    fitSyncText(syncBtn)
     if inCombat() then
         syncBtn.label:SetTextColor(0.5, 0.5, 0.5)
+        syncBtn.icon:SetDesaturated(true)
     else
-        syncBtn.label:SetTextColor(1, 0.82, 0)
+        syncBtn.label:SetTextColor(0.89, 0.753, 0.416)
+        syncBtn.icon:SetDesaturated(false)
     end
 
     -- Glow: something worth sharing just happened, or you've just walked
@@ -5576,21 +5598,30 @@ local function createSyncButton()
 
     local border = b:CreateTexture(nil, "BACKGROUND")
     border:SetAllPoints()
-    border:SetColorTexture(0.55, 0.42, 0.15, 1)
+    border:SetColorTexture(0.788, 0.643, 0.361, 0.8)
     b.bg = b:CreateTexture(nil, "BORDER")
     b.bg:SetPoint("TOPLEFT", 1, -1)
     b.bg:SetPoint("BOTTOMRIGHT", -1, 1)
+    b.bg:SetColorTexture(0.047, 0.039, 0.031, 0.92)
     b.glow = b:CreateTexture(nil, "ARTWORK")
     b.glow:SetPoint("TOPLEFT", -3, 3)
     b.glow:SetPoint("BOTTOMRIGHT", 3, -3)
-    b.glow:SetColorTexture(1, 0.85, 0.3, 0.35)
+    b.glow:SetColorTexture(0.89, 0.753, 0.416, 0.12)
     b.glow:SetBlendMode("ADD")
     b.glow:Hide()
+    b.icon = b:CreateTexture(nil, "OVERLAY")
+    b.icon:SetSize(16, 16)
+    b.icon:SetPoint("LEFT", 6, 0)
+    b.icon:SetTexture("Interface\\AddOns\\WoWForeverTracker\\Art\\sync.tga")
     b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    b.label:SetPoint("CENTER")
+    b.label:SetPoint("LEFT", b.icon, "RIGHT", 3, 0)
+    b.label:SetPoint("RIGHT", b, "RIGHT", -3, 0)
+    b.label:SetJustifyH("CENTER")
+    if b.label.SetShadowOffset then b.label:SetShadowOffset(1, -1); b.label:SetShadowColor(0, 0, 0, 0.9) end
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints()
-    hl:SetColorTexture(1, 1, 1, 0.12)
+    hl:SetPoint("TOPLEFT", 1, -1)
+    hl:SetPoint("BOTTOMRIGHT", -1, 1)
+    hl:SetColorTexture(1, 0.85, 0.48, 0.12)
 
     b:SetScript("OnDragStart", function(self)
         if not syncSettings().locked then
@@ -5623,17 +5654,11 @@ local function createSyncButton()
         GameTooltip:Hide()
     end)
 
-    -- Pulse when due, glow after a highlight; cheap enough to run every frame
+    -- Glow after a highlight; cheap enough to run every frame.
     local acc = 0
     b:SetScript("OnUpdate", function(self, elapsed)
         acc = acc + elapsed
         local t = GetTime()
-        if self.due and self.due > 0 then
-            local speed = self.due == 2 and 4 or 2
-            self.bg:SetAlpha(0.65 + 0.35 * math.abs(math.sin(t * speed)))
-        else
-            self.bg:SetAlpha(1)
-        end
         if t < syncGlowUntil then
             self.glow:Show()
             self.glow:SetAlpha(0.4 + 0.6 * math.abs(math.sin(t * 3)))
@@ -5647,6 +5672,7 @@ local function createSyncButton()
     end)
 
     syncBtn = b
+    b.fuiRefresh = syncRefresh
     syncRefresh()
     if s.hidden then
         b:Hide()
@@ -5686,12 +5712,12 @@ function cmdSync(arg, value)
         print("|cffffcc00WFT:|r Sync reminders in chat " .. (s.chatOff and "off." or "on."))
     elseif arg == "remind" then
         local n = tonumber(value)
-        if n and n >= 1 then
+        if n and n >= 1 and n <= 60 then
             s.remind = math.floor(n)
             pcall(syncRefresh)
             print(("|cffffcc00WFT:|r Sync reminder set to %d minutes."):format(s.remind))
         else
-            print("|cffffcc00WFT:|r Usage: /wft sync remind 15 (minutes)")
+            print("|cffffcc00WFT:|r Use /wft sync remind <1-60> (minutes).")
         end
     else
         print("|cffffcc00WFT:|r /wft sync - reload to sync now")

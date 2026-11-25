@@ -311,7 +311,6 @@ local function scanMerchant()
     if ns.PlayerMapPos then
         map, x, y = ns.PlayerMapPos()
     end
-    local finds = {}
     for i = 1, n do
         local id, price, stack, avail, extended = merchantItem(i)
         if id and price and price > 0 and not extended then
@@ -320,31 +319,9 @@ local function scanMerchant()
             ns.db.vendor[id] = { p = unit, lim = limited, t = time(), npc = npc, zone = zone,
                 m = map, x = x and floor(x * 10000) / 10000, y = y and floor(y * 10000) / 10000 }
             ns.Item(id)
-            -- Only shout about it when it's real: it has actually been
-            -- selling for that much, or this vendor's stock is limited. A
-            -- high asking price on something any vendor sells proves nothing.
-            local net, how = ns.ResaleValue(id)
-            if net and (how == "sold" or limited) and net > unit * 1.25
-                and net - unit >= (ns.db.opts.dealMin or 500) then
-                finds[#finds + 1] = { id = id, buy = unit, net = net, how = how }
-            end
         end
     end
     ns.Fire("VENDOR_UPDATED")
-    if #finds > 0 then
-        table.sort(finds, function(a, b) return (a.net - a.buy) > (b.net - b.buy) end)
-        ns.Print("this vendor sells " .. #finds .. " thing" .. (#finds > 1 and "s" or "")
-            .. " that go for more on the auction house:")
-        for i = 1, math.min(3, #finds) do
-            local f = finds[i]
-            print("   " .. ns.ItemText(f.id) .. " - costs " .. ns.Money(f.buy) .. " here, "
-                .. (f.how == "sold" and "has been selling for about " or "limited stock, listed for about ")
-                .. ns.Money(f.net) .. " after the auction cut.")
-        end
-        if #finds > 3 then
-            print("   ...and more. See the Buy tab in /gold.")
-        end
-    end
 end
 
 ns.On("MERCHANT_SHOW", function()
