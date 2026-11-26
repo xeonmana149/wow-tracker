@@ -51,10 +51,19 @@ export type AvatarIconOption = {
 // Custom-art account icons. Add more the same way - drop the PNG in
 // /public/profile-icons/ and add a line here.
 export const AVATAR_ICON_OPTIONS: AvatarIconOption[] = [
+  { key: "orc-hunter-male", label: "Orc Hunter (Male)", localSlug: "orc-male-hunter" },
+  { key: "orc-mage-male", label: "Orc Mage (Male)", localSlug: "orc-male-mage" },
+  { key: "orc-rogue-male", label: "Orc Rogue (Male)", localSlug: "orc-rogue-male" },
   { key: "orc-shaman-female", label: "Orc Shaman (Female)", localSlug: "orc-shaman-female" },
   { key: "orc-shaman-male", label: "Orc Shaman (Male)", localSlug: "orc-shaman-male" },
+  { key: "orc-warlock-male", label: "Orc Warlock (Male)", localSlug: "orc-male-warlock" },
   { key: "orc-warrior-female", label: "Orc Warrior (Female)", localSlug: "orc-warrior-female" },
   { key: "orc-warrior-male", label: "Orc Warrior (Male)", localSlug: "orc-warrior-male" },
+  { key: "tauren-druid-male", label: "Tauren Druid (Male)", localSlug: "tauren-male-druid" },
+  { key: "tauren-hunter-male", label: "Tauren Hunter (Male)", localSlug: "tauren-male-hunter" },
+  { key: "tauren-shaman-male", label: "Tauren Shaman (Male)", localSlug: "tauren-male-shaman" },
+  { key: "tauren-warrior-male", label: "Tauren Warrior (Male)", localSlug: "tauren-male-warrior" },
+  { key: "troll-mage-male", label: "Troll Mage (Male)", localSlug: "troll-mage-male" },
   { key: "troll-shaman-male", label: "Troll Shaman (Male)", localSlug: "troll-shaman-male" },
   { key: "undead-paladin-female", label: "Undead Paladin (Female)", localSlug: "undead-paladin-female" },
   { key: "undead-paladin-male", label: "Undead Paladin (Male)", localSlug: "undead-paladin-male" },
