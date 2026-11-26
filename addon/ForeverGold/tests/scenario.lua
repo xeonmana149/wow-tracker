@@ -1486,6 +1486,57 @@ do
     ns.Fire("NODES_UPDATED")
 end
 
+out("== friends' gathering spots")
+do
+    local list = ns.db.nodes[1413]
+    local own = list[1]
+    local before = #list
+    M.player.x, M.player.y = 0.91, 0.12
+    local _, px, py = ns.PlayerMapPos()
+    ForeverGoldShared = { v = 1, made = 1, maps = {
+        [1413] = {
+            { own.x + 0.001, own.y, own.k, "Near mine", 4, 100, "Bob" },
+            { px, py, "ore", "Friendly Vein", 3, 200, "Danny, Bob" },
+            { 0.5, 0.5, "nonsense", "", 1, 0, "Bob" },
+        },
+        [9999] = { { 0.2, 0.3, "herb", "Peacebloom", 1, 0, "" } },
+    } }
+    local added = ns.MergeSharedNodes()
+    local friend = list[#list]
+    check(added == 2 and #list == before + 1 and friend.f == "Danny, Bob" and friend.n == "Friendly Vein" and friend.c == 3,
+        "friends' spots join yours, leaving out one next to your own and unknown kinds: " .. added)
+    check(ns.db.nodes[9999] and ns.db.nodes[9999][1].f == "a friend", "a spot on a map you've never been to is added too")
+    check(ns.MergeSharedNodes() == 2 and #list == before + 1, "loading again doesn't add them twice")
+    friend = list[#list]
+    GameTooltip:ClearLines()
+    ns.SpotTooltip(UIParent, friend)
+    local found = false
+    for _, l in ipairs(GameTooltip.lines or {}) do
+        if tostring(l.text or l[1] or l):find("found by Danny, Bob") then found = true end
+    end
+    check(found or GameTooltip.lines == nil, "a friend's spot says who found it")
+    ns.BuildWebExport()
+    local sent = ns.db.webExport.nodes
+    local friendSent = false
+    for _, spots in pairs(sent or {}) do
+        for _, sp in ipairs(spots) do if sp[4] == "Friendly Vein" or sp[4] == "Peacebloom" then friendSent = true end end
+    end
+    check(sent and sent["1413"] and #sent["1413"] == before and not friendSent,
+        "your own spots go to the website, friends' spots don't")
+    ns.RecordNode("ore", "Friendly Vein")
+    check(friend.f == nil and friend.c == 1, "gathering a friend's spot makes it yours")
+    table.remove(list) -- now yours: take it back out for the rest of the run
+    ns.db.opts.friendSpots = false
+    ns.MergeSharedNodes()
+    check(#list == before and ns.db.nodes[9999] == nil, "switching Friends' spots off removes them")
+    ns.BuildWebExport()
+    check(ns.db.webExport.nodes == nil, "and stops sharing yours")
+    ns.db.opts.friendSpots = nil
+    ForeverGoldShared = nil
+    ns.MergeSharedNodes()
+    check(#list == before, "with no shared file nothing changes")
+end
+
 out("== kill and loot tracker")
 check(not ns.TrackerWindowShown(), "Kills & Loot window starts closed")
 ns.ToggleTrackerWindow()
@@ -3641,7 +3692,7 @@ do
         return n
     end
     check(count(OPT.cats.auction, "check") >= 4 and count(OPT.cats.auction, "dropdown") == 5 and count(OPT.cats.bags, "slider") == 4
-        and count(OPT.cats.gathering, "check") == 9 and count(OPT.cats.mail, "check") == 4,
+        and count(OPT.cats.gathering, "check") == 10 and count(OPT.cats.mail, "check") == 4,
         "each page has the game's own checkboxes, dropdowns and sliders")
     check(S.FOREVERGOLD_BAGSPLIT:GetValue() == false, "split by bag reads off")
     S.FOREVERGOLD_BAGSPLIT:SetValue(true)

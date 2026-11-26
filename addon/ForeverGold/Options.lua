@@ -288,6 +288,14 @@ local function gatherPage(cat, layout)
     check(cat, "worldMapSpots", "Spots on the world map", "Your recorded spots and route on the world map (OpenMap too).", true)
     check(cat, "mapButton", "World map filter button", "A button on the world map to filter herbs, ore, fishing and chests.", true)
     check(cat, "minimapSpots", "Spots on the minimap", "Your spots and the next route stop on the minimap.", true)
+    check(cat, "friendSpots", "Friends' spots",
+        "Spots your friends have gathered, shared through the website and the WoW Forever Tracker app, on the maps, "
+            .. "minimap and routes beside yours. Your own spots are shared with them too.", true, nil, function(v)
+            ns.db.opts.friendSpots = v
+            if ns.MergeSharedNodes then
+                ns.MergeSharedNodes()
+            end
+        end)
     check(cat, "onlyMyProfs", "Only my professions",
         "Herb, ore and fishing spots (map, minimap and beams) only when this character has Herbalism, Mining or Fishing.", true)
     check(cat, "revealMap", "Reveal the whole zone", "The Routes map draws the whole zone, not just the parts you've explored.", true)

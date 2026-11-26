@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mergeUpload } from "../../../../lib/marketUser";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
+import { saveUserNodes } from "../../../../lib/sharedNodes";
 
 // The tray app sends the Forever Gold addon's webExport table here (your
 // auctions, each character's gold, saved farming trips), signed with the
@@ -35,5 +36,11 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unknown sync token" }, { status: 401 });
 
   const f = await mergeUpload(userId, body.data);
+  // Gathering spots, shared with friends (lib/sharedNodes.ts). Never fails the upload.
+  try {
+    await saveUserNodes(userId, (body.data as { nodes?: unknown }).nodes);
+  } catch (e) {
+    console.warn("shared nodes not saved:", e instanceof Error ? e.message : e);
+  }
   return NextResponse.json({ ok: true, chars: Object.keys(f.chars).length, sessions: f.sessions.length });
 }

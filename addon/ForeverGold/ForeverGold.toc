@@ -23,6 +23,8 @@ Advisor.lua
 Recipes.lua
 RevealData.lua
 Route.lua
+SharedNodes.lua
+Shared.lua
 Farming.lua
 Sell.lua
 Poster.lua

@@ -218,6 +218,11 @@ function ns.RecordNode(kind, name)
     local radius = (kind == "fish") and 0.02 or 0.008
     for _, n in ipairs(list) do
         if n.k == kind and abs(n.x - x) < radius and abs(n.y - y) < radius then
+            if n.f then
+                -- A friend's spot (Shared.lua): gathering it makes it yours.
+                n.f, n.c = nil, 0
+                ns.Fire("NODES_UPDATED")
+            end
             n.c = (n.c or 1) + 1
             n.t = time()
             if name and name ~= "" then
@@ -798,8 +803,15 @@ function ns.SpotTooltip(owner, n, extra)
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
     GameTooltip:AddLine(n.n or (kind and kind.label) or "Spot", 1, 0.82, 0)
     local times = n.c or 1
-    GameTooltip:AddLine((kind and kind.one or "spot") .. " - gathered " .. times .. (times == 1 and " time" or " times")
-        .. (n.t and ns.Ago and (", last " .. ns.Ago(n.t)) or ""), 0.8, 0.8, 0.8)
+    if n.f then
+        -- A friend's spot (Shared.lua)
+        GameTooltip:AddLine((kind and kind.one or "spot") .. " - found by " .. tostring(n.f), 0.55, 0.85, 1)
+        GameTooltip:AddLine("Gathered " .. times .. (times == 1 and " time" or " times")
+            .. (n.t and ns.Ago and (", last " .. ns.Ago(n.t)) or ""), 0.8, 0.8, 0.8)
+    else
+        GameTooltip:AddLine((kind and kind.one or "spot") .. " - gathered " .. times .. (times == 1 and " time" or " times")
+            .. (n.t and ns.Ago and (", last " .. ns.Ago(n.t)) or ""), 0.8, 0.8, 0.8)
+    end
     if n.skip then
         GameTooltip:AddLine("Left out of routes.", 1, 0.45, 0.45)
     end
@@ -1201,6 +1213,8 @@ function ns.NewPlotter(parent)
                 m.back:SetSize(s + 2, s + 2)
                 m.icon:SetSize(s, s)
                 m.icon:SetTexture(ns.NodeIcon(n))
+                -- Friends' spots (Shared.lua) a little fainter than yours
+                m.icon:SetAlpha(n.f and 0.7 or 1)
                 m.tagText = tag == "Next" and "Next stop on your route" or tag == "Paused" and "Next stop (route paused)"
                     or tag == "Start" and "Where the route starts" or nil
                 if tag then
@@ -2145,7 +2159,7 @@ local function updateMinimap()
         end
         local p = miniPin()
         p.icon:SetTexture(ns.NodeIcon(n))
-        p.icon:SetAlpha(1); p.back:SetAlpha(1); p.ring:SetAlpha(1)
+        p.icon:SetAlpha(n.f and 0.7 or 1); p.back:SetAlpha(1); p.ring:SetAlpha(1)
         p.node, p.isNext = n, isNext
         local hollow = tracked[n.k] and true or false
         p.icon:SetShown(not hollow)

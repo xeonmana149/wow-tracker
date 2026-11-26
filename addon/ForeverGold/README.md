@@ -370,6 +370,14 @@ trips), and the tray app sends it to your account after you log out or
 /reload. Only you can see it. The site then checks each auction against the
 latest snapshot and tells you which have been undercut.
 
+**Friends' gathering spots.** The same upload carries the herb, ore, fishing
+and chest spots you've recorded. The site puts everyone's together, and every
+20 minutes the tray app writes your friends' spots into `SharedNodes.lua`
+here, so after a login or /reload they show on your world map, minimap and
+routes beside your own - a little fainter, and the tooltip says who found
+them. Gathering one makes it yours. Settings > Gathering Forever >
+"Friends' spots" turns it off, both ways.
+
 ## Settings
 
 Settings live in the game's own Options window: **Options > AddOns > WoW

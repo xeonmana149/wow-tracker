@@ -6,6 +6,7 @@
 --   * your auctions, so the site can tell you when you've been undercut
 --   * each character's gold, so it can chart your gold over time
 --   * your saved farming trips (the Track tab)
+--   * your gathering spots, which the site shares with your friends (Shared.lua)
 -- Nothing else in the saved file (prices, bags, recipes, notes) is sent.
 -- The game only writes saved files at logout or /reload.
 
@@ -39,7 +40,24 @@ function ns.BuildWebExport()
         end
         sessions[i] = s
     end
-    db.webExport = { v = 1, t = time(), addon = ns.VERSION, chars = chars, sessions = sessions }
+    -- Your gathering spots, shared with your friends (Shared.lua). Never
+    -- friends' spots (f), and nothing when "Friends' spots" is off.
+    local nodes
+    if not (db.opts and db.opts.friendSpots == false) then
+        nodes = {}
+        for mapID, list in pairs(db.nodes or {}) do
+            local out = {}
+            for _, n in ipairs(type(list) == "table" and list or {}) do
+                if type(n) == "table" and not n.f and n.x and n.y and n.k then
+                    out[#out + 1] = { n.x, n.y, n.k, n.n or "", n.c or 1, n.t or 0 }
+                end
+            end
+            if #out > 0 then
+                nodes[tostring(mapID)] = out
+            end
+        end
+    end
+    db.webExport = { v = 1, t = time(), addon = ns.VERSION, chars = chars, sessions = sessions, nodes = nodes }
 end
 
 ns.Listen("READY", function()
