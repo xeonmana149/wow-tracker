@@ -5,7 +5,10 @@ import FriendsBrowser, { type FriendPlayer } from "./FriendsBrowser";
 
 export const dynamic = "force-dynamic";
 
-type FriendCharacter = CardCharacter & { user_id: string | null };
+type FriendCharacter = CardCharacter & {
+  user_id: string | null;
+  profiles?: { display_name?: string; avatar_icon?: string | null } | null;
+};
 
 export default async function Friends() {
   // These two requests don't depend on each other, so they're fired off
@@ -17,7 +20,7 @@ export default async function Friends() {
     supabase
       .from("characters")
       .select(
-        "*, profiles!user_id(display_name, legacy_points), character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained), achievements(kind, tier)"
+        "*, profiles!user_id(display_name, legacy_points, avatar_icon), character_professions(profession, skill), character_talents(slot, tree, rank), character_legacy(rank), character_wishlist(item_name, priority, obtained), achievements(kind, tier)"
       )
       // Character Settings (2026-10-03) - a hidden character doesn't show up
       // for anyone browsing Friends.
@@ -35,6 +38,7 @@ export default async function Friends() {
       byPlayer[key] = {
         id: key,
         name: c.profiles?.display_name ?? "Unknown",
+        avatarIcon: c.profiles?.avatar_icon ?? null,
         characters: [],
       };
     }

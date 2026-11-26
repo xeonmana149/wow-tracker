@@ -18,10 +18,13 @@ import BadgePlaceholder from "../BadgePlaceholder";
 import { localBadgeIconSrc } from "../../lib/badgeFrames";
 import type { AchievementKind, GoldTier, TieredAchievementKind } from "../../lib/achievements";
 import type { AccountAchievementKind } from "../../lib/accountAchievements";
+import { avatarIconSrc, findAvatarIconOption } from "../../lib/profileCustomization";
 
 export type FriendPlayer = {
   id: string;
   name: string;
+  // The account icon they picked (profiles.avatar_icon), or null.
+  avatarIcon?: string | null;
   characters: CardCharacter[];
   // Kept on the type (populated or not) so callers that still fetch this
   // don't need changing - the account-wide achievements DISPLAY is what's
@@ -32,6 +35,23 @@ export type FriendPlayer = {
 
 function isMain(c: CardCharacter) {
   return c.character_type.toLowerCase() === "main";
+}
+
+// A player's account icon (the art they picked on their account page) as a
+// round picture, or null when they haven't picked one.
+function PlayerAvatar({ player, size }: { player: FriendPlayer; size: number }) {
+  const option = findAvatarIconOption(player.avatarIcon ?? null);
+  if (!option) return null;
+  return (
+    <img
+      src={avatarIconSrc(option)}
+      alt=""
+      width={size}
+      height={size}
+      className="shrink-0 rounded-full border border-amber-900/70 bg-neutral-900 object-cover"
+      style={{ width: size, height: size }}
+    />
+  );
 }
 
 // Copper -> "Ng Ss Cc". Characters that have never synced money_copper
@@ -265,8 +285,13 @@ function PlayerSection({
   return (
     <div className="rounded-lg border border-neutral-700 bg-neutral-800/60 p-3">
       {showOwnerHeader && (
-        <div className="mb-2 flex items-baseline justify-between">
-          <h3 className="font-bold text-white">{player.name}</h3>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h3 className="flex min-w-0 items-center gap-2 font-bold text-white">
+            <PlayerAvatar player={player} size={28} />
+            <Link href={`/account/${player.id}`} className="truncate hover:underline">
+              {player.name}
+            </Link>
+          </h3>
           <span className="text-xs text-gray-400">
             {player.characters.length} {player.characters.length === 1 ? "character" : "characters"}
           </span>
@@ -408,11 +433,17 @@ export default function FriendsBrowser({
                   className={`friend-tab ${active ? "friend-tab-active" : ""}`}
                   style={{ alignItems: "flex-start" }}
                 >
-                  <span className="flex shrink-0 -space-x-3 pt-0.5">
-                    {p.characters.slice(0, 3).map((c) => (
-                      <GameIcon key={c.id} name={classIcon(c.class)} label={c.class} size={32} round />
-                    ))}
-                  </span>
+                  {findAvatarIconOption(p.avatarIcon ?? null) ? (
+                    <span className="shrink-0 pt-0.5">
+                      <PlayerAvatar player={p} size={40} />
+                    </span>
+                  ) : (
+                    <span className="flex shrink-0 -space-x-3 pt-0.5">
+                      {p.characters.slice(0, 3).map((c) => (
+                        <GameIcon key={c.id} name={classIcon(c.class)} label={c.class} size={32} round />
+                      ))}
+                    </span>
+                  )}
                   <span className="min-w-0 flex-1 text-left">
                     <span className="block truncate font-bold">{p.name}</span>
                     <span className="sub mt-1 block truncate text-xs text-gray-400">
@@ -427,11 +458,19 @@ export default function FriendsBrowser({
         </aside>
 
         <section className="min-w-0 flex-1">
-          <div className="mb-3 flex flex-wrap items-baseline gap-x-3">
-            <h2 className="text-xl font-bold">{current ? current.name : "Everyone"}</h2>
+          <div className="mb-3 flex flex-wrap items-center gap-x-3">
+            <h2 className="flex items-center gap-2 text-xl font-bold">
+              {current && <PlayerAvatar player={current} size={36} />}
+              {current ? current.name : "Everyone"}
+            </h2>
             <p className="text-sm text-gray-400">
               {visibleCount} {visibleCount === 1 ? "character" : "characters"}
             </p>
+            {current && (
+              <Link href={`/account/${current.id}`} className="text-sm text-amber-400 hover:underline">
+                View account →
+              </Link>
+            )}
           </div>
 
           {!current && (
