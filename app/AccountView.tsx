@@ -13,6 +13,7 @@ import {
 } from "../lib/accountAchievements";
 import { avatarIconSrc, bannerImageSrc, findAvatarIconOption, findBannerOption, bannerClassName } from "../lib/profileCustomization";
 import { formatDate, type AccountViewData } from "../lib/accountView";
+import { AccountLootCard } from "./LootCard";
 
 // The read-only account-overview display (2026-09-30, split out of
 // app/account/page.tsx so the same view can be reused by:
@@ -79,6 +80,7 @@ export function AccountView({
     favoriteStatistic,
     favoriteAchievement,
     favoriteItem,
+    lootByCharacter,
     mainCharacter,
     mainCharacterItems,
   } = data;
@@ -599,6 +601,10 @@ export function AccountView({
             />
           </div>
         </div>
+      </div>
+
+      <div className="mt-4">
+        <AccountLootCard characters={lootByCharacter ?? []} />
       </div>
 
       {/* Legacy Challenges already has its own top-level page - summarized

@@ -7,3 +7,6 @@
 ## SavedVariablesPerCharacter: WFTTestDB, WFTSyncDB
 
 WoWForeverTracker.lua
+Stats.lua
+SiteData.lua
+Hub.lua

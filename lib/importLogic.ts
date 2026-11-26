@@ -41,6 +41,7 @@ import {
   type PvpLogEntry,
 } from "./activityExtras";
 import { recordStatHistory, type StoredStat } from "./statHistory";
+import { normalizeLootStats } from "./lootStats";
 
 export type ParsedTraitNode = {
   entryID?: number;
@@ -260,6 +261,8 @@ export type ParsedExport = {
   auctionEvents?: AuctionLogEntry[];
   // Epic+ items won/looted/crafted/traded (addon 1.9.5+)
   itemEvents?: ItemLogEntry[];
+  // Lifetime gathering, chests and loot by quality (addon 1.9.20+, lib/lootStats.ts)
+  lootStats?: unknown;
   // When each statistic last changed in-game, unix seconds keyed by stat
   // ID as a string (addon 1.9.5+) - see lib/statHistory.ts
   statTimes?: Record<string, number>;
@@ -549,6 +552,15 @@ export async function applyImport(
   if (Object.keys(charUpdate).length > 0) {
     const { error } = await supabase.from("characters").update(charUpdate).eq("id", characterId);
     if (error) throw new Error(error.message);
+  }
+
+  // Loot and gathering counters (addon 1.9.20+). A separate write, so a
+  // database without the loot_stats column yet (sql/loot-stats.sql) can't
+  // fail the whole sync.
+  const lootStats = normalizeLootStats(parsed.lootStats);
+  if (lootStats) {
+    const { error } = await supabase.from("characters").update({ loot_stats: lootStats }).eq("id", characterId);
+    if (error) console.warn("loot_stats not saved:", error.message);
   }
 
   // Top PvP Rank achievement (2026-10-03) - a one-off badge, same shape as

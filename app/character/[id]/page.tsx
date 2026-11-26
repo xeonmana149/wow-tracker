@@ -19,6 +19,8 @@ import WishlistCard from "./WishlistCard";
 import PreBisCard from "./PreBisCard";
 import StatisticsCard from "./StatisticsCard";
 import PvpCard, { type PvpData } from "./PvpCard";
+import { CharacterLootCard } from "../../LootCard";
+import { normalizeLootStats } from "../../../lib/lootStats";
 import DungeonsCard from "./DungeonsCard";
 import ReputationsCard, { type ReputationRow } from "./ReputationsCard";
 import AchievementShowcase from "../../AchievementShowcase";
@@ -362,6 +364,8 @@ export default async function CharacterPage({
             pvp={(character.pvp ?? null) as PvpData}
             stats={statisticRows ?? []}
           />
+
+          <CharacterLootCard stats={normalizeLootStats(character.loot_stats)} />
 
           <DungeonsCard stats={statisticRows ?? []} />
 

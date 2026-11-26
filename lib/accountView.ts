@@ -15,6 +15,7 @@ import {
   type AccountBadgeBreakdownLine,
 } from "./accountAchievements";
 import { loadBadgeIconOverrides, type BadgeIconOverrides } from "./badgeIconOverrides";
+import { normalizeLootStats, type LootStats } from "./lootStats";
 
 // Shared account-overview data loading (2026-09-30, split out of
 // app/account/page.tsx when "how do we see other players account pages?"
@@ -213,6 +214,8 @@ export type AccountViewData = {
     | { type: "account"; kind: AccountAchievementKind }
     | null;
   favoriteItem: { characterId: string; characterName: string; entry: EquippedGearRow } | null;
+  // Loot & gathering counters per character (addon 1.9.20+, lib/lootStats.ts)
+  lootByCharacter: { id: string; name: string; stats: LootStats }[];
   // Main Character Achievements (2026-10-03, "for character achievements
   // tab it should only track the character set as main") - the account's
   // overall achievement counts/cards used to be the ACCOUNT-WIDE merged
@@ -515,7 +518,26 @@ export async function loadAccountViewData(
     favoriteItem,
     mainCharacter,
     mainCharacterItems,
+    lootByCharacter: await loadLootByCharacter(client, userId, chars),
   };
+}
+
+// Separate from the main characters query so an error here (the loot_stats
+// column not added yet - sql/loot-stats.sql) leaves the rest of the page alone.
+async function loadLootByCharacter(
+  client: SupabaseClient,
+  userId: string,
+  chars: { id: string; name: string }[]
+): Promise<{ id: string; name: string; stats: LootStats }[]> {
+  const { data, error } = await client.from("characters").select("id, loot_stats").eq("user_id", userId);
+  if (error || !data) return [];
+  const byId = new Map((data as { id: string; loot_stats: unknown }[]).map((r) => [r.id, r.loot_stats]));
+  const out: { id: string; name: string; stats: LootStats }[] = [];
+  for (const c of chars) {
+    const stats = normalizeLootStats(byId.get(c.id));
+    if (stats) out.push({ id: c.id, name: c.name, stats });
+  }
+  return out;
 }
 
 export type ShowcasePickerData = {

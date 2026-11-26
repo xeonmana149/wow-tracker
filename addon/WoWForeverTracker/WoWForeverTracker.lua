@@ -1974,6 +1974,10 @@ local function buildExport()
     -- legendary items section
     out.itemEvents = (type(WFTSyncDB) == "table" and type(WFTSyncDB.itemLog) == "table")
         and WFTSyncDB.itemLog or nil
+    -- Lifetime gathering, chests and loot by quality (1.9.20) - kept by
+    -- Stats.lua
+    out.lootStats = (type(WFTSyncDB) == "table" and type(WFTSyncDB.lootStats) == "table")
+        and WFTSyncDB.lootStats or nil
     -- Duels, boss-kill groups and level-up times (1.9.5)
     if type(WFTSyncDB) == "table" then
         out.duelEvents = type(WFTSyncDB.duelLog) == "table" and WFTSyncDB.duelLog or nil
@@ -2920,19 +2924,90 @@ end
 
 local recipeFrame = CreateFrame("Frame")
 pcall(recipeFrame.RegisterEvent, recipeFrame, "TRADE_SKILL_SHOW")
-recipeFrame:SetScript("OnEvent", function(_, event)
+-- 1.9.20 (2026-11-26: a friend's Cured Rugged Hide never reached the
+-- crafting directory). One look half a second after the window opened
+-- could miss recipes the list hadn't filled in yet, and a recipe learned
+-- without opening the window afterwards was never seen at all. Now the
+-- list is read again whenever it changes while open, and a newly learned
+-- recipe is added straight away. Kept as fields on recipeFrame: this file
+-- is close to Lua's limit of 200 locals.
+pcall(recipeFrame.RegisterEvent, recipeFrame, "TRADE_SKILL_LIST_UPDATE")
+pcall(recipeFrame.RegisterEvent, recipeFrame, "TRADE_SKILL_CLOSE")
+pcall(recipeFrame.RegisterEvent, recipeFrame, "NEW_RECIPE_LEARNED")
+recipeFrame.later = function(seconds)
+    -- A short delay: the window firing these events doesn't guarantee its
+    -- recipe list has finished populating yet. Several requests in a row
+    -- become one read.
+    local Timer = _G.C_Timer
+    if type(Timer) ~= "table" or type(Timer.After) ~= "function" then
+        pcall(captureRecipes)
+        return
+    end
+    recipeFrame.ticket = (recipeFrame.ticket or 0) + 1
+    local ticket = recipeFrame.ticket
+    Timer.After(seconds, function()
+        if ticket == recipeFrame.ticket and recipeFrame.open then
+            pcall(captureRecipes)
+        end
+    end)
+end
+-- A recipe learned while the window is shut: file it under its profession
+-- by name, the same name a window scan stores.
+recipeFrame.learned = function(recipeID)
+    local CTradeSkillUI = _G.C_TradeSkillUI
+    if type(recipeID) ~= "number" or type(CTradeSkillUI) ~= "table" then
+        return
+    end
+    local name
+    if type(CTradeSkillUI.GetRecipeInfo) == "function" then
+        local ok, info = pcall(CTradeSkillUI.GetRecipeInfo, recipeID)
+        name = ok and type(info) == "table" and info.name or nil
+    end
+    name = name or getSpellName(recipeID)
+    local profession
+    if type(CTradeSkillUI.GetTradeSkillLineForRecipe) == "function" then
+        local ok, _, lineName, _, parentName = pcall(CTradeSkillUI.GetTradeSkillLineForRecipe, recipeID)
+        profession = ok and (parentName or lineName) or nil
+    end
+    if type(name) ~= "string" or name == "" or type(profession) ~= "string" or profession == ""
+        or (type(issecretvalue) == "function" and (issecretvalue(name) or issecretvalue(profession))) then
+        return
+    end
+    local db = ensureSyncDB()
+    db.recipes = db.recipes or {}
+    local list = db.recipes[profession] or {}
+    for _, r in ipairs(list) do
+        if normalizeRecipeEntry(r).name == name then
+            return
+        end
+    end
+    table.insert(list, { name = name, id = recipeID })
+    db.recipes[profession] = list
+end
+recipeFrame:SetScript("OnEvent", function(_, event, arg1)
     if event == "TRADE_SKILL_SHOW" then
-        -- A short delay: the window firing this event doesn't guarantee
-        -- its recipe list has actually finished populating yet on every
-        -- client. C_Timer is part of the same retail API surface the rest
-        -- of this file already leans on, so it should be safe here too.
+        recipeFrame.open = true
+        recipeFrame.later(0.5)
+        -- And once more when a slow list has surely finished.
         local Timer = _G.C_Timer
         if type(Timer) == "table" and type(Timer.After) == "function" then
-            Timer.After(0.5, function()
-                pcall(captureRecipes)
+            Timer.After(3, function()
+                if recipeFrame.open then
+                    pcall(captureRecipes)
+                end
             end)
+        end
+    elseif event == "TRADE_SKILL_LIST_UPDATE" then
+        if recipeFrame.open then
+            recipeFrame.later(1)
+        end
+    elseif event == "TRADE_SKILL_CLOSE" then
+        recipeFrame.open = false
+    elseif event == "NEW_RECIPE_LEARNED" then
+        if recipeFrame.open then
+            recipeFrame.later(1)
         else
-            pcall(captureRecipes)
+            pcall(recipeFrame.learned, arg1)
         end
     end
 end)
@@ -5499,6 +5574,7 @@ local function syncShowTooltip(self)
     GameTooltip:AddLine(" ")
     local s = syncSettings()
     GameTooltip:AddLine("Click: reload to sync", 0.6, 0.6, 0.6)
+    GameTooltip:AddLine("Shift-click: stats and crafting directory", 0.6, 0.6, 0.6)
     GameTooltip:AddLine(s.locked and "Right-click: unlock to move" or "Drag to move - right-click: lock", 0.6, 0.6, 0.6)
     GameTooltip:AddLine("/wft sync for more options", 0.6, 0.6, 0.6)
     GameTooltip:Show()
@@ -5654,6 +5730,10 @@ local function createSyncButton()
                 syncShowTooltip(self)
             end
         elseif not self.dragging and GetTime() - (self.droppedAt or 0) > 0.3 then
+            if IsShiftKeyDown() and WFTHub and WFTHub.toggle then
+                WFTHub.toggle()
+                return
+            end
             doSync()
         end
     end)
@@ -5747,6 +5827,13 @@ syncFrame:SetScript("OnEvent", function(_, event)
         pcall(syncRefresh)
     end
 end)
+end
+
+-- For Stats.lua and Hub.lua (1.9.20): the name this character syncs as.
+WFTHub = WFTHub or {}
+WFTHub.siteName = function()
+    local ok, basic = pcall(collectBasic)
+    return ok and type(basic) == "table" and basic.name or nil
 end
 
 SLASH_WFT1 = "/wft"
