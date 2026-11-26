@@ -1922,7 +1922,7 @@ local function buildExport()
     local tocversion = select(4, safeGet("GetBuildInfo"))
     local okDate, timestamp = safeCall(_G.date, "%Y-%m-%d %H:%M:%S")
     out.meta = {
-        addonVersion = "1.9.20",
+        addonVersion = "1.9.21",
         tocversion = tocversion,
         exportedAt = okDate and timestamp or nil,
     }
@@ -4869,6 +4869,13 @@ end
 -- from the link's colour (epic purple / legendary orange / artifact gold)
 local LINK_COLOR_QUALITY = { a335ee = 4, ff8000 = 5, e6cc80 = 6 }
 local function itemQuality(link)
+    -- 1.9.21: this client colours links "|cnIQ4:" (the quality number)
+    -- instead of "|cffa335ee", and GetItemInfo comes back empty, so no epic
+    -- was ever logged before this.
+    local iq = type(link) == "string" and link:match("|cnIQ(%d+):")
+    if iq then
+        return tonumber(iq)
+    end
     local ok, _, _, quality = safeCall(_G.GetItemInfo, link)
     if ok and type(quality) == "number" then
         return quality

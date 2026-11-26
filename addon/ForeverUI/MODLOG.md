@@ -1,5 +1,17 @@
 # Forever UI continuation
 
+## 2026-11-26 — In git and shipped as an opt-in download, 0.2.0 (Claude)
+
+- User: "commit the Forever UI changes and release but make forever ui opt in
+  in the tracker and not force download". `addon/ForeverUI` is now tracked
+  in the site repo (`data/` and `Attribution/*.zip` are ignored, see
+  `.gitignore`). Every release attaches `ForeverUIAddon.zip`, which holds the
+  top-level files, `Art/` .tga/.ogg only and the `Attribution/` texts.
+- The tray installs it only from its Settings "Install Forever UI" button,
+  then auto-updates copies already installed. **Bump the version in both
+  `ForeverUI.toc` and `Core.lua` (`ns.VERSION`)**: `scripts/release.mjs`
+  refuses to run if they disagree.
+
 ## 2026-11-26 — Crafting cost box in the profession window (Claude)
 
 - User: "say the cost of crafting something, like auction cost, put above

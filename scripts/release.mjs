@@ -38,6 +38,9 @@ const LUA = path.join(ADDON_DIR, "WoWForeverTracker.lua");
 const VERSIONS_TS = path.join(SITE_DIR, "lib", "versions.ts");
 // Forever Gold: zipped into every release by the tray's hook; not tracked in git.
 const FG_DIR = path.join(SITE_DIR, "addon", "ForeverGold");
+// Forever UI: also zipped by the tray's hook. Opt-in - the tray installs it
+// only from its Settings button, then keeps installed copies updated.
+const FUI_DIR = path.join(SITE_DIR, "addon", "ForeverUI");
 const TRAY_PKG = path.join(TRAY_DIR, "package.json");
 const REQUIRED_ASSETS = [
   "latest.yml",
@@ -45,6 +48,7 @@ const REQUIRED_ASSETS = [
   "WoWForeverTrackerSetup.exe.blockmap",
   "WoWForeverTrackerAddon.zip",
   "ForeverGoldAddon.zip",
+  "ForeverUIAddon.zip",
 ];
 
 // ---- args ----
@@ -124,6 +128,13 @@ if (!fgToc || fgToc !== fgLua) fail(`Forever Gold versions disagree: .toc says $
 const fgVersion = fgToc;
 log(`Forever Gold: ${fgVersion}`);
 
+// Forever UI's version: same rule.
+const fuiToc = fs.readFileSync(path.join(FUI_DIR, "ForeverUI.toc"), "utf8").match(/^## Version:\s*(\S+)/m)?.[1];
+const fuiLua = fs.readFileSync(path.join(FUI_DIR, "Core.lua"), "utf8").match(/ns\.VERSION = "([^"]+)"/)?.[1];
+if (!fuiToc || fuiToc !== fuiLua) fail(`Forever UI versions disagree: .toc says ${fuiToc}, Core.lua says ${fuiLua}.`);
+const fuiVersion = fuiToc;
+log(`Forever UI: ${fuiVersion}`);
+
 const trayPkgText = fs.readFileSync(TRAY_PKG, "utf8");
 const trayPkg = JSON.parse(trayPkgText);
 let trayVersion = trayPkg.version;
@@ -158,13 +169,14 @@ const versionsText = fs.readFileSync(VERSIONS_TS, "utf8");
 const updated = versionsText
   .replace(/(addon:\s*")[^"]+(")/, `$1${addonVersion}$2`)
   .replace(/(tray:\s*")[^"]+(")/, `$1${trayVersion}$2`)
-  .replace(/(foreverGold:\s*")[^"]+(")/, `$1${fgVersion}$2`);
+  .replace(/(foreverGold:\s*")[^"]+(")/, `$1${fgVersion}$2`)
+  .replace(/(foreverUI:\s*")[^"]+(")/, `$1${fuiVersion}$2`);
 if (!dryRun) fs.writeFileSync(VERSIONS_TS, updated);
-log(`lib/versions.ts -> addon ${addonVersion}, tray ${trayVersion}, Forever Gold ${fgVersion}`);
+log(`lib/versions.ts -> addon ${addonVersion}, tray ${trayVersion}, Forever Gold ${fgVersion}, Forever UI ${fuiVersion}`);
 
-const toCommit = ["lib/versions.ts", "scripts/release.mjs", "addon/WoWForeverTracker", "addon/ForeverGold", ...includes];
+const toCommit = ["lib/versions.ts", "scripts/release.mjs", "addon/WoWForeverTracker", "addon/ForeverGold", "addon/ForeverUI", ...includes];
 run("git", ["add", "--", ...toCommit], SITE_DIR);
-const message = `Release tray ${trayVersion}, addon ${addonVersion}, Forever Gold ${fgVersion}`;
+const message = `Release tray ${trayVersion}, addon ${addonVersion}, Forever Gold ${fgVersion}, Forever UI ${fuiVersion}`;
 run("git", ["commit", "-m", message, "--", ...toCommit], SITE_DIR);
 run("git", ["push", "origin", "main"], SITE_DIR);
 

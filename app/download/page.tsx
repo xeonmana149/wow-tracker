@@ -77,6 +77,33 @@ export default function DownloadPage() {
           <li>Start the game and type <code>/gold</code>.</li>
         </ol>
       </section>
+
+      <section className="mt-6 rounded bg-neutral-800 p-5">
+        <h2 className="text-xl font-bold">Forever UI (optional interface addon)</h2>
+        <p className="mt-2 text-sm text-gray-400">
+          A dark-and-gold replacement for much of the game&apos;s interface: action bars,
+          unit frames, minimap, bags, tooltips, a quest encyclopedia that can take quests
+          in a row, and crafting costs in the profession window. Entirely optional.
+        </p>
+        <p className="mt-3 text-sm text-gray-300">
+          Have the app above? Open its Settings and press <b>Install Forever UI</b> - it&apos;s
+          only installed if you ask, and kept updated after that.
+        </p>
+        <a
+          href={DOWNLOAD_URLS.foreverUI}
+          className="mt-4 inline-block rounded bg-neutral-700 px-5 py-2.5 font-medium text-white hover:bg-neutral-600"
+        >
+          Download Forever UI (.zip)
+        </a>
+        <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm text-gray-300">
+          <li>Close WoW.</li>
+          <li>
+            Unzip it into <code>World of Warcraft/_forever_/Interface/AddOns</code>, so
+            you end up with <code>AddOns/ForeverUI/ForeverUI.toc</code>.
+          </li>
+          <li>Start the game and type <code>/fui</code>.</li>
+        </ol>
+      </section>
     </main>
   );
 }

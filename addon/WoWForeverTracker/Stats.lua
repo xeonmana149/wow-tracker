@@ -175,6 +175,11 @@ local function qualityOf(link)
     if type(link) ~= "string" then
         return nil
     end
+    -- This client colours links "|cnIQ3:" (the quality number), not "|cff0070dd".
+    local iq = tonumber(link:match("|cnIQ(%d+):") or "")
+    if iq then
+        return QUALITY_BY_NUMBER[iq]
+    end
     local color = link:match("|c%x%x(%x%x%x%x%x%x)")
     local q = color and LINK_QUALITY[color:lower()]
     if q then
@@ -316,7 +321,7 @@ local function onLootMessage(msg)
     if not link then
         return
     end
-    link = link:match("(|c%x+|Hitem:.-|h.-|h|r)") or link
+    link = link:match("(|cnIQ%d+:|Hitem:.-|h.-|h|r)") or link:match("(|c%x+|Hitem:.-|h.-|h|r)") or link
     local q = qualityOf(link)
     if not q then
         return
