@@ -520,7 +520,8 @@ export async function logAuctionEvents(
 
 export type ItemLogEntry = {
   t?: number;
-  kind: "won" | "looted" | "crafted" | "trade_gave" | "trade_got";
+  // party_*: someone else in your group (addon 1.9.22+); `player` is who
+  kind: "won" | "looted" | "crafted" | "trade_gave" | "trade_got" | "party_won" | "party_looted";
   item?: string;
   itemId?: number;
   quality?: number;
@@ -540,6 +541,8 @@ const ITEM_KINDS: Record<ItemLogEntry["kind"], string> = {
   crafted: "item_crafted",
   trade_gave: "item_traded",
   trade_got: "item_traded",
+  party_won: "item_won",
+  party_looted: "item_looted",
 };
 export const ITEM_ACTIVITY_KINDS = ["item_won", "item_looted", "item_crafted", "item_traded"];
 
@@ -561,7 +564,45 @@ export function itemLabel(characterName: string, e: ItemLogEntry): string {
       return `${characterName} got ${item} from ${who} in a trade`;
     case "trade_gave":
       return `${characterName} traded ${item} to ${who}`;
+    case "party_won": {
+      const roll =
+        typeof e.roll === "number" ? ` with a ${e.rollType ? `${e.rollType} ` : ""}roll of ${e.roll}` : "";
+      return `${who} won ${item}${where}${roll} (in a group with ${characterName})`;
+    }
+    case "party_looted":
+      return `${who} looted ${item}${where} (in a group with ${characterName})`;
   }
+}
+
+// The start every copy of a party member's epic shares, whoever's addon saw
+// it: "Itchi won Thunderfury (Legendary)".
+function partyLabelStart(e: ItemLogEntry): string {
+  return `${e.player} ${e.kind === "party_won" ? "won" : "looted"} ${itemText(e.item, e.quality, e.count)}`;
+}
+
+// Party members' epics (2026-11-26, "also show friends' epics from party
+// loot"). Skipped when the player is a character on the site - their own
+// addon posts it - and when someone else in the same group already posted
+// it within a few minutes, since every tracker in the group sees it.
+async function newPartyEntries(supabase: SupabaseClient, entries: (ItemLogEntry & { t: number })[]) {
+  const names = [...new Set(entries.map((e) => e.player as string))];
+  const { data: tracked } = await supabase.from("characters").select("name").in("name", names);
+  const known = new Set((tracked ?? []).map((r: { name: string }) => r.name.toLowerCase()));
+  const out: (ItemLogEntry & { t: number })[] = [];
+  for (const e of entries) {
+    if (known.has((e.player as string).toLowerCase())) continue;
+    const start = partyLabelStart(e);
+    const { data: same } = await supabase
+      .from("activity_log")
+      .select("label")
+      .eq("kind", ITEM_KINDS[e.kind])
+      .gte("created_at", new Date((e.t - 300) * 1000).toISOString())
+      .lte("created_at", new Date((e.t + 300) * 1000).toISOString())
+      .like("label", start.replace(/[\\%_]/g, (c) => "\\" + c) + "%");
+    if ((same ?? []).length > 0) continue;
+    out.push(e);
+  }
+  return out;
 }
 
 export async function logItemEvents(
@@ -569,8 +610,16 @@ export async function logItemEvents(
   character: Character,
   entries: ItemLogEntry[]
 ): Promise<void> {
-  const rows = entries
-    .filter((e) => e.kind in ITEM_KINDS && hasTime(e) && (typeof e.quality !== "number" || e.quality >= 4))
-    .map((e) => ({ kind: ITEM_KINDS[e.kind], label: itemLabel(character.name, e), t: e.t as number }));
+  const valid = entries.filter(
+    (e): e is ItemLogEntry & { t: number } =>
+      e.kind in ITEM_KINDS && hasTime(e) && (typeof e.quality !== "number" || e.quality >= 4)
+  );
+  const isParty = (e: ItemLogEntry) => e.kind === "party_won" || e.kind === "party_looted";
+  const mine = valid.filter((e) => !isParty(e));
+  // Only the last week, so an old log isn't re-checked on every sync
+  const weekAgo = Date.now() / 1000 - 7 * 86400;
+  const party = valid.filter((e) => isParty(e) && typeof e.player === "string" && e.player && e.t > weekAgo);
+  const kept = party.length ? await newPartyEntries(supabase, party) : [];
+  const rows = [...mine, ...kept].map((e) => ({ kind: ITEM_KINDS[e.kind], label: itemLabel(character.name, e), t: e.t }));
   await postNewEntries(supabase, character, ITEM_ACTIVITY_KINDS, rows);
 }

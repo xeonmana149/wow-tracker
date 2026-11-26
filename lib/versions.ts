@@ -8,8 +8,8 @@
 // it does mean a typo'd or reverted number here won't be caught, just
 // treated as "different, so out of date" by whoever's checking.
 export const LATEST_VERSIONS = {
-  addon: "1.9.21",
-  tray: "2.2.50",
+  addon: "1.9.22",
+  tray: "2.2.51",
   // The Forever Gold gold-making addon. The tray app updates copies that
   // are already installed when this changes (scripts/release.mjs sets it).
   foreverGold: "1.12.5",

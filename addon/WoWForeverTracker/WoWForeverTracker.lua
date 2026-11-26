@@ -1922,7 +1922,7 @@ local function buildExport()
     local tocversion = select(4, safeGet("GetBuildInfo"))
     local okDate, timestamp = safeCall(_G.date, "%Y-%m-%d %H:%M:%S")
     out.meta = {
-        addonVersion = "1.9.21",
+        addonVersion = "1.9.22",
         tocversion = tocversion,
         exportedAt = okDate and timestamp or nil,
     }
@@ -4940,17 +4940,83 @@ local ROLL_TYPES = {
     LOOT_ROLL_ROLLED_DE = "Disenchant",
 }
 
+-- Party members' epics (1.9.22, "also show friends' epics from party
+-- loot"): "Itchi receives loot: [item]" and "Itchi won: [item]" (with their
+-- roll) are logged as party_looted / party_won with the player's name. The
+-- website skips anyone it tracks, since their own addon posts it. Kept on
+-- itemFrame, since this file is near Lua's limit of top-level locals.
+itemFrame.partyRolls = {} -- link .. "\0" .. name -> { roll, rollType }
+itemFrame.partyWon = {} -- link .. "\0" .. name -> time
+itemFrame.shortName = function(who)
+    if type(who) ~= "string" then
+        return nil
+    end
+    -- A player link ("|Hplayer:Itchi-Realm|h[Itchi]|h") is reduced to its name.
+    who = who:match("|h%[?([^%]|]+)%]?|h") or who
+    return who:match("^([^-]+)") or who
+end
+-- Everyone's rolls on an item are dropped once someone wins it.
+itemFrame.clearRolls = function(link)
+    local prefix = link .. "\0"
+    for key in pairs(itemFrame.partyRolls) do
+        if key:sub(1, #prefix) == prefix then
+            itemFrame.partyRolls[key] = nil
+        end
+    end
+end
+itemFrame.onPartyLoot = function(msg)
+    local short = itemFrame.shortName
+    local p = pattern("LOOT_ROLL_WON")
+    local who, link = nil, nil
+    if p then
+        who, link = msg:match(p)
+    end
+    if who and link and not isMe(who) then
+        local key = link .. "\0" .. short(who)
+        local roll = itemFrame.partyRolls[key]
+        itemFrame.clearRolls(link)
+        itemFrame.partyWon[key] = GetTime()
+        recordItem("party_won", link, { player = short(who), roll = roll and roll.roll or nil,
+            rollType = roll and roll.rollType or nil })
+        return true
+    end
+    local count
+    p = pattern("LOOT_ITEM_MULTIPLE")
+    if p then
+        who, link, count = msg:match(p)
+    end
+    if not link then
+        p = pattern("LOOT_ITEM")
+        if p then
+            who, link = msg:match(p)
+        end
+    end
+    if who and link and not isMe(who) then
+        local key = link .. "\0" .. short(who)
+        local won = itemFrame.partyWon[key]
+        itemFrame.partyWon[key] = nil
+        if not (won and GetTime() - won < 30) then
+            recordItem("party_looted", link, { player = short(who), count = tonumber(count) })
+        end
+        return true
+    end
+end
+
 local function onLootMessage(msg)
-    if type(msg) ~= "string" then
+    if type(msg) ~= "string" or (type(issecretvalue) == "function" and issecretvalue(msg)) then
         return
     end
-    -- Your own roll on an item, kept until the winner is announced
+    -- Your own roll on an item, kept until the winner is announced; party
+    -- members' rolls too, for their win
     for global, rollType in pairs(ROLL_TYPES) do
         local p = pattern(global)
         if p then
             local roll, link, who = msg:match(p)
             if roll and isMe(who) then
                 myRolls[link] = { roll = tonumber(roll), rollType = rollType, at = GetTime() }
+                return
+            elseif roll and link and who then
+                itemFrame.partyRolls[link .. "\0" .. itemFrame.shortName(who)] = { roll = tonumber(roll), rollType = rollType }
                 return
             end
         end
@@ -4960,6 +5026,7 @@ local function onLootMessage(msg)
     if link then
         local mine = myRolls[link]
         myRolls[link] = nil
+        itemFrame.clearRolls(link)
         recentlyWon[link] = GetTime()
         recordItem("won", link, { roll = mine and mine.roll or nil, rollType = mine and mine.rollType or nil })
         return
@@ -4992,7 +5059,9 @@ local function onLootMessage(msg)
             return
         end
         recordItem("looted", link, { count = tonumber(count) })
+        return
     end
+    itemFrame.onPartyLoot(msg)
 end
 
 -- Trades: remember what's in the window on both sides as it changes, and
