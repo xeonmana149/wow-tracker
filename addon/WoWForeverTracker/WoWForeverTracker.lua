@@ -123,8 +123,16 @@ end
 -- Forwards EVERY return value now (2026-11-05, addon 1.9.2). It used to stop
 -- at 9, which silently dropped GetAchievementInfo's 10th return - the icon
 -- fileID - so every Legacy Challenge synced with no icon.
+-- 2026-11-26: a "secret value" (a unit's name or GUID the client hides
+-- from addons, e.g. in combat) counts as the call failing. Comparing one
+-- throws "attempt to compare ... a secret string value" - that was
+-- breaking "killed by" for creatures (pvpErr at npcAt). Every caller
+-- already treats a failed call as "can't tell".
 local function forwardPcall(ok, ...)
     if not ok then
+        return false, nil
+    end
+    if select("#", ...) > 0 and type(issecretvalue) == "function" and issecretvalue((...)) then
         return false, nil
     end
     return true, ...

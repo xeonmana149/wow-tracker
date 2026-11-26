@@ -385,12 +385,42 @@ local function create()
     local C = K.C
     local f = CreateFrame("Frame", "ForeverGoldTracker", UIParent)
     f:SetSize(W, 120)
-    local pos = ns.db.opts.trackerPos
-    if type(pos) == "table" and pos.x and pos.y then
-        f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", pos.x, pos.y)
-    else
-        f:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -80, -220)
+    -- Its size (2026-11-26), set from Forever UI's Edit Mode handle; the
+    -- saved position is in the window's own (scaled) units, so the size
+    -- goes on first.
+    local scale = tonumber(ns.db.opts.trackerScale)
+    if scale and scale > 0 then f:SetScale(scale) end
+    local function place()
+        f:ClearAllPoints()
+        local pos = ns.db.opts.trackerPos
+        if type(pos) == "table" and pos.x and pos.y then
+            f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", pos.x, pos.y)
+        else
+            f:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -80, -220)
+        end
     end
+    place()
+    -- What Forever UI's Edit Mode handle calls to move and resize it.
+    f.fuiExternal = {
+        save = function() pin(f) end,
+        getScale = function() return tonumber(ns.db.opts.trackerScale) or 1 end,
+        setScale = function(s)
+            local left, top, old = f:GetLeft(), f:GetTop(), f:GetScale()
+            f:SetScale(s)
+            ns.db.opts.trackerScale = math.abs(s - 1) > 0.001 and s or nil
+            if left and top then
+                -- keep the top-left corner on the same spot of the screen
+                f:ClearAllPoints()
+                f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left * old / s, top * old / s)
+                pin(f)
+            end
+        end,
+        reset = function()
+            ns.db.opts.trackerPos, ns.db.opts.trackerScale = nil, nil
+            f:SetScale(1)
+            place()
+        end,
+    }
     f:SetFrameStrata("MEDIUM")
     f:EnableMouse(true)
     f:SetMovable(true)
@@ -423,11 +453,22 @@ local function create()
     f.title:SetWordWrap(false)
     local close = K.closeButton(f, 16, 16, function() f:Hide() end)
     close:SetPoint("TOPRIGHT", -3, -3)
-    f.fold = K.button(f, "-", 16, 16, function()
+    f.fold = K.button(f, "", 16, 16, function()
         ns.db.opts.trackerCollapsed = not ns.db.opts.trackerCollapsed or nil
         ns.RefreshTrackerWindow(true)
     end)
     f.fold:SetPoint("RIGHT", close, "LEFT", -2, 0)
+    -- Drawn gold "-" / "+" lines, the same as the damage meter's and the
+    -- dungeon tracker's fold buttons (a text "-" sat off-center).
+    f.fold.minus = K.tex(f.fold, "OVERLAY", C.head[1], C.head[2], C.head[3], 1)
+    f.fold.minus:SetSize(8, 2)
+    f.fold.minus:SetPoint("CENTER")
+    f.fold.plus = K.tex(f.fold, "OVERLAY", C.head[1], C.head[2], C.head[3], 1)
+    f.fold.plus:SetSize(2, 8)
+    f.fold.plus:SetPoint("CENTER")
+    function f.fold:SetLabel(t)
+        self.plus:SetShown(t == "+")
+    end
     f.compactReset = K.button(f, "", 16, 16, function()
         ns.TrackerReset()
         ns.RefreshTrackerWindow(true)

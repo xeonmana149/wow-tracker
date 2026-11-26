@@ -3925,6 +3925,31 @@ function ns.ShowTab(key)
     end
 end
 
+-- Windows that open where they were last left (2026-11-26): the drag
+-- saves the top-left corner under opts[key], and opening puts it back.
+local function rememberPlace(f, key)
+    local function save()
+        local left, top = f:GetLeft(), f:GetTop()
+        if left and top then
+            f:ClearAllPoints()
+            f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+            ns.db.opts[key] = { x = floor(left + 0.5), y = floor(top + 0.5) }
+        end
+    end
+    local function restore()
+        local pos = ns.db.opts[key]
+        if type(pos) == "table" and pos.x and pos.y then
+            f:ClearAllPoints()
+            f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", pos.x, pos.y)
+        end
+    end
+    f:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        save()
+    end)
+    restore()
+end
+
 local function createMain()
     local f = CreateFrame("Frame", "ForeverGoldFrame", UIParent)
     f:SetSize(W, H)
@@ -3937,14 +3962,7 @@ local function createMain()
     f:SetClampedToScreen(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-        local left, topY = self:GetLeft(), self:GetTop()
-        if left and topY then
-            self:ClearAllPoints()
-            self:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, topY)
-        end
-    end)
+    rememberPlace(f, "mainPos")
     skin(f)
     if UISpecialFrames then
         table.insert(UISpecialFrames, "ForeverGoldFrame")
@@ -4152,7 +4170,7 @@ local function createHUD()
     f:SetClampedToScreen(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    rememberPlace(f, "guidePos")
     skin(f, 0.04, 0.04, 0.05, 0.78)
 
     local arrow = CreateFrame("Frame", nil, f)
@@ -4227,7 +4245,7 @@ local function createSellPanel()
     f:SetClampedToScreen(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    rememberPlace(f, "sellPos")
     skin(f)
 
     f.iconEdge = f:CreateTexture(nil, "BORDER")
