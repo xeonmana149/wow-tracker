@@ -1,0 +1,53 @@
+## Interface: 16001
+## Title: |cffe3c06aForever UI|r
+## Notes: A dark-and-gold, minimal UI: action bars, cast bar, swing timers, buffs, damage meter, XP bar, micro menu, bag bar, tooltips, windows and a square minimap. Type /fui.
+## Author: Jordan
+## Version: 0.2.0
+## IconTexture: Interface\AddOns\ForeverGold\Icon
+## SavedVariables: ForeverUIDB
+## OptionalDeps: OneForAll, ForeverGold, QuestieDB, Questie, OpenMap_Tweaks, ForeverDungeonJournal
+
+Core.lua
+OpenMapCompat.lua
+QualityOfLife.lua
+NodeGlow.lua
+Mover.lua
+ActionBars.lua
+XPBar.lua
+MicroMenu.lua
+Minimap.lua
+Tooltip.lua
+Combat.lua
+FlightTimer.lua
+Auras.lua
+CustomAuras.lua
+TargetFrame.lua
+Dispel.lua
+Healing.lua
+HealingConfig.lua
+Nameplates.lua
+DamageMeter.lua
+Windows.lua
+Character.lua
+Chat.lua
+ReferenceData.lua
+IndependentReferenceData.lua
+DungeonTracker.lua
+IndependentFeatures.lua
+IndependentSkillUp.lua
+Trainer.lua
+QuestMarks.lua
+BulkReferenceData.lua
+NpcReferenceData.lua
+NpcQuestRelations.lua
+NpcLocationsData.lua
+FavorEvidence.lua
+FavorVendorWatch.lua
+VendorStockData.lua
+QuestDiscoveryData.lua
+IndependentGearSupport.lua
+IndependentGearValue.lua
+Encyclopedia.lua
+QuestPage.lua
+InstanceGuide.lua
+Options.lua

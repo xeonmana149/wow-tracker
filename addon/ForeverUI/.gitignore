@@ -1,0 +1,4 @@
+# Scraped source data used to build the *Data.lua files; not loaded by the game.
+data/
+# Third-party reference source archives; the licence texts stay.
+Attribution/*.zip

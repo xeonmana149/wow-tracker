@@ -1,0 +1,30 @@
+Supplemental item-to-NPC source relations
+
+Derived from the WoW Forever Friends structured item and NPC dataset:
+https://www.wowforeverfriends.org/library/sources/
+https://www.wowforeverfriends.org/items/items.json
+https://www.wowforeverfriends.org/library/data/npcs.json
+
+The dataset is adapted from CMaNGOS Classic-DB contributors and distributed
+under GPL version 3. It describes Classic reference data, not verified Forever
+availability or drop rates. Only item IDs, NPC IDs and NPC names are used;
+quest dialogue, editorial notes and drop percentages are not imported.
+
+Quest objective names, reward-choice flags, suggested group size and chain
+IDs are derived from the same GPL-3.0 Classic reference dataset:
+https://www.wowforeverfriends.org/quests/quests.json
+They are labelled as Classic references and are not proof of live Forever
+quest requirements, rewards or availability. Source hashes and the extraction
+script are kept in classic-quest-details.json and
+scripts/import-forever-friends-quests.py in the source workspace.
+
+NPC quest-start and turn-in IDs are also extracted by
+scripts/import-npc-quest-relations.py after matching quest IDs and names and
+NPC IDs and names. They remain Classic references and are not evidence of
+current server availability. Source hashes are in NpcQuestRelations.lua.
+
+GPL v3 text is included alongside this notice in OneForAll-LICENSE.txt.
+The transformation and source hashes are retained in
+scripts/import-forever-friends-sources.py and data/forever-kb/
+classic-extra-sources.json in the source workspace.
+Upstream license: https://github.com/cmangos/classic-db/blob/master/LICENSE.md

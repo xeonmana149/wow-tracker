@@ -1,0 +1,29 @@
+Quest reference enrichment for previously uncategorised quests
+
+Source: EverlookDB, https://everlookdb.com/data.html
+Quest and NPC data snapshots from WoW Forever client build 1.60.1.71037.
+Credits and individual upstream licenses: https://everlookdb.com/credits.html
+Some upstream records incorporate Efficient Games / EG Link observations,
+licensed CC BY 4.0: https://creativecommons.org/licenses/by/4.0/ .
+Other source data is attributed on the credits page, including Questie and
+CMaNGOS data under GPL v3. Game data and names belong to Blizzard Entertainment.
+
+The importer selects matching quest IDs and names and derives compact factual
+fields including zone categories, NPC IDs and names, levels, rewards, reputation,
+and chains. It does not copy quest dialogue. Missing or approximate values are
+not proof of current availability. The input hashes and transformation are in
+data/forever-kb/unknown-quest-discoveries.json and
+scripts/import-unknown-quest-discoveries.py in the source workspace.
+
+Additional manually checked records list their own source URLs in
+data/forever-kb/unknown-quest-manual-verification.json and in the quest UI.
+
+NPC quest relationships are also derived from this snapshot by
+scripts/import-npc-quest-relations.py. The generated NpcQuestRelations.lua
+records source hashes and supplies reference-only starts and turn-ins.
+
+Where IDs overlap, levels were also compared to forever-quests 1.3.0:
+https://github.com/tyler3497/forever-quests (GPL v3), derived from QuestieDB,
+TrinityCore and NorgannonDB. Its input manifest hashes are retained in the
+workspace snapshot. This older source covers only some of the missing quests;
+disagreements are displayed rather than silently treated as verified.
