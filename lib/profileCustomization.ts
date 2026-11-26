@@ -65,8 +65,10 @@ export const AVATAR_ICON_OPTIONS: AvatarIconOption[] = [
   { key: "tauren-warrior-male", label: "Tauren Warrior (Male)", localSlug: "tauren-male-warrior" },
   { key: "troll-mage-male", label: "Troll Mage (Male)", localSlug: "troll-mage-male" },
   { key: "troll-shaman-male", label: "Troll Shaman (Male)", localSlug: "troll-shaman-male" },
+  { key: "undead-mage-male", label: "Undead Mage (Male)", localSlug: "undead-male-mage" },
   { key: "undead-paladin-female", label: "Undead Paladin (Female)", localSlug: "undead-paladin-female" },
   { key: "undead-paladin-male", label: "Undead Paladin (Male)", localSlug: "undead-paladin-male" },
+  { key: "undead-warlock-male", label: "Undead Warlock (Male)", localSlug: "undead-male-warlock" },
   { key: "male-skyborne-hunter", label: "Skyborne Hunter (Male)", localSlug: "male-skyborne-hunter" },
 ];
 
